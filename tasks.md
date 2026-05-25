@@ -9,6 +9,14 @@ Use it with:
 - `coding_guidelines.md` for code style and clean code rules
 - `design.md` for UI layout, color, and component visual specs
 
+Create documentation structure in `docs/`:
+- `docs/README.md` — project overview, team, how to run locally
+- `docs/database_schema.md` — placeholder 
+- `docs/storage_structure.md` — placeholder 
+- `docs/api_endpoints.md` — placeholder (filled as APIs are built)
+- `docs/testing_log.md` — placeholder for test records
+- `docs/3d_model_tools.md` — placeholder
+
 ---
 
 ## Team Roles
@@ -34,23 +42,6 @@ Use it with:
 - Feature works for both Student and Teacher roles
 - No console errors in the browser
 - Relevant documentation updated
-
----
-
-## Week Allocation (10 Weeks)
-
-| Week | Main Focus | Members |
-|---|---|---|
-| 1 | Project Setup & Architecture | All |
-| 2 | 3D Viewer Integration | A, B |
-| 3 | Model Interaction Controls | A |
-| 4 | Model Browsing & Search | A, B |
-| 5 | Anatomical Labelling System | A, B |
-| 6 | Teacher Content Management | B, C |
-| 7 | Educational Video Integration | A, C |
-| 8 | Quiz Module Development | B, C |
-| 9 | Authentication & Role Management | B, D |
-| 10 | Download Support & Final Integration | All |
 
 ---
 
@@ -95,7 +86,6 @@ Design and document the initial database schema covering all entities:
 
 Acceptance Criteria:
 - [ ] All entities and relationships documented
-- [ ] Reviewed by Member B and at least one other member
 
 ---
 
@@ -129,7 +119,6 @@ Acceptance Criteria:
 - [ ] Save as `docs/storage_structure.md`
 
 Acceptance Criteria:
-- [ ] Storage documentation reviewed by Member B
 - [ ] Future cloud path is noted (does not need to be implemented yet)
 
 ---
@@ -146,27 +135,9 @@ Create low-fidelity wireframes for all screens:
 - [ ] Quiz attempt page (student)
 - [ ] Library / content management page
 - [ ] Login / authentication screen
-- [ ] Save wireframes as images or Figma link in `docs/wireframes/`
 
 Acceptance Criteria:
 - [ ] All major screens covered
-- [ ] Reviewed and agreed on by all 4 members
-
----
-
-### Task 1.6 — Write Initial Documentation Skeleton
-**Owner:** C | **Depends on:** nothing
-
-Create documentation structure in `docs/`:
-- [ ] `docs/README.md` — project overview, team, how to run locally
-- [ ] `docs/database_schema.md` — placeholder (filled by Task 1.3)
-- [ ] `docs/storage_structure.md` — placeholder (filled by Task 1.5)
-- [ ] `docs/api_endpoints.md` — placeholder (filled as APIs are built)
-- [ ] `docs/testing_log.md` — placeholder for test records
-- [ ] `docs/3d_model_tools.md` — placeholder (filled by Task 1.7)
-
-Acceptance Criteria:
-- [ ] All placeholder files exist and committed to `dev`
 
 ---
 
@@ -1165,99 +1136,13 @@ Acceptance Criteria:
 
 ---
 
-### Task 10.5 — System Integration Testing
-**Owner:** All | **Depends on:** all features merged
-
-Each member tests one end-to-end flow:
-
-**A — Student 3D Flow:**
-- [ ] Log in as student → open Viewer → load model → click label → read description → play linked video → log out
-
-**B — Teacher Content Flow:**
-- [ ] Log in as teacher → upload model → add labels → upload video → link video to label → publish model → log out
-
-**C — Quiz Flow:**
-- [ ] Log in as teacher → create quiz → add 5 questions → publish → log in as student → take quiz → submit → view score
-
-**D — Download Flow:**
-- [ ] Log in as student → browse library → download model → verify file → log in as teacher → export labels as CSV → verify file
-
-Acceptance Criteria:
-- [ ] All 4 flows complete without errors
-- [ ] Any bugs found are filed as GitHub issues
-
----
-
-### Task 10.6 — Bug Fixing
-**Owner:** All | **Depends on:** Task 10.5
-
-- [ ] Review all GitHub issues opened during integration testing
-- [ ] Assign each bug to the member whose code area it affects
-- [ ] Fix and PR all P1 (breaking) bugs before final submission
-- [ ] Document known P2/P3 issues in `docs/README.md` under Known Limitations
-
-Acceptance Criteria:
-- [ ] No P1 (breaking) bugs remain
-- [ ] All known issues documented
-
----
-
-### Task 10.7 — Performance and Non-Functional Testing
-**Owner:** All | **Depends on:** Task 10.5
-
-- [ ] **Usability (A):** Can a new user complete the student flow without instructions?
-- [ ] **Browser compatibility (B):** Does the 3D viewer work in Chrome and Firefox?
-- [ ] **Performance (C):** Does a large model (>10MB) load within 10 seconds on a local connection?
-- [ ] **Security (D):** Do student tokens fail on all teacher-only API routes?
-- [ ] Document results in `docs/testing_log.md`
-
-Acceptance Criteria:
-- [ ] All 4 non-functional checks documented with pass/fail result
-
----
-
-### Task 10.8 — Final Documentation
-**Owner:** All | **Depends on:** Task 10.6
-
-- [ ] **A:** Document 3D viewer, label system, and video integration in final report section
-- [ ] **B:** Document backend APIs, database schema, and authentication in final report section
-- [ ] **C:** Document quiz module, video management, and content testing in final report section
-- [ ] **D:** Document download/export, storage architecture, and compatibility testing in final report section
-- [ ] All members: update `docs/api_endpoints.md` with final endpoint list
-- [ ] All members: update `docs/README.md` with final setup instructions
-
-Acceptance Criteria:
-- [ ] All documentation sections completed
-- [ ] `docs/api_endpoints.md` is up to date
-
----
-
-### Task 10.9 — Final Presentation Preparation
-**Owner:** All | **Depends on:** Task 10.8
-
-- [ ] Agree on demo script: which flow each member will demonstrate
-- [ ] Prepare slides covering: objectives, architecture, demo, testing results, lessons learned
-- [ ] Run a full rehearsal of the live demo
-- [ ] Confirm demo environment works (local server, test data loaded)
-
-Acceptance Criteria:
-- [ ] Demo runs end-to-end without errors in rehearsal
-- [ ] All slides completed
-
----
-
 ## Ongoing — Shared Responsibilities (All Weeks)
 
 These tasks run continuously throughout the 10-week project:
 
 | Task | Cadence | Owner |
 |---|---|---|
-| Weekly progress review meeting | Every week | All |
 | Update `docs/testing_log.md` with findings | After every test session | Whoever tested |
-| Contribute to final report (own section) | Ongoing from Week 1 | Each member |
-| Code review on pull requests to `dev` | Before every merge | Reviewer (not author) |
-| Bug filing on GitHub Issues | When found | Whoever finds it |
-| 3D model generation software research | Week 1 + ongoing | All |
 
 ---
 
@@ -1282,7 +1167,6 @@ These tasks run continuously throughout the 10-week project:
 - [ ] Browser compatibility confirmed (Chrome + Firefox)
 
 ### Could Have
-- [ ] 3D model generation from images (sourced tool integration)
 - [ ] Actual cloud storage (S3 or equivalent)
 - [ ] Video thumbnail generation
 - [ ] Quiz timer
