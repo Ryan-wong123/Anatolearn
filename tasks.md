@@ -17,6 +17,22 @@ Create documentation structure in `docs/`:
 - `docs/testing_log.md` — placeholder for test records
 - `docs/3d_model_tools.md` — placeholder
 
+Documentation updates are part of every implementation task. Before marking any task as done, update all affected documents:
+- Update `docs/README.md` for setup, usage, architecture, or local run changes
+- Update `docs/api_endpoints.md` for any API route, request, response, auth, or error behavior changes
+- Update `docs/database_schema.md` for schema, relationship, seed data, or migration changes
+- Update `docs/storage_structure.md` for upload paths, file formats, storage limits, or cloud-migration changes
+- Update `docs/testing_log.md` after verification, browser checks, API checks, or regression testing
+- Update `docs/3d_model_tools.md` for 3D model tooling, supported formats, conversion notes, or compatibility findings
+- Update `tasks.md` task status only after code, tests, and relevant documentation are complete
+
+Task status updates are required:
+- When starting a task, update its checkbox from `[ ]` to `[~]`
+- When a task is implemented, verified, and documented successfully, update its checkbox from `[ ]` or `[~]` to `[x]`
+- Do not mark a task `[x]` until implementation, verification, and affected documentation updates are complete
+- If a task cannot be completed because of a missing decision, dependency, asset, credential, or technical blocker, update its checkbox to `[!]` and add a short blocker note under that task
+- If a task is split into smaller follow-up work, leave the parent task `[~]` until all required follow-up work is complete
+
 ---
 
 ## Team Roles
@@ -41,7 +57,7 @@ Create documentation structure in `docs/`:
 - Code compiles with no errors
 - Feature works for both Student and Teacher roles
 - No console errors in the browser
-- Relevant documentation updated
+- All affected documentation listed above is updated
 
 ---
 

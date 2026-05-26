@@ -219,3 +219,14 @@ A task is done only when:
 - Feature works correctly for both `student` and `teacher` roles
 - Feature works correctly across all four programs
 - No console errors in the browser
+- All affected project documentation is updated before `tasks.md` status is marked done:
+  - `docs/README.md` for setup, usage, architecture, or local run changes
+  - `docs/api_endpoints.md` for API route, request, response, auth, or error behavior changes
+  - `docs/database_schema.md` for schema, relationship, seed data, or migration changes
+  - `docs/storage_structure.md` for upload paths, file formats, storage limits, or cloud-migration changes
+  - `docs/testing_log.md` after verification, browser checks, API checks, or regression testing
+  - `docs/3d_model_tools.md` for 3D model tooling, supported formats, conversion notes, or compatibility findings
+- `tasks.md` status is updated as the final workflow step:
+  - Mark started work `[~]`
+  - Mark completed work `[x]` only after implementation, verification, and documentation are complete
+  - Mark blocked work `[!]` with a short blocker note
