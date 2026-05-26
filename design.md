@@ -28,7 +28,7 @@
 | `--color-text-primary` | `#0F172A` | Headings, key content |
 | `--color-text-secondary` | `#475569` | Body copy, labels |
 | `--color-text-muted` | `#94A3B8` | Placeholders, disabled states |
-| `--color-brand` | `#2563EB` | Primary actions, active nav, role toggle active text |
+| `--color-brand` | `#2563EB` | Primary actions, active nav, active role indicator text |
 | `--color-brand-light` | `#EFF6FF` | Brand hover/active backgrounds |
 | `--color-brand-hover` | `#1D4ED8` | Button hover |
 | `--color-success` | `#10B981` | Completed states, CheckCircle icon |
@@ -70,7 +70,7 @@ Page background: `bg-slate-50 min-h-screen flex flex-col`.
 
 ## 5. Top Navigation Bar
 
-> Visible in all 10 wireframes. Role toggle active state differs between student and teacher views.
+> Visible in all 10 wireframes. Role indicator active state differs between student and teacher views.
 
 **Height:** 64px (`h-16`), `bg-white`, `border-b border-slate-200`, `sticky top-0 z-50`.
 
@@ -85,8 +85,8 @@ Page background: `bg-slate-50 min-h-screen flex flex-col`.
 
 | Nav Item | Icon | Path |
 |---|---|---|
-| Dashboard | `GraduationCap` | `/` |
-| 3D Viewer | `Box` | `/viewer` |
+| Dashboard | `GraduationCap` | `/dashboard` |
+| 3D Viewer | `Box` | `/3dviewer` |
 | Videos | `Video` | `/videos` |
 | Quizzes | `BookOpen` | `/quizzes` |
 | Library | `Library` | `/library` |
@@ -94,13 +94,13 @@ Page background: `bg-slate-50 min-h-screen flex flex-col`.
 ### Right Side (left → right)
 1. **Program label:** `text-xs font-medium text-slate-500 uppercase tracking-wider` — text `PROGRAM`
 2. **Program `<select>`:** `pl-3 pr-8 py-1.5 text-sm border border-slate-300 rounded-md bg-white` — options: Physiotherapy, Occupational Therapy, Radiography, Nursing
-3. **Role toggle** (no pill background, plain button pair):
+3. **Role indicator** (decoded from JWT, not locally editable; no pill background, plain label pair):
    - **Student button:** active = `font-semibold text-slate-900`, inactive = `text-slate-400`
    - **Teacher button:** active = `font-semibold text-slate-900`, inactive = `text-slate-400`
    - From images: the active role label is bold/dark, inactive is muted — **no coloured pill background**, unlike the earlier implementation
 4. **User avatar:** `UserCircle2` icon `w-8 h-8 text-slate-400`, ghost button
 
-### Role Toggle — Visual Difference by Role
+### Role Indicator — Visual Difference by Role
 
 | State | Student active | Teacher active |
 |---|---|---|
@@ -142,7 +142,7 @@ Card shell: `bg-white rounded-xl border border-slate-200 p-5 flex items-center g
 
 | Card | Link | Gradient | Icon | Title | Subtitle |
 |---|---|---|---|---|---|
-| 1 | `/viewer` | `from-blue-50 to-indigo-100` | `Box` (blue) | `Muscular System` | `Resume 3D exploration` |
+| 1 | `/3dviewer` | `from-blue-50 to-indigo-100` | `Box` (blue) | `Muscular System` | `Resume 3D exploration` |
 | 2 | `/videos` | `from-purple-50 to-pink-100` | `Video` (purple) | `Cardiovascular Basics` | `Next video in playlist` |
 | 3 | `/quizzes` | `from-green-50 to-emerald-100` | `BookOpen` (green) | `Respiratory Quiz` | `Due in 2 days` |
 
@@ -178,7 +178,7 @@ Card: `group block bg-white rounded-xl border border-slate-200 overflow-hidden h
 | Button label | Links to |
 |---|---|
 | Upload New Model | `/library` |
-| Manage Labels | `/viewer` |
+| Manage Labels | `/3dviewer` |
 | Add Educational Video | `/videos` |
 | Create Quiz | `/quizzes` |
 
@@ -203,7 +203,7 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 - Each: `p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors w-9 h-9`
 
 **System selector (top-right of canvas):**
-`absolute top-4 right-4 zd-10` — white card with dropdown
+`absolute top-4 right-4 z-10` — white card with dropdown
 - `bg-white rounded-xl border border-slate-200 shadow-sm px-3 py-2`
 - `<select>`: `text-sm text-slate-700 bg-transparent focus:outline-none pr-6`
 - Default: `Muscular System`
@@ -215,7 +215,21 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 - Heading: `text-base font-semibold text-slate-800 font-display` — `Select a structure`
 - Body: `text-sm text-slate-500 mt-1 max-w-[200px]` — `Click on any highlighted anatomical part in the 3D viewer to see its details and related videos.`
 
-**No teacher controls visible for student role.**
+**Side panel — selected state (student):**
+- Part name: `text-2xl font-bold text-slate-900 font-display`
+- Program badge: `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700` — `{program} Module`
+- Section label `DESCRIPTION`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-1`
+- Description body: `text-sm text-slate-600 leading-relaxed`
+- Section label `EDUCATIONAL VIDEO`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-2`
+- Video thumbnail: `w-full aspect-video rounded-lg overflow-hidden relative cursor-pointer border border-slate-200`
+  - Full-bleed image with centred white play button circle (`w-10 h-10 bg-white/90 rounded-full flex items-center justify-center`)
+  - `Play` icon: `w-4 h-4 text-blue-600 ml-0.5`
+
+Student interaction requirements:
+- Student can click a label or anatomy part
+- Selected part is highlighted in the 3D viewer
+- Side panel shows the selected name, description, and linked video
+- No teacher controls are visible for student role
 
 ---
 
@@ -223,9 +237,9 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 
 > **Reference image:** `images/teacher3DViewer.png`
 
-**All student viewer elements are present**, plus:
+**All student viewer elements are present**, plus teacher-only controls:
 
-**Side panel — part selected (shown when a structure is clicked):**
+**Side panel — selected state (teacher):**
 - Part name: `text-2xl font-bold text-slate-900 font-display` — e.g. `Biceps Brachii`
 - Program badge: `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700` — `PT Module`
 - Section label `DESCRIPTION`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-1`
@@ -245,8 +259,8 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 - Active state (label placement mode): `bg-amber-500 text-white` — label becomes `Cancel Labelling`
 
 **Key difference from student view:**
-- Student: side panel shows empty state only (no controls visible)
-- Teacher: side panel shows full detail (part name, badge, description, video, teacher controls) when a structure is selected; Add Label button appears at canvas bottom-left
+- Student: selected panel shows name, badge, description, highlight, and linked video only
+- Teacher: selected panel adds teacher controls; Add Label button appears at canvas bottom-left
 
 ---
 
@@ -292,7 +306,8 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 **Video card body — teacher additions (below title):**
 - `Edit` ghost link: `text-sm text-slate-500 hover:text-blue-600`
 - `Link to Model` ghost link: `text-sm text-slate-500 hover:text-blue-600`
-- Both on same row, separated by a space: `mt-2 flex gap-3`
+- Visibility status control and delete action are exposed in the teacher management action row or overflow menu using the reusable ghost/icon action patterns in section 13.
+- Actions sit on the same row or overflow menu depending on available width, following the responsive rules in section 16.
 
 **Key differences from student view:**
 
@@ -301,6 +316,7 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 | Header upload button | ✗ not shown | ✓ `+ Upload Video` (blue) |
 | Card: Edit link | ✗ | ✓ |
 | Card: Link to Model link | ✗ | ✓ |
+| Card: Visibility / Delete | ✗ | ✓ via management action row or overflow menu |
 
 ---
 
@@ -351,7 +367,8 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 - Type badge pill (same as student)
 - `Edit` ghost text: `text-sm text-slate-500 hover:text-blue-600`
 - `View Results` ghost text: `text-sm text-slate-500 hover:text-blue-600`
-- Both on one row, aligned right: `flex items-center gap-3`
+- Visibility status control and delete action are exposed in the teacher management action row or overflow menu using the reusable ghost/icon action patterns in section 13.
+- Actions sit on one row or overflow menu depending on available width, following the responsive rules in section 16.
 
 > No `Score` or `Start Quiz` visible — teacher sees management controls only.
 
@@ -363,6 +380,7 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 | Row: Score / Start Quiz | ✓ (role-dependent) | ✗ |
 | Row: Edit | ✗ | ✓ |
 | Row: View Results | ✗ | ✓ |
+| Row: Visibility / Delete | ✗ | ✓ via management action row or overflow menu |
 
 ---
 
@@ -380,6 +398,8 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 
 **File list shell:** `mt-6 bg-white rounded-xl border border-slate-200 overflow-hidden`
 
+Library content includes 3D models, videos, metadata files, learning materials, and teacher-curated external links.
+
 **File row:** `px-5 py-4 flex items-center gap-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors`
 
 **Row layout:**
@@ -387,6 +407,8 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
   - `.glb` / `.obj` → `FileBox` `text-blue-500`
   - `.mp4` → `FileVideo` `text-purple-500`
   - `.json` → `FileText` `text-slate-400`
+  - Learning materials such as `.pdf` / notes / photos → `FileText` `text-green-500`
+  - External links → `ExternalLink` `text-blue-500`
 - File info (flex-1):
   - Name: `text-sm font-medium text-slate-900`
   - Meta: `text-xs text-slate-400 mt-0.5` — `{size} • Uploaded {date}`
@@ -410,7 +432,7 @@ Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
 `mt-6 mb-4 border-2 border-dashed border-slate-200 rounded-xl p-10 text-center bg-white hover:bg-slate-50 transition-colors cursor-pointer`
 - `Upload` icon: `mx-auto w-8 h-8 text-slate-400 mb-3`
 - Heading: `text-sm font-semibold text-slate-700` — `Upload new content`
-- Format note: `text-xs text-slate-400 mt-1` — `Support for .obj, .gltf, .glb, .usdz, .uasset, .mp4, .json`
+- Format note: `text-xs text-slate-400 mt-1` — `Support for .obj, .gltf, .glb, .usdz, .uasset, .mp4, .json, .pdf, images, and links`
 
 **File list shell:** same as student — `bg-white rounded-xl border border-slate-200 overflow-hidden`
 
@@ -555,6 +577,7 @@ All icons from `lucide-react`.
 | `FileBox` | `w-8 h-8` | 3D model file type |
 | `FileVideo` | `w-8 h-8` | Video file type |
 | `FileText` | `w-8 h-8` | Data / JSON file type |
+| `ExternalLink` | `w-8 h-8` | Teacher-curated external links |
 | `MoreVertical` | `w-4 h-4` | File options menu (teacher only) |
 | `RotateCcw` | `w-4 h-4` | Reset view (3D toolbar) |
 | `ZoomIn` | `w-4 h-4` | Zoom in (3D toolbar) |
@@ -572,7 +595,7 @@ Quick reference for implementing conditional rendering per role.
 | Page | Student only | Teacher only |
 |---|---|---|
 | **Dashboard** | Study Time, Quiz Average, Models Explored stats; Continue Learning cards | Models Uploaded, Videos Linked, Student Engagement stats; Quick Actions buttons |
-| **3D Viewer** | Empty state panel (no structure selected by default) | Add Label button (bottom-left canvas); Teacher Controls section in detail panel (Edit Description, Change Linked Video) |
+| **3D Viewer** | Empty state when no structure is selected; selected-state panel with name, description, highlight, and linked video | Add Label button (bottom-left canvas); Teacher Controls section in detail panel (Edit Description, Change Linked Video) |
 | **Videos** | Video grid only (no controls below title) | `+ Upload Video` button in header; Edit + Link to Model links below each video title |
 | **Quizzes** | Start Quiz / Score per row | `+ Create Quiz` button in header; Edit + View Results per row (no scores shown) |
 | **Library** | Download button per row only; no upload drop zone | `⬆ Upload Content` button in header; upload drop zone above file list; Options (⋮) button per row |

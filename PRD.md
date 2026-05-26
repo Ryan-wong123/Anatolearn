@@ -54,15 +54,15 @@ Both roles require authentication. No content is accessible to unauthenticated u
 
 ## 4. Platform Sections
 
-The platform has five primary sections accessible to all authenticated users:
+The platform has five primary page sections accessible to all authenticated users:
 
 | Section | Path | Description |
 |---|---|---|
-| 3D Models | `/viewer` | Interactive 3D anatomy viewer with labels and linked videos |
-| Self-Assessment | `/quizzes` | MCQ and practical quiz module with scoring and history |
+| Dashboard | `/dashboard` | Overview and quick access to learning activity |
+| 3D Viewer | `/3dviewer` | Interactive 3D anatomy viewer with labels and linked videos |
 | Animated Videos | `/videos` | Browsable library of bite-sized educational videos |
-| Learning Materials | `/materials` | Lecture notes, photos, and programme-specific resources |
-| Other Links | `/links` | Teacher-curated hyperlinks for supplementary resources |
+| Self-Assessment | `/quizzes` | MCQ and practical quiz module with scoring and history |
+| Library | `/library` | Models, learning materials, downloadable files, and teacher-curated links |
 
 ---
 
@@ -72,15 +72,14 @@ The platform has five primary sections accessible to all authenticated users:
 |---|---|---|---|
 | `/login` | Login | No | Username and password login |
 | `/register` | Register | No | New user registration |
-| `/` | Dashboard | Yes | Overview and quick access |
-| `/viewer` | 3D Models | Yes | Interactive anatomy exploration |
+| `/` | Redirect | No | Redirects to `/dashboard` |
+| `/dashboard` | Dashboard | Yes | Overview and quick access |
+| `/3dviewer` | 3D Viewer | Yes | Interactive anatomy exploration |
 | `/videos` | Animated Videos | Yes | Educational video library |
 | `/quizzes` | Self-Assessment | Yes | Quiz attempt and management |
-| `/materials` | Learning Materials | Yes | Lecture notes, photos, programme resources |
-| `/links` | Other Links | Yes | Teacher-curated external links |
-| `/library` | Content Library | Yes | File upload, download, and management |
+| `/library` | Library | Yes | Models, learning materials, file upload/download, and teacher-curated links |
 
-Unauthenticated users are redirected to `/login` when accessing any auth-required route.
+Unauthenticated users are redirected to `/login` when accessing any auth-required route. Role guards apply only to pages or workflows that are exclusively student-only or teacher-only. Shared pages render role-specific controls through JSX conditionals using the JWT-derived role.
 
 ---
 
@@ -131,7 +130,7 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 
 | ID | Requirement | 
 |---|---|
-| FR-1 | The system shall allow students to access all five platform sections: 3D Models, Self-Assessment, Animated Videos, Learning Materials, and Other Links. | 
+| FR-1 | The system shall allow students to access all five page sections: Dashboard, 3D Viewer, Animated Videos, Self-Assessment, and Library. | 
 | FR-2 | The system shall allow students to view 3D anatomy models on the web platform. | 
 | FR-3 | The system shall allow students to browse 3D anatomy models by body system, such as muscular system, skeletal system, or digestive system. | 
 | FR-4 | The system shall allow students to browse 3D anatomy models by body part, such as head, mouth, arm, leg, or selected muscle. | 
@@ -155,12 +154,12 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 | FR-22 | The system shall retrieve and display videos associated with the relevant body part or label. | 
 | FR-23 | The system shall allow students to access learning materials including lecture notes, links, and photos. | 
 | FR-24 | The system shall allow students to browse learning materials organised by programme, such as PT, OT, Radiography, and Nursing. | 
-| FR-25 | The system shall allow students to access hyperlinks provided by teachers in the Other Links section. | 
+| FR-25 | The system shall allow students to access hyperlinks provided by teachers inside the Library page. | 
 
 ### 7.2 Authentication Requirements
 
 | ID | Requirement |
-|---|---|---|
+|---|---|
 | FR-26 | The system shall allow users to log in using a username and password. | 
 | FR-27 | The system shall allow users to log out of the system. | 
 | FR-28 | The system shall restrict access to all platform content to authenticated users only. | 
@@ -168,7 +167,7 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 ### 7.3 Teacher Requirements
 
 | ID | Requirement |
-|---|---|---|
+|---|---|
 | FR-29 | The system shall allow teachers to access a teacher interface for managing teaching content. | 
 | FR-30 | The system shall allow teachers to upload 3D model files. | 
 | FR-31 | The system shall allow teachers to upload and manage supported 3D model formats including .obj, .gltf, .usdz, and .uasset where technically feasible. | 
@@ -196,8 +195,9 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 | FR-49a | The system shall allow teachers to upload and manage materials including lecture notes, links, and photos. | 
 | FR-49b | The system shall allow teachers to organise learning materials by programme, such as PT, OT, Radiography, and Nursing. | 
 | FR-49c | The system shall support programme-specific content variation, allowing different programmes to have access to different sets of learning materials. | 
-| FR-49d | The system shall allow teachers to add, edit, and delete hyperlinks in the Other Links section. | 
+| FR-49d | The system shall allow teachers to add, edit, and delete hyperlinks inside the Library page. | 
 | FR-50 | The system shall support future integration with cloud-based object storage services for uploaded teaching content. | 
+| FR-51 | The system shall abstract file storage access so uploaded teaching content can be migrated from local storage to the confirmed cloud platform without changing page-level application logic. |
 
 ### 7.4 Sketchfab Migration Requirements
 
@@ -279,14 +279,14 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 
 ## 9. Global State
 
-Managed via React Context (`AppContext`):
+Managed via React Context (`AppContext`) after login. `role` and `program` are decoded from the authenticated user's JWT and stored in context for app-wide rendering decisions.
 
 | State | Type | Values | Default |
 |---|---|---|---|
 | `role` | `Role` | `'student'` \| `'teacher'` | `'student'` |
 | `program` | `Program` | `'PT'` \| `'OT'` \| `'Radiography'` \| `'Nursing'` | `'PT'` |
 
-Both values affect content visibility and controls throughout all pages.
+Both values affect visible content and controls throughout shared pages. Authentication and route access are enforced separately through protected routes.
 
 ---
 
@@ -321,12 +321,14 @@ Both values affect content visibility and controls throughout all pages.
 | Respiratory System Review | Mixed | 20 | 45 mins | Respiratory |
 
 ### Library Files
-| Name | Format | Downloadable | Uploaded By |
-|---|---|---|---|
-| Full_Body_Muscular.glb | .glb | Yes | Teacher |
-| Heart_Cross_Section.obj | .obj | Yes | Teacher |
-| Muscle_Contraction_Explained.mp4 | .mp4 | No | Teacher |
-| Respiratory_Labels.json | .json | No | Teacher |
+| Name | Type | Format | Downloadable | Uploaded By |
+|---|---|---|---|---|
+| Full_Body_Muscular.glb | 3D Model | .glb | Yes | Teacher |
+| Heart_Cross_Section.obj | 3D Model | .obj | Yes | Teacher |
+| Muscle_Contraction_Explained.mp4 | Video | .mp4 | No | Teacher |
+| Respiratory_Labels.json | Metadata | .json | No | Teacher |
+| PT_Shoulder_Lecture_Notes.pdf | Learning Material | .pdf | Yes | Teacher |
+| Anatomy Reference Portal | Other Link | URL | No | Teacher |
 
 ---
 

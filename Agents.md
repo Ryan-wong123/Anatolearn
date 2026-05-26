@@ -13,8 +13,9 @@ Agents must avoid hardcoded role logic, scene-global Three.js state, and per-pag
 ## 2. Prime Directive
 
 Build the app using a **clean separation of concerns**:
-- Global state (role, program) lives exclusively in `AppContext`
-- Role-gated UI is rendered only through JSX conditionals — not through routing or context logic
+- Global state (`role`, `program`) is decoded from the authenticated JWT and lives exclusively in `AppContext`
+- Every app page is protected by an auth guard
+- Role-gated UI is rendered through JSX conditionals on shared pages; role route guards are only for pages or workflows that are exclusively student-only or teacher-only
 - Three.js is isolated entirely inside `Viewer.tsx` — no scene objects leak outside
 
 ---
@@ -24,7 +25,7 @@ Build the app using a **clean separation of concerns**:
 Follow the layered architecture defined in `Architecture.md`:
 
 1. **Context Layer** — `AppContext.tsx` — role and program only
-2. **Routing Layer** — `App.tsx` — URL to component mapping
+2. **Routing Layer** — `App.tsx` and `ProtectedRoute.tsx` — public auth routes plus protected app routes
 3. **Layout Layer** — `Layout.tsx` — persistent nav shell
 4. **Page Layer** — `Dashboard`, `Viewer`, `Videos`, `Quizzes`, `Library`
 5. **Three.js Layer** — isolated inside `Viewer.tsx` useEffect
@@ -37,7 +38,7 @@ Follow the layered architecture defined in `Architecture.md`:
 Responsible for:
 - Ensuring all features match `PRD.md` scope
 - Verifying role-gated features match the role-gating table in `PRD.md` section 6
-- Checking that mock data matches `PRD.md` section 8
+- Checking that mock data matches `PRD.md` section 10
 - Maintaining educational clarity of the platform's purpose
 
 ### Architecture Agent
@@ -53,7 +54,7 @@ Responsible for:
 - Implementing components exactly matching `design.md` visual specs
 - Using only Tailwind CSS classes (no custom CSS unless unavoidable)
 - Importing icons only from `lucide-react`
-- Verifying responsive breakpoints match `design.md` section 13
+- Verifying responsive breakpoints match `design.md` section 16
 - Ensuring all interactive elements have hover and focus states
 
 ### Three.js Agent
@@ -66,7 +67,7 @@ Responsible for:
 
 ### QA Agent
 Responsible for:
-- Testing role toggle on every page
+- Testing JWT-derived role rendering on every page for both student and teacher accounts
 - Testing program selector updates visible text
 - Testing Viewer navigation in and out (cleanup verification)
 - Testing all mock data renders correctly
@@ -83,12 +84,12 @@ Responsible for:
 - Store Three.js objects in refs — never in React state
 - Use the `three/addons/controls/OrbitControls.js` import path
 - Use Tailwind responsive prefixes for breakpoints — not JS checks
-- Use `group` and `group-hover:` for card hover effects
+- Implement card hover behavior according to `design.md`
 - Use `useLocation().pathname` for active nav link detection
 - Guard all Three.js operations with null checks on refs and mountRef
 
 ### Do Not
-- Do not put role logic in route guards
+- Do not put role logic in route guards except for pages or workflows that are exclusively student-only or teacher-only
 - Do not put role logic in context — only in JSX conditionals
 - Do not call `setState` inside the Three.js animation loop
 - Do not store `THREE.Mesh`, `THREE.Scene`, or renderer in React state
@@ -105,14 +106,15 @@ Agents should implement in this order:
 
 1. Project setup (Vite, Tailwind, dependencies)
 2. `AppContext` (role + program state)
-3. `App.tsx` router
-4. `Layout.tsx` (nav shell, role toggle, program selector)
-5. `Dashboard.tsx` (student + teacher views)
-6. `Videos.tsx` (grid, search, filter)
-7. `Quizzes.tsx` (list, status, role actions)
-8. `Library.tsx` (file list, teacher upload zone)
-9. `Viewer.tsx` (Three.js setup, raycasting, detail panel, cleanup)
-10. Responsive check and role switch verification
+3. Auth flow (`Login.tsx`, `Register.tsx`, JWT decoding, `ProtectedRoute.tsx`)
+4. `App.tsx` router
+5. `Layout.tsx` (nav shell, role/program display and controls following `design.md`)
+6. `Dashboard.tsx` (student + teacher views)
+7. `Videos.tsx`
+8. `Quizzes.tsx`
+9. `Library.tsx` (including materials and links)
+10. `Viewer.tsx` (Three.js setup, raycasting, detail panel, cleanup)
+11. Responsive check and role/program verification
 
 ---
 
@@ -125,6 +127,9 @@ Agents should implement in this order:
 ```
 AppContext.tsx   → export function AppProvider, export function useAppContext
 Layout.tsx       → export function Layout
+ProtectedRoute.tsx → export function ProtectedRoute
+Login.tsx        → export function Login
+Register.tsx     → export function Register
 Dashboard.tsx    → export function Dashboard
 Viewer.tsx       → export function Viewer
 Videos.tsx       → export function Videos

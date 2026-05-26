@@ -1,38 +1,47 @@
-# Architecture.md — AnatoLearn Technical Architecture
+# Architecture.md - AnatoLearn Technical Architecture
 
 ## 1. Architecture Goals
 
 The AnatoLearn codebase must be:
 - Maintainable and easy to extend
-- Clean separation between data, state, logic, and UI
-- Role and program logic controlled exclusively via shared context — never hardcoded per page
-- Three.js scene lifecycle managed correctly (setup, resize, cleanup)
+- Cleanly separated between data, state, logic, and UI
+- Driven by authenticated user context: `role` and `program` come from the decoded JWT
+- Protected by auth guards on every app page
+- Role-gated only for pages or workflows that are student-only or teacher-only
+- Aligned with `design.md` for all UI layout, color, spacing, typography, and component visuals
+- Safe for Three.js scene lifecycle management: setup, resize, animation, raycasting, and cleanup
 
 ---
 
 ## 2. High-Level Architecture
 
 ```
+JWT authentication
+        ↓
 AppContext (role, program)
         ↓
-React Router (Layout shell + page routes)
+React Router (public auth routes + protected app routes)
+        ↓
+Layout shell
         ↓
 Page Components (Dashboard, Viewer, Videos, Quizzes, Library)
         ↓
-Shared UI Components (CardView, MeterRow, etc.)
+Shared UI Components
         ↓
-Three.js Scene (Viewer only — isolated in useEffect)
+Three.js Scene (Viewer only, isolated in useEffect)
 ```
 
 ### Layer Responsibilities
 
 | Layer | Responsibility |
 |---|---|
-| Context | Global role + program state; single source of truth |
-| Router | URL-to-page mapping; persistent Layout wrapper |
-| Pages | Page-specific layout, data, and conditional role UI |
-| Components | Reusable, stateless UI elements |
-| Three.js | 3D scene inside Viewer — isolated, cleaned up on unmount |
+| Auth | Login, registration, JWT storage, logout, and protected-route access |
+| Context | JWT-derived role + program state; single source of truth for rendering |
+| Router | URL-to-page mapping, public auth routes, and protected app routes |
+| Layout | Persistent app shell for authenticated pages; visual details follow `design.md` |
+| Pages | Page data, local state, and JSX conditionals for role-specific controls |
+| Components | Reusable, typed UI building blocks; visual details follow `design.md` |
+| Three.js | 3D scene inside `Viewer.tsx`, isolated and cleaned up on unmount |
 
 ---
 
@@ -41,15 +50,18 @@ Three.js Scene (Viewer only — isolated in useEffect)
 ```
 src/
 ├── context/
-│   └── AppContext.tsx        # Role + Program global state (React Context)
+│   └── AppContext.tsx        # JWT-derived role + program global state
 ├── components/
-│   └── Layout.tsx            # Sticky nav shell + <Outlet />
+│   ├── Layout.tsx            # Persistent nav shell + <Outlet />
+│   └── ProtectedRoute.tsx    # Auth guard for protected app pages
 ├── pages/
-│   ├── Dashboard.tsx         # Stats + quick-access cards
-│   ├── Viewer.tsx            # Three.js 3D viewer + detail panel
-│   ├── Videos.tsx            # Video grid + search + filter
-│   ├── Quizzes.tsx           # Quiz list with status tracking
-│   └── Library.tsx           # File list + teacher upload zone
+│   ├── Login.tsx             # Public login page; UI follows design.md
+│   ├── Register.tsx          # Public registration page; UI follows design.md
+│   ├── Dashboard.tsx         # Dashboard page; UI follows design.md
+│   ├── Viewer.tsx            # 3D viewer page; UI follows design.md
+│   ├── Videos.tsx            # Videos page; UI follows design.md
+│   ├── Quizzes.tsx           # Quizzes page; UI follows design.md
+│   └── Library.tsx           # Library, materials, and links page; UI follows design.md
 ├── App.tsx                   # BrowserRouter + Routes
 ├── index.tsx                 # React root mount
 └── index.css                 # Tailwind imports
@@ -60,20 +72,23 @@ src/
 ## 4. Dependency Direction
 
 ```
-Pages → Context (read role/program)
-Pages → Components (render UI)
-Layout → Context (render nav controls)
-Viewer → Three.js (isolated, no shared state leak)
+Auth services -> AppContext (set role/program from JWT)
+Pages -> Context (read role/program)
+Pages -> Components (render UI)
+Layout -> Context (render app controls)
+Viewer -> Three.js (isolated, no shared scene state)
 ```
 
 **Rules:**
 - Context must not import from pages or components
-- Pages must not reach across to other pages
-- Three.js logic must not leak outside the `Viewer` component
+- Pages must not import from other page files
+- Shared components must not hardcode role-specific behavior
+- Three.js logic must not leak outside `Viewer.tsx`
+- UI layout and visual specifications must be read from `design.md`
 
 ---
 
-## 5. Global State — AppContext
+## 5. Global State - AppContext
 
 ```tsx
 type Role = 'student' | 'teacher';
@@ -87,9 +102,12 @@ interface AppContextType {
 }
 ```
 
-- Provided by `AppProvider` wrapping the entire `<BrowserRouter>` tree
-- Consumed by `useAppContext()` hook on any page or component
-- All role-gated UI reads only from `role`; never from URL, component name, or any other signal
+- `role` and `program` are decoded from the authenticated user's JWT after login
+- `AppProvider` wraps the entire `<BrowserRouter>` tree
+- `useAppContext()` is consumed by pages and layout components
+- All role-specific UI reads only from the context `role`
+- Route authentication is handled by `ProtectedRoute`
+- Role guards are used only for pages or workflows that are exclusively student-only or teacher-only
 
 ---
 
@@ -99,21 +117,27 @@ interface AppContextType {
 <AppProvider>
   <BrowserRouter>
     <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="viewer" element={<Viewer />} />
-        <Route path="videos" element={<Videos />} />
-        <Route path="quizzes" element={<Quizzes />} />
-        <Route path="library" element={<Library />} />
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<Layout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/3dviewer" element={<Viewer />} />
+          <Route path="/videos" element={<Videos />} />
+          <Route path="/quizzes" element={<Quizzes />} />
+          <Route path="/library" element={<Library />} />
+        </Route>
       </Route>
     </Routes>
   </BrowserRouter>
 </AppProvider>
 ```
 
-- `Layout` renders the persistent top navigation and `<Outlet />`
-- All pages are children of `Layout` and share the nav shell
-- Active nav link is determined by `useLocation().pathname` comparison
+- `Login` and `Register` are public routes outside `Layout`
+- `ProtectedRoute` redirects unauthenticated users to `/login`
+- All app pages are children of `Layout`
+- Active nav link is determined by `useLocation().pathname`
 
 ---
 
@@ -122,6 +146,7 @@ interface AppContextType {
 The 3D viewer is entirely isolated inside a `useEffect` in `Viewer.tsx`.
 
 ### Refs (never stored in React state)
+
 ```tsx
 const mountRef = useRef<HTMLDivElement>(null);
 const sceneRef = useRef<THREE.Scene | null>(null);
@@ -132,25 +157,31 @@ const meshesRef = useRef<THREE.Mesh[]>([]);
 ```
 
 ### Setup (inside useEffect)
-1. Create Scene — background `#f8fafc`
-2. Create PerspectiveCamera (75° FOV, z=5)
-3. Create WebGLRenderer (antialias) — append to `mountRef`
-4. Create OrbitControls (damping enabled, factor 0.05)
-5. Add AmbientLight (0.6) + DirectionalLight (0.8, pos 10,20,10)
-6. Create anatomy meshes (SphereGeometry r=0.5) from labels data
-7. Create body placeholder (CylinderGeometry, semi-transparent)
+
+1. Guard with `if (!mountRef.current) return`
+2. Create `THREE.Scene`; visual background follows `design.md`
+3. Create `THREE.PerspectiveCamera`
+4. Create `THREE.WebGLRenderer`, then append it to `mountRef.current`
+5. Create `OrbitControls`
+6. Add lighting
+7. Load or create anatomy model and label meshes
 8. Attach click listener for raycasting
-9. Start animation loop
+9. Attach window resize listener
+10. Start the `requestAnimationFrame` animation loop
 
 ### Cleanup (useEffect return)
+
+- Cancel the animation frame
 - Remove window resize listener
-- Remove click listener from mount element
-- Remove renderer DOM element from mount
-- Dispose all mesh geometries and materials
-- Dispose body geometry and material
+- Remove click listener from the mount element
+- Remove renderer DOM element from the mount element
+- Dispose all geometries
+- Dispose all materials
+- Dispose controls if available
 - Call `renderer.dispose()`
 
 ### Resize Handler
+
 ```tsx
 const handleResize = () => {
   camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -160,16 +191,19 @@ const handleResize = () => {
 window.addEventListener('resize', handleResize);
 ```
 
-### Raycasting (click → selection)
-- Use `THREE.Raycaster` to intersect `meshesRef.current`
-- On hit: set `selectedPart` state, highlight mesh emissive to `0x444444`
-- On miss (not adding label): clear selection, reset all emissives
+### Raycasting (click -> selection)
 
-### State managed in React (not refs)
+- Use `THREE.Raycaster` to intersect `meshesRef.current`
+- Calculate mouse coordinates relative to the mount element
+- On hit: set `selectedPart` state and highlight the selected mesh
+- On miss while not adding a label: clear selection and reset highlights
+
+### State Managed In React
+
 ```tsx
 const [selectedPart, setSelectedPart] = useState<AnatomyPart | null>(null);
 const [isAddingLabel, setIsAddingLabel] = useState(false);
-const [labels, setLabels] = useState(ANATOMY_PARTS);
+const [labels, setLabels] = useState<AnatomyPart[]>([]);
 const [showVideo, setShowVideo] = useState(false);
 ```
 
@@ -177,14 +211,11 @@ const [showVideo, setShowVideo] = useState(false);
 
 ## 8. Role-Gated Rendering Pattern
 
-Role checks belong in JSX only — never in route guards or context logic.
+Role checks for shared pages belong in JSX conditionals. Auth checks belong in `ProtectedRoute`. Role route guards are only for pages or workflows that are exclusively student-only or teacher-only.
 
 ```tsx
-// Correct pattern
-{role === 'teacher' && <button>Upload Video</button>}
-
-// Ternary for mutually exclusive views
-{role === 'student' ? <StudentStats /> : <TeacherStats />}
+{role === 'teacher' && <TeacherControls />}
+{role === 'student' ? <StudentSummary /> : <TeacherSummary />}
 ```
 
 ---
@@ -197,47 +228,49 @@ interface AnatomyPart {
   name: string;
   description: string;
   videoUrl: string;
-  color: number;       // THREE.js hex color
+  color: number;
   position: [number, number, number];
 }
 ```
 
-Stored as a constant in `Viewer.tsx` for prototype. In production this would be fetched from an API or CMS by program.
+In the full MVP, anatomy parts and labels are fetched from the backend. Temporary constants may be used only as mock fallback data during early development.
 
 ---
 
 ## 10. Viewer Import Note
 
 OrbitControls must be imported from the addons path:
+
 ```tsx
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 ```
+
 Not the legacy `three/examples/` path.
 
 ---
 
-## 11. Data Flow — Video Play Example
+## 11. Data Flow - Video Play Example
 
 ```
-User clicks video card thumbnail
+User clicks video card or linked label video
         ↓
-setShowVideo(true) in Videos.tsx
+Local page state opens the video player
         ↓
-Conditional render swaps thumbnail → video player
+User closes player
         ↓
-User clicks X → setShowVideo(false) → thumbnail restored
+Local state restores the previous view
 ```
 
-No external state needed; video play state is local to each page.
+No global state is needed for video play state.
 
 ---
 
 ## 12. Performance Guidelines
 
-- Avoid `FindObjectOfType` equivalents (no `document.querySelector` in logic)
-- Three.js animation loop must use `requestAnimationFrame` — never `setInterval`
-- Do not call `setInterval` or start animation loops in React render body
-- Refresh UI only when state changes — no polling
+- Three.js animation loop must use `requestAnimationFrame`
+- Do not call `setState` inside the Three.js animation loop
+- Do not start animation loops in React render body
+- Refresh UI only when state changes; no polling for UI state
 - Three.js resize and click listeners must be removed on cleanup
 
 ---
@@ -246,13 +279,13 @@ No external state needed; video play state is local to each page.
 
 | Change | What to edit |
 |---|---|
-| Add new program | Add `<option>` in Layout selector; add to `Program` type |
+| Add new program | Add to `Program` type, backend validation, and Layout selector |
 | Add new nav item | Add entry to `navItems` array in `Layout.tsx` |
-| Add new video category | Add `<option>` in Videos filter dropdown |
-| Add new quiz type | Add badge color entry in Quizzes type mapping |
-| Add new library file type | Add `case` in `getIcon()` in Library |
-| Add new anatomy part | Add entry to `ANATOMY_PARTS` in Viewer |
-| Swap mock data for API | Replace constants with `useEffect` + `fetch` calls per page |
+| Add new video category | Add to backend/category data and Videos filter options |
+| Add new quiz type | Add to quiz type mapping |
+| Add new library file type | Add file type handling in `Library.tsx` |
+| Add new anatomy part | Add backend data record or mock fallback entry |
+| Swap mock data for API | Replace constants with authenticated API calls |
 
 ---
 

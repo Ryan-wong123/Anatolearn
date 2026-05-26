@@ -53,7 +53,7 @@ function Viewer() { ... }
 
 ## 4. Context Rules
 
-`AppContext` is the single source of truth for role and program.
+`AppContext` is the single source of truth for role and program after they are decoded from the authenticated user's JWT.
 
 Good:
 ```tsx
@@ -72,7 +72,7 @@ Do not create multiple contexts for the same concern. All global role/program st
 
 ## 5. Role-Gating Rules
 
-All role checks happen at the JSX render level — not in routing, not in context, not in data fetching.
+On shared pages, role checks happen at the JSX render level — not in routing, not in context, not in data fetching. Role route guards are allowed only for pages or workflows that are exclusively student-only or teacher-only. Auth guards belong in `ProtectedRoute`.
 
 Good:
 ```tsx
@@ -81,11 +81,11 @@ Good:
 
 Bad:
 ```tsx
-// Do not gate routes by role — all routes are accessible
+// Do not gate shared routes by role
 // Do not use role to derive component behavior outside JSX conditionals
 ```
 
-Student-only and teacher-only UI must be siblings in the same component, not in separate route paths.
+Student-only and teacher-only UI on shared pages must be siblings in the same component, not in separate route paths.
 
 ---
 
@@ -253,22 +253,7 @@ AppContext.tsx   → export function AppProvider() + export function useAppConte
 
 ---
 
-## 16. Git Commit Guidelines
-
-Use clear commit messages:
-
-```
-feat(viewer): add raycasting click selection and detail panel
-feat(videos): add search input and category filter
-feat(context): add program switcher to AppContext
-fix(viewer): dispose Three.js resources on unmount
-fix(layout): active nav link detection on nested routes
-style(dashboard): align stat card grid spacing
-```
-
----
-
-## 17. Definition of Clean Implementation
+## 16. Definition of Clean Implementation
 
 A clean implementation means:
 - New programs can be added by editing the selector options and the `Program` type only

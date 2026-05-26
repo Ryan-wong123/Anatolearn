@@ -60,7 +60,8 @@ Create documentation structure in `docs/`:
 - [ ] Add Tailwind directives to `src/index.css`
 - [ ] Add Google Fonts (`DM Sans`, `IBM Plex Sans`) to `src/index.css`
 - [ ] Create folder structure: `src/context/`, `src/components/`, `src/pages/`
-- [ ] Add placeholder page files: `Dashboard.tsx`, `Viewer.tsx`, `Videos.tsx`, `Quizzes.tsx`, `Library.tsx`
+- [ ] Add placeholder page files: `Login.tsx`, `Register.tsx`, `Dashboard.tsx`, `Viewer.tsx`, `Videos.tsx`, `Quizzes.tsx`, `Library.tsx`
+- [ ] Add `ProtectedRoute.tsx` placeholder in `src/components/`
 - [ ] Verify dev server runs with `npm run dev`
 
 Acceptance Criteria:
@@ -133,11 +134,12 @@ Create low-fidelity wireframes for all screens:
 - [ ] Videos browsing page
 - [ ] Quizzes list page
 - [ ] Quiz attempt page (student)
-- [ ] Library / content management page
+- [ ] Library / content management page, including materials and links
 - [ ] Login / authentication screen
+- [ ] Register / authentication screen
 
 Acceptance Criteria:
-- [ ] All major screens covered
+- [ ] All major screens covered in `design.md`
 
 ---
 
@@ -163,14 +165,13 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 1.2
 
 In `src/pages/Viewer.tsx`:
-- [ ] Create two-panel layout: canvas area (`flex-1`) + side panel (`w-96`)
-- [ ] Full remaining viewport height: `h-[calc(100vh-64px)]`
+- [ ] Create the Viewer shell according to `design.md` section 7
 - [ ] Add `mountRef` div as Three.js canvas target
 - [ ] Add React state: `selectedPart`, `isAddingLabel`, `showVideo`
 - [ ] Page renders with visible empty canvas area and side panel
 
 Acceptance Criteria:
-- [ ] Layout renders correctly at desktop width
+- [ ] Layout matches `design.md` section 7, including the defined side panel width
 - [ ] No TypeScript errors
 
 ---
@@ -179,7 +180,7 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 2.2
 
 Inside `useEffect` in `Viewer.tsx`:
-- [ ] Create `THREE.Scene`, background colour `#f8fafc`
+- [ ] Create `THREE.Scene`; visual background follows `design.md`
 - [ ] Create `THREE.PerspectiveCamera` (75° FOV, z=5)
 - [ ] Create `THREE.WebGLRenderer({ antialias: true })`, append to `mountRef`
 - [ ] Add `THREE.AmbientLight(0xffffff, 0.6)`
@@ -289,17 +290,16 @@ Acceptance Criteria:
 ### Task 3.1 — Build the Viewer Toolbar UI
 **Owner:** A | **Depends on:** Week 2 merged
 
-Top-left toolbar overlay:
-- [ ] Container: `absolute top-4 left-4 z-10 bg-white p-2 rounded-lg shadow-md border border-slate-200 flex flex-col gap-2`
+Toolbar overlay:
+- [ ] Implement the toolbar visual layout according to `design.md` section 7
 - [ ] Reset View button (`RotateCcw` icon)
 - [ ] Zoom In button (`ZoomIn` icon)
 - [ ] Zoom Out button (`ZoomOut` icon)
 - [ ] Pan button (`Move` icon)
-- [ ] Button style: `p-2 text-slate-600 hover:bg-slate-100 rounded-md`
 
 Acceptance Criteria:
 - [ ] 4 buttons visible in top-left of canvas
-- [ ] Hover states work
+- [ ] Hover and focus states match `design.md`
 
 ---
 
@@ -349,8 +349,8 @@ Acceptance Criteria:
 ### Task 3.5 — Build the System Selector Dropdown
 **Owner:** A | **Depends on:** Task 2.2
 
-Top-right overlay:
-- [ ] Container: `absolute top-4 right-4 z-10 bg-white rounded-lg shadow-md border p-2`
+System selector overlay:
+- [ ] Implement the selector visual layout according to `design.md` section 7
 - [ ] `<select>` populated from `body_system` values returned by `GET /api/models`
 - [ ] Changing selection filters the model displayed in the viewer
 - [ ] Re-loads the appropriate model via Three.js
@@ -365,13 +365,11 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 2.2
 
 When `selectedPart === null`:
-- [ ] Centred content with `Move` icon in slate circle
-- [ ] Heading: `Select a structure`
-- [ ] Body: `Click on any highlighted anatomical part to see its details.`
+- [ ] Render the empty state according to `design.md` section 7
 
 Acceptance Criteria:
 - [ ] Empty state renders when nothing is selected
-- [ ] Matches `design.md` spec
+- [ ] Matches `design.md` section 7
 
 ---
 
@@ -379,15 +377,13 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 3.6
 
 When `selectedPart !== null`:
-- [ ] Part name as heading
-- [ ] Program badge
-- [ ] Description text
-- [ ] Close X button (mobile only)
-- [ ] Panel slide animation: `translate-x-0` selected, `translate-x-full md:translate-x-0` empty
+- [ ] Render the selected-state panel according to `design.md` section 7
+- [ ] Student view shows name, description, highlight, and linked video
+- [ ] Teacher view adds teacher controls only
 
 Acceptance Criteria:
-- [ ] Panel shows correct part name and description
-- [ ] Panel slides correctly on mobile
+- [ ] Panel shows correct part name, description, and linked video
+- [ ] Responsive behavior matches `design.md` section 16
 
 ---
 
@@ -414,19 +410,19 @@ Acceptance Criteria:
 
 In `src/pages/Library.tsx` (student browsing section):
 - [ ] Fetch model list from `GET /api/models` on page load
-- [ ] Display models in a responsive grid with: name, body system, body part, file format badge
-- [ ] Each card links to the Viewer page with the model pre-selected
+- [ ] Display models according to the Library visual patterns in `design.md` section 10
+- [ ] Each model entry links to `/3dviewer` with the model pre-selected
 
 Acceptance Criteria:
-- [ ] Model grid renders from API data
-- [ ] Clicking a card opens the Viewer with that model
+- [ ] Model list renders from API data and follows `design.md`
+- [ ] Clicking a model entry opens `/3dviewer` with that model
 
 ---
 
 ### Task 4.3 — Add Search Input to Library Page
 **Owner:** A | **Depends on:** Task 4.2
 
-- [ ] Search input with `Search` icon prefix
+- [ ] Search input follows `design.md` Library input patterns
 - [ ] On input change, call `GET /api/models?q=<query>` with debounce (300ms)
 - [ ] Results update the displayed grid without page reload
 
@@ -453,7 +449,7 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 2.6
 
 Teacher only (in Library page):
-- [ ] Upload drop zone: dashed border, `Upload` icon, accepted format note
+- [ ] Upload drop zone follows `design.md` section 10
 - [ ] File picker input: accept `.obj,.gltf,.glb,.usdz,.uasset`
 - [ ] Form fields: title, description, body system, body part
 - [ ] On submit, `POST /api/models/upload` with multipart form
@@ -547,7 +543,7 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 5.3
 
 - [ ] Teacher only: `Add Label` toggle button (bottom-left overlay)
-- [ ] When active (`isAddingLabel = true`), button turns amber, instruction text shows
+- [ ] Active label-placement state follows `design.md` section 7
 - [ ] In add-label mode, clicking on the model surface captures the 3D world position
 - [ ] Open a small inline form: label name and description inputs
 - [ ] On submit: call `POST /api/models/:id/labels` with name, description, and captured position
@@ -610,13 +606,12 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Milestone 2 (Layout) merged
 
 In `src/pages/Dashboard.tsx` (teacher view):
-- [ ] Teacher stats: models uploaded, videos linked, quizzes created
-- [ ] Quick action buttons: Upload Model, Upload Video, Create Quiz, Manage Labels
+- [ ] Teacher stats and quick actions follow `design.md` section 6
 - [ ] Stats fetched from respective `GET /api/...?uploaded_by=<me>` endpoints
 
 Acceptance Criteria:
 - [ ] Teacher dashboard shows real counts from the database
-- [ ] All quick action buttons navigate to correct pages
+- [ ] All quick actions navigate to the pages specified in `design.md`
 
 ---
 
@@ -686,11 +681,11 @@ Acceptance Criteria:
 
 - [ ] Store JWT token in memory or `sessionStorage` after login
 - [ ] Include `Authorization: Bearer <token>` header on all API calls
-- [ ] Read `role` from decoded JWT payload instead of local toggle
+- [ ] Read `role` from decoded JWT payload
 - [ ] Hide teacher-only UI for student-role users
 
 Acceptance Criteria:
-- [ ] Role-gated UI driven by real JWT role, not the local toggle
+- [ ] Role-gated UI driven by real JWT role
 - [ ] Student user cannot see teacher controls even if they inspect the page
 
 ---
@@ -733,14 +728,14 @@ Acceptance Criteria:
 
 In `src/pages/Videos.tsx`:
 - [ ] Fetch published video list from `GET /api/videos` on load
-- [ ] Responsive grid: each card shows thumbnail (or placeholder), title, category, duration
+- [ ] Videos page layout and card content follow `design.md` section 8
 - [ ] Search input and category filter dropdown
 - [ ] Clicking a card plays the video in a modal or inline player
-- [ ] Teacher only: Upload Video button
+- [ ] Teacher-only video actions follow `design.md` section 8
 
 Acceptance Criteria:
-- [ ] Video grid renders from API data
-- [ ] Search and filter narrow the grid
+- [ ] Video list renders from API data
+- [ ] Search and filter narrow the visible results
 - [ ] Video plays on click
 
 ---
@@ -864,8 +859,7 @@ Acceptance Criteria:
 In `src/pages/Quizzes.tsx`:
 - [ ] Fetch quiz list on load
 - [ ] Each row: quiz title, number of questions, status (completed/pending), type badge
-- [ ] Student view: Start Quiz button (pending) or score (completed)
-- [ ] Teacher view: Edit, Delete, Publish toggle per quiz
+- [ ] Student and teacher quiz row actions follow `design.md` section 9
 
 Acceptance Criteria:
 - [ ] Quiz list renders from API
@@ -987,12 +981,12 @@ Acceptance Criteria:
 Create `src/pages/Login.tsx`:
 - [ ] Email and password input fields
 - [ ] Submit calls `POST /api/auth/login`
-- [ ] On success: store JWT in `sessionStorage`, decode role and program, redirect to Dashboard
+- [ ] On success: store JWT in `sessionStorage`, decode role and program, redirect to `/dashboard`
 - [ ] On failure: show error message `Invalid email or password`
 - [ ] Add `/login` route in `App.tsx`
 
 Acceptance Criteria:
-- [ ] Valid login redirects to Dashboard
+- [ ] Valid login redirects to `/dashboard`
 - [ ] Invalid login shows error
 - [ ] JWT stored after successful login
 
