@@ -158,7 +158,8 @@ export default function Quizzes() {
     // TODO: replace with POST /api/quizzes when backend is ready
     console.log('Quiz to save:', { ...newQuiz, questions: newQuestions });
     setShowCreateQuiz(false);
-    setNewQuiz({ title: '', description: '', type: 'MCQ' as QuizType, category: 'Musculoskeletal' });    setNewQuestions([{ text: '', options: ['', '', '', ''], correct: 0 }]);
+    setNewQuiz({ title: '', description: '', type: 'MCQ' as QuizType, category: 'Musculoskeletal' });
+    setNewQuestions([{ text: '', options: ['', '', '', ''], correct: 0, questionType: 'MCQ' as 'MCQ' | 'Practical' }]);
   };
   
   return (
