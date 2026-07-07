@@ -69,21 +69,21 @@ Task status updates are required:
 ### Task 1.1 — Scaffold Frontend Project
 **Owner:** A | **Depends on:** none
 
-- [ ] Initialise React + TypeScript project with Vite: `npm create vite@latest anatolearn -- --template react-ts`
-- [ ] Install runtime deps: `react-router-dom`, `three`, `lucide-react`
-- [ ] Install dev deps: `tailwindcss`, `postcss`, `autoprefixer`, `@types/three`
-- [ ] Configure Tailwind (`tailwind.config.js`, `postcss.config.js`)
-- [ ] Add Tailwind directives to `src/index.css`
-- [ ] Add Google Fonts (`DM Sans`, `IBM Plex Sans`) to `src/index.css`
-- [ ] Create folder structure: `src/context/`, `src/components/`, `src/pages/`
-- [ ] Add placeholder page files: `Login.tsx`, `Register.tsx`, `Dashboard.tsx`, `Viewer.tsx`, `Videos.tsx`, `Quizzes.tsx`, `Library.tsx`
-- [ ] Add `ProtectedRoute.tsx` placeholder in `src/components/`
-- [ ] Verify dev server runs with `npm run dev`
+- [x] Initialise React + TypeScript project with Vite: `npm create vite@latest anatolearn -- --template react-ts`
+- [x] Install runtime deps: `react-router-dom`, `three`, `lucide-react`
+- [x] Install dev deps: `tailwindcss`, `postcss`, `autoprefixer`, `@types/three`
+- [x] Configure Tailwind (`tailwind.config.js`, `postcss.config.js`)
+- [x] Add Tailwind directives to `src/index.css`
+- [x] Add Google Fonts (`DM Sans`, `IBM Plex Sans`) to `src/index.css`
+- [x] Create folder structure: `src/context/`, `src/components/`, `src/pages/`
+- [x] Add placeholder page files: `Login.tsx`, `Register.tsx`, `Dashboard.tsx`, `Viewer.tsx`, `Videos.tsx`, `Quizzes.tsx`, `Library.tsx`
+- [x] Add `ProtectedRoute.tsx` placeholder in `src/components/`
+- [x] Verify dev server runs with `npm run dev`
 
 Acceptance Criteria:
-- [ ] App opens in browser with no console errors
-- [ ] Tailwind classes apply correctly
-- [ ] Fonts load in browser
+- [x] App opens in browser with no console errors
+- [x] Tailwind classes apply correctly
+- [x] Fonts load in browser
 
 ---
 
@@ -622,12 +622,12 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Milestone 2 (Layout) merged
 
 In `src/pages/Dashboard.tsx` (teacher view):
-- [ ] Teacher stats and quick actions follow `design.md` section 6
+- [x] Teacher stats and quick actions follow `design.md` section 6
 - [ ] Stats fetched from respective `GET /api/...?uploaded_by=<me>` endpoints
 
 Acceptance Criteria:
 - [ ] Teacher dashboard shows real counts from the database
-- [ ] All quick actions navigate to the pages specified in `design.md`
+- [x] All quick actions navigate to the pages specified in `design.md`
 
 ---
 
@@ -650,14 +650,14 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 4.6
 
 In Library page (teacher view):
-- [ ] Table or list of all uploaded models (including unpublished)
-- [ ] Each row: model name, system, part, format, published status toggle, edit button, delete button
+- [~] Table or list of all uploaded models (including unpublished)
+- [~] Each row: model name, system, part, format, published status toggle, edit button, delete button
 - [ ] Published toggle calls `PATCH /api/models/:id/publish`
-- [ ] Edit opens form, delete triggers confirmation
+- [x] Edit opens form, delete triggers confirmation
 
 Acceptance Criteria:
-- [ ] Teacher can see all models including unpublished ones
-- [ ] Toggle, edit, and delete all work without page refresh
+- [x] Teacher can see all models including unpublished ones
+- [x] Toggle, edit, and delete all work without page refresh
 
 ---
 
@@ -665,14 +665,16 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 6.2
 
 In Videos page (teacher view):
-- [ ] List of all uploaded videos with: title, category, linked label, published status, edit, delete
+- [x] List of all uploaded videos with: title, category, linked label, published status, edit, delete
 - [ ] Published toggle calls `PATCH /api/videos/:id/publish`
-- [ ] Edit opens form with title, category, linked label dropdown
-- [ ] Delete triggers confirmation and removes from list
+- [~] Edit opens form with title, category, linked label dropdown
+- [x] Delete triggers confirmation and removes from list
 
 Acceptance Criteria:
-- [ ] Teacher sees all videos including unpublished
-- [ ] Edit, toggle, and delete work correctly
+- [x] Teacher sees all videos including unpublished
+- [x] Edit, toggle, and delete work correctly
+
+**Note:** "Linked label" in the edit form is currently free text, not a dropdown — depends on Task 7.6 (Video-to-Label Linking UI) and Task 5.1 (Label Data API) for real label options. Additionally, design.md section 8.2 specifies a standalone `Link to Model` ghost link on each video card (separate from Edit); the card currently only shows "Linked: {label}" as static, non-clickable text — confirmed by manual test, clicking it does nothing. Teachers must open the full Edit modal to change the linked label.
 
 ---
 
@@ -744,14 +746,14 @@ Acceptance Criteria:
 
 In `src/pages/Videos.tsx`:
 - [ ] Fetch published video list from `GET /api/videos` on load
-- [ ] Videos page layout and card content follow `design.md` section 8
-- [ ] Search input and category filter dropdown
+- [x] Videos page layout and card content follow `design.md` section 8
+- [x] Search input and category filter dropdown
 - [ ] Clicking a card plays the video in a modal or inline player
-- [ ] Teacher-only video actions follow `design.md` section 8
+- [x] Teacher-only video actions follow `design.md` section 8
 
 Acceptance Criteria:
 - [ ] Video list renders from API data
-- [ ] Search and filter narrow the visible results
+- [x] Search and filter narrow the visible results
 - [ ] Video plays on click
 
 ---
@@ -805,15 +807,17 @@ Acceptance Criteria:
 ### Task 7.7 — Test Video Playback Compatibility
 **Owner:** C | **Depends on:** Task 7.4
 
-- [ ] Test `.mp4` playback in Chrome — pass/fail
-- [ ] Test `.mp4` playback in Firefox — pass/fail
-- [ ] Test `.webm` playback in Chrome — pass/fail
+- [~] Test `.mp4` playback in Chrome — pass/fail
+- [~] Test `.mp4` playback in Firefox — pass/fail
+- [~] Test `.webm` playback in Chrome — pass/fail
 - [ ] Test playback at different video file sizes (small, medium, large)
-- [ ] Document results in `docs/testing_log.md`
+- [x] Document results in `docs/testing_log.md`
 
 Acceptance Criteria:
-- [ ] At least `.mp4` plays in Chrome and Firefox
-- [ ] Results documented
+- [~] At least `.mp4` plays in Chrome and Firefox
+- [x] Results documented
+
+**Note:** Testing was done in a standalone HTML file outside the AnatoLearn app (Task 7.4's VideoPlayer component doesn't exist yet), using a YouTube video converted to `.mp4`/`.webm`. Confirms general browser HTML5 `<video>` support, but does not verify AnatoLearn's actual in-app player. Must be re-tested inside the app once Tasks 7.3/7.4 are built.
 
 ---
 
@@ -857,15 +861,17 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 8.2
 
 In `src/pages/Quizzes.tsx` (teacher view):
-- [ ] `Create Quiz` button opens a form: title, description fields
-- [ ] After creating a quiz, show a question editor
-- [ ] Add Question form: question text, 4 options (A–D), correct answer selector
+- [x] `Create Quiz` button opens a form: title, description fields
+- [~] After creating a quiz, show a question editor
+- [x] Add Question form: question text, 4 options (A–D), correct answer selector
 - [ ] Save question calls `POST /api/quizzes/:id/questions`
-- [ ] Questions listed below with edit and delete buttons
+- [x] Questions listed below with edit and delete buttons
 
 Acceptance Criteria:
-- [ ] Teacher can create a quiz with multiple questions
+- [x] Teacher can create a quiz with multiple questions (locally — confirmed: quiz now appears in list after saving, questions can be deleted before saving)
 - [ ] Questions saved to the backend
+
+**Note:** Quiz creation and question editing currently happen in a single combined modal, rather than a question editor appearing after the quiz itself is created. (does it  match intent?) `handleSaveQuiz` now adds the quiz to local state (fixed and manually verified) but is still not connected to `POST /api/quizzes` — blocked on Task 8.2 (no backend exists yet). Note: added Quiz Type (MCQ/Practical/Mixed) and open-ended answers go beyond the current schema in Task 1.2/8.1.
 
 ---
 
@@ -874,8 +880,8 @@ Acceptance Criteria:
 
 In `src/pages/Quizzes.tsx`:
 - [ ] Fetch quiz list on load
-- [ ] Each row: quiz title, number of questions, status (completed/pending), type badge
-- [ ] Student and teacher quiz row actions follow `design.md` section 9
+- [x] Each row: quiz title, number of questions, status (completed/pending), type badge
+- [~] Student and teacher quiz row actions follow `design.md` section 9
 
 Acceptance Criteria:
 - [ ] Quiz list renders from API
@@ -886,14 +892,16 @@ Acceptance Criteria:
 ### Task 8.5 — Build Quiz Attempt Flow (Student)
 **Owner:** C | **Depends on:** Task 8.4
 
-- [ ] Clicking `Start Quiz` loads the quiz questions
-- [ ] One question displayed at a time with 4 radio button options
-- [ ] `Next` button advances to next question
-- [ ] After last question, `Submit` button sends all answers
+- [~] Clicking `Start Quiz` loads the quiz questions (bug: same fixed set regardless of which quiz was clicked)
+- [x] One question displayed at a time with 4 radio button options
+- [x] `Next` button advances to next question
+- [x] After last question, `Submit` button sends all answers
 
 Acceptance Criteria:
-- [ ] Student can navigate through all questions
-- [ ] Answers are collected before submission
+- [x] Student can navigate through all questions
+- [x] Answers are collected before submission
+
+**Note:** Confirmed by manual test — all quizzes currently share one hardcoded `mockQuestions` array; questions shown are not yet tied to which specific quiz was selected. This isn't a code error (the code behaves exactly as written), but it doesn't yet meet the task's intent of loading each quiz's own questions — would need a `questionSet` per quiz plus fetching by quiz id from the backend once Task 8.2 exists.
 
 ---
 
@@ -917,15 +925,17 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 8.6
 
 After submitting:
-- [ ] Show overall score: e.g. `You scored 7 / 10 (70%)`
-- [ ] Show per-question feedback: student's answer vs correct answer
-- [ ] Correct answers marked green, incorrect marked red
-- [ ] `Retry` button resets and restarts the quiz
-- [ ] `Back to Quizzes` button returns to list
+- [x] Show overall score: e.g. `You scored 7 / 10 (70%)`
+- [x] Show per-question feedback: student's answer vs correct answer
+- [x] Correct answers marked green, incorrect marked red
+- [x] `Retry` button resets and restarts the quiz
+- [x] `Back to Quizzes` button returns to list
 
 Acceptance Criteria:
-- [ ] Score and feedback display from API response
-- [ ] Retry restarts the question flow
+- [] Score and feedback display from API response
+- [x] Retry restarts the question flow
+
+**Note:** All UI mechanics confirmed working by manual test — score calculation, per-question color-coded feedback, Retry, and Back to Quizzes all function correctly. However, the score is computed entirely client-side against the shared hardcoded `mockQuestions` (see Task 8.5 note) rather than from a `POST /api/quizzes/:id/submit` response — blocked on Task 8.6 (no backend exists yet).
 
 ---
 

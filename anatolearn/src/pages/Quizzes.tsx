@@ -72,7 +72,7 @@ const typeBadgeStyles: Record<QuizType, string> = {
 
 export default function Quizzes() {
   const { role } = useAppContext();
-  const [quizzes] = useState<Quiz[]>(mockQuizzes);
+  const [quizzes, setQuizzes] = useState<Quiz[]>(mockQuizzes);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
@@ -154,9 +154,23 @@ export default function Quizzes() {
     );
   };
 
+  const handleDeleteQuestion = (index: number) => {
+    setNewQuestions((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSaveQuiz = () => {
-    // TODO: replace with POST /api/quizzes when backend is ready
-    console.log('Quiz to save:', { ...newQuiz, questions: newQuestions });
+    // TODO: replace with POST /api/quizzes when backend is ready — for now, quiz is added to local state only
+    // and will be lost on page refresh since there is no backend/database to persist it.
+    const createdQuiz: Quiz = {
+      id: `q${Date.now()}`,
+      title: newQuiz.title,
+      questions: newQuestions.length,
+      minutes: 20,
+      type: newQuiz.type,
+      status: 'pending',
+    };
+
+    setQuizzes((prev) => [...prev, createdQuiz]);
     setShowCreateQuiz(false);
     setNewQuiz({ title: '', description: '', type: 'MCQ' as QuizType, category: 'Musculoskeletal' });
     setNewQuestions([{ text: '', options: ['', '', '', ''], correct: 0, questionType: 'MCQ' as 'MCQ' | 'Practical' }]);
@@ -458,9 +472,20 @@ export default function Quizzes() {
             <div className="space-y-6 mb-6">
               {newQuestions.map((question, qIndex) => (
                 <div key={qIndex} className="border border-slate-200 rounded-lg p-4">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                    Question {qIndex + 1}
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Question {qIndex + 1}
+                    </p>
+                    {newQuestions.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteQuestion(qIndex)}
+                        className="text-xs text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
 
                   {/* Question Text */}
                   <input

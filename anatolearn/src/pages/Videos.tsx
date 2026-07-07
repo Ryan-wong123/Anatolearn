@@ -188,11 +188,12 @@ export default function Videos() {
                   >
                     Delete
                   </button>
-                  {video.linkedLabel && (
-                    <span className="text-xs text-slate-400">
-                      Linked: {video.linkedLabel}
-                    </span>
-                  )}
+                  <button
+                    onClick={() => setEditingVideo({ ...video })}
+                    className="text-sm text-slate-500 hover:text-blue-600 transition-colors"
+                  >
+                    {video.linkedLabel ? `Linked: ${video.linkedLabel}` : 'Link to Model'}
+                  </button>
                 </div>
               )}
             </div>
