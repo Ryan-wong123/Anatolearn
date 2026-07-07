@@ -6,9 +6,11 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Viewer from './pages/Viewer';
+import ModelGallery from './pages/ModelGallery';
 import Videos from './pages/Videos';
 import Quizzes from './pages/Quizzes';
 import Library from './pages/Library';
+import VideoPlayer from './pages/VideoPlayer';
 
 export default function App() {
   return (
@@ -21,8 +23,10 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/3dviewer" element={<Viewer />} />
+              <Route path="/3dviewer" element={<ModelGallery />} />
+              <Route path="/3dviewer/:modelId" element={<Viewer />} />
               <Route path="/videos" element={<Videos />} />
+              <Route path="/videos/:videoId" element={<VideoPlayer />} />
               <Route path="/quizzes" element={<Quizzes />} />
               <Route path="/library" element={<Library />} />
             </Route>

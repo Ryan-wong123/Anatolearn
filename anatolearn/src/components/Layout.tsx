@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import {
   GraduationCap, Box, Video, BookOpen, Library, UserCircle2,
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { api } from '../api/api';
 
 const navItems = [
   { label: 'Dashboard', icon: GraduationCap, path: '/dashboard' },
@@ -12,25 +14,28 @@ const navItems = [
   { label: 'Library', icon: Library, path: '/library' },
 ];
 
-const programs = [
-  { value: 'PT', label: 'Physiotherapy' },
-  { value: 'OT', label: 'Occupational Therapy' },
-  { value: 'Radiography', label: 'Radiography' },
-  { value: 'Nursing', label: 'Nursing' },
-];
+type Program = {
+  id: number;
+  name: string;
+  description: string | null;
+};
 
 export default function Layout() {
   const location = useLocation();
   const { role, setRole, program, setProgram } = useAppContext();
 
+  const [programs, setPrograms] = useState<Program[]>([]);
+
+  useEffect(() => {
+    api.getPrograms()
+      .then(setPrograms)
+      .catch((err) => console.error('Failed to load programs:', err));
+  }, []);
+
   return (
     <div className="bg-slate-50 min-h-screen flex flex-col">
-
-      {/* Top Navigation Bar */}
       <nav className="h-16 bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
-
-          {/* Left: Logo + Nav Links */}
           <div className="flex items-center gap-6">
             <Link to="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -62,18 +67,20 @@ export default function Layout() {
             </div>
           </div>
 
-          {/* Right: Program + Role + Avatar */}
           <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
               Program
             </span>
+
             <select
               value={program}
-              onChange={(e) => setProgram(e.target.value as 'PT' | 'OT' | 'Radiography' | 'Nursing')}
+              onChange={(e) => setProgram(e.target.value)}
               className="pl-3 pr-8 py-1.5 text-sm border border-slate-300 rounded-md bg-white focus:outline-none"
             >
               {programs.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                </option>
               ))}
             </select>
 
@@ -101,11 +108,9 @@ export default function Layout() {
               <UserCircle2 className="w-8 h-8 text-slate-400" />
             </button>
           </div>
-
         </div>
       </nav>
 
-      {/* Page Content */}
       <main className="flex-1">
         <Outlet />
       </main>

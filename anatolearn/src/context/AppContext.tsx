@@ -2,7 +2,7 @@ import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
 type Role = 'student' | 'teacher';
-type Program = 'PT' | 'OT' | 'Radiography' | 'Nursing';
+type Program = string;
 
 interface AppContextType {
   role: Role;
@@ -15,7 +15,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>('student');
-  const [program, setProgram] = useState<Program>('PT');
+  const [program, setProgram] = useState<Program>('Physiotherapy');
 
   return (
     <AppContext.Provider value={{ role, setRole, program, setProgram }}>

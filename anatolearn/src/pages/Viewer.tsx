@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useAppContext } from '../context/AppContext';
-
-const MODEL_PATH = '/models/anatomy/scene.gltf';
+import { api } from '../api/api';
+import { useParams } from 'react-router-dom';
 
 type AnnotationKind = 'point' | 'draw' | 'region';
 
@@ -21,6 +21,7 @@ interface RegionPlane {
 }
 
 interface Annotation {
+  id?: number;
   label: string;
   description: string;
   kind: AnnotationKind;
@@ -31,11 +32,46 @@ interface Annotation {
   view?: { x: number; y: number; z: number; distance: number };
 }
 
+interface ModelRecord {
+  id: number;
+  title: string;
+  description: string | null;
+  file_path: string;
+  thumbnail_path: string | null;
+}
+
+function toDbAnnotationType(
+  kind: AnnotationKind
+): 'point' | 'highlight' | 'region_fill' {
+  if (kind === 'point') return 'point';
+  if (kind === 'draw') return 'highlight';
+  return 'region_fill';
+}
+
+function fromDbAnnotation(row: any): Annotation {
+  return {
+    id: row.id,
+    label: row.label,
+    description: row.description || '',
+    kind:
+      row.annotation_type === 'point'
+        ? 'point'
+        : row.annotation_type === 'highlight'
+          ? 'draw'
+          : 'region',
+    position: row.annotation_data.position,
+    drawPoints: row.annotation_data.drawPoints,
+    regionPlane: row.annotation_data.regionPlane,
+    regionTriangles: row.annotation_data.regionTriangles,
+    view: row.annotation_data.view,
+  };
+}
+
+
 export default function Viewer() {
   const { role } = useAppContext();
-
+  const { modelId } = useParams();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -47,7 +83,7 @@ export default function Viewer() {
   const selectedMarkerRef = useRef<THREE.Mesh | null>(null);
   const pendingPointRef = useRef<THREE.Vector3 | null>(null);
   const pendingDrawAnnotationRef = useRef<Annotation | null>(null);
-
+  const editingAnnotationRef = useRef<Annotation | null>(null);
   const addModeRef = useRef(false);
   const drawModeRef = useRef(false);
   const regionModeRef = useRef(false);
@@ -81,7 +117,18 @@ export default function Viewer() {
     regionModeRef.current = regionMode;
   }, [regionMode]);
 
+  const [selectedModel, setSelectedModel] = useState<ModelRecord | null>(null);
+
   useEffect(() => {
+    if (!modelId) return;
+
+    api.getModel(Number(modelId))
+      .then(setSelectedModel)
+      .catch(console.error);
+  }, [modelId]);
+
+  useEffect(() => {
+    if (!selectedModel) return;
     if (!containerRef.current) return;
 
     const container = containerRef.current;
@@ -115,15 +162,38 @@ export default function Viewer() {
     scene.add(light);
 
     const loader = new GLTFLoader();
-
+    
     loader.load(
-      MODEL_PATH,
+      selectedModel.file_path,
       (gltf) => {
         const model = gltf.scene;
         modelRef.current = model;
         scene.add(model);
         centerCamera(model);
+        api.getAnnotations(selectedModel.id)
+          .then((rows) => {
+            clearMarkers();
 
+            const loaded = rows.map(fromDbAnnotation);
+            setAnnotations(loaded);
+
+            loaded.forEach((annotation: Annotation) => {
+              createAnnotationVisual(annotation);
+            });
+          })
+          .catch((err) => console.error('Failed to load annotations:', err));
+        if (!selectedModel.thumbnail_path && rendererRef.current && cameraRef.current) {
+          requestAnimationFrame(() => {
+            rendererRef.current?.render(scene, cameraRef.current!);
+
+            const thumbnailDataUrl = rendererRef.current?.domElement.toDataURL('image/png');
+
+            if (!thumbnailDataUrl) return;
+
+            api.saveModelThumbnail(selectedModel.id, thumbnailDataUrl)
+              .catch((err) => console.error('Failed to save model thumbnail:', err));
+          });
+        }
         model.traverse((obj) => {
           if ((obj as THREE.Mesh).isMesh) {
             const mesh = obj as THREE.Mesh;
@@ -263,7 +333,7 @@ export default function Viewer() {
         container.removeChild(renderer.domElement);
       }
     };
-  }, []);
+  }, [selectedModel]);
 
   useEffect(() => {
     setAnnotationVisibility(popupAnnotation);
@@ -429,7 +499,7 @@ export default function Viewer() {
         color: 0x38bdf8,
         transparent: true,
         opacity: 0.38,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
         depthWrite: false,
       });
 
@@ -782,7 +852,9 @@ export default function Viewer() {
     setPopupAnnotation(null);
   }
 
-  function saveAnnotation() {
+  async function saveAnnotation() {
+    if (!selectedModel) return;
+
     const cleanLabel = label.trim();
     const cleanDescription = description.trim();
 
@@ -791,57 +863,140 @@ export default function Viewer() {
       return;
     }
 
-    if (pendingDrawAnnotationRef.current) {
-      const annotation: Annotation = {
-        ...pendingDrawAnnotationRef.current,
+    let annotation: Annotation;
+    if (editingAnnotationRef.current) {
+      const original = editingAnnotationRef.current;
+
+      const updatedAnnotation: Annotation = {
+        ...original,
         label: cleanLabel,
         description: cleanDescription,
       };
 
-      currentDrawObjectsRef.current.forEach((object) => {
-        object.userData.annotation = annotation;
-        markersRef.current.push(object);
+      const payload = {
+        annotation_type: toDbAnnotationType(updatedAnnotation.kind),
+        label: updatedAnnotation.label,
+        description: updatedAnnotation.description,
+        color: null,
+        annotation_data: {
+          position: updatedAnnotation.position,
+          drawPoints: updatedAnnotation.drawPoints,
+          regionPlane: updatedAnnotation.regionPlane,
+          regionTriangles: updatedAnnotation.regionTriangles,
+          view: updatedAnnotation.view,
+        },
+      };
+
+      const savedRow = await api.updateAnnotation(original.id!, payload);
+      const savedAnnotation = fromDbAnnotation(savedRow);
+
+      markersRef.current.forEach((marker) => {
+        if (marker.userData.annotation?.id === savedAnnotation.id) {
+          marker.userData.annotation = savedAnnotation;
+        }
       });
 
-      setAnnotations((prev) => [...prev, annotation]);
-      setPopupAnnotation(annotation);
+      setAnnotations((prev) =>
+        prev.map((a) => (a.id === savedAnnotation.id ? savedAnnotation : a))
+      );
 
-      pendingDrawAnnotationRef.current = null;
-      currentDrawPointsRef.current = [];
-      currentDrawObjectsRef.current = [];
-
+      editingAnnotationRef.current = null;
       setFormOpen(false);
+      setPopupAnnotation(savedAnnotation);
+
       return;
     }
+    if (pendingDrawAnnotationRef.current) {
+      annotation = {
+        ...pendingDrawAnnotationRef.current,
+        label: cleanLabel,
+        description: cleanDescription,
+      };
+    } else {
+      if (!pendingPointRef.current) return;
 
-    if (!pendingPointRef.current) return;
+      annotation = {
+        label: cleanLabel,
+        description: cleanDescription,
+        kind: 'point',
+        position: {
+          x: pendingPointRef.current.x,
+          y: pendingPointRef.current.y,
+          z: pendingPointRef.current.z,
+        },
+        view: getViewData(),
+      };
+    }
 
-    const annotation: Annotation = {
-      label: cleanLabel,
-      description: cleanDescription,
-      kind: 'point',
-      position: {
-        x: pendingPointRef.current.x,
-        y: pendingPointRef.current.y,
-        z: pendingPointRef.current.z,
+    const payload = {
+      annotation_type: toDbAnnotationType(annotation.kind),
+      label: annotation.label,
+      description: annotation.description,
+      color: null,
+      annotation_data: {
+        position: annotation.position,
+        drawPoints: annotation.drawPoints,
+        regionPlane: annotation.regionPlane,
+        regionTriangles: annotation.regionTriangles,
+        view: annotation.view,
       },
-      view: getViewData(),
     };
 
-    setAnnotations((prev) => [...prev, annotation]);
-    createPointMarker(annotation);
+    try {
+      const savedRow = annotation.id
+        ? await api.updateAnnotation(annotation.id, payload)
+        : await api.createAnnotation(selectedModel.id, payload);
 
-    pendingPointRef.current = null;
-    setFormOpen(false);
-    setAddMode(false);
+      const savedAnnotation = fromDbAnnotation(savedRow);
+
+      if (pendingDrawAnnotationRef.current) {
+        currentDrawObjectsRef.current.forEach((object) => {
+          object.userData.annotation = savedAnnotation;
+          markersRef.current.push(object);
+        });
+
+        pendingDrawAnnotationRef.current = null;
+        currentDrawPointsRef.current = [];
+        currentDrawObjectsRef.current = [];
+      } else {
+        createPointMarker(savedAnnotation);
+        pendingPointRef.current = null;
+        setAddMode(false);
+      }
+
+      setAnnotations((prev) => {
+        if (savedAnnotation.id) {
+          return [
+            ...prev.filter((a) => a.id !== savedAnnotation.id),
+            savedAnnotation,
+          ];
+        }
+
+        return [...prev, savedAnnotation];
+      });
+
+      setPopupAnnotation(savedAnnotation);
+      setFormOpen(false);
+    } catch (err) {
+      console.error('Failed to save annotation:', err);
+      alert('Failed to save annotation.');
+    }
   }
 
-  function deleteSelectedAnnotation() {
+  async function deleteSelectedAnnotation() {
     const selected = selectedMarkerRef.current;
     const annotation = popupAnnotation ?? selected?.userData.annotation;
 
     if (!annotation || !sceneRef.current) return;
-
+    if (annotation.id) {
+      try {
+        await api.deleteAnnotation(annotation.id);
+      } catch (err) {
+        console.error('Failed to delete annotation:', err);
+        alert('Failed to delete annotation.');
+        return;
+      }
+    }
     const relatedMarkers = markersRef.current.filter(
       (marker) => marker.userData.annotation === annotation
     );
@@ -865,49 +1020,19 @@ export default function Viewer() {
 
     setAnnotations((prev) => prev.filter((a) => a !== annotation));
     setPopupAnnotation(null);
+    setViewerPopupPosition(null);
   }
 
   function editSelectedAnnotation() {
     if (!popupAnnotation) return;
 
-    if (popupAnnotation.kind === 'draw' || popupAnnotation.kind === 'region') {
-      setLabel(popupAnnotation.label);
-      setDescription(popupAnnotation.description);
-
-      pendingDrawAnnotationRef.current = popupAnnotation;
-      deleteSelectedAnnotation();
-
-      const recreated =
-        popupAnnotation.kind === 'region'
-          ? createRegionMesh(popupAnnotation)
-          : null;
-
-      if (recreated) {
-        currentDrawObjectsRef.current = [recreated];
-        currentDrawPointsRef.current =
-          popupAnnotation.drawPoints?.map(toVector3) ?? [];
-      } else if (popupAnnotation.drawPoints) {
-        currentDrawObjectsRef.current = [];
-        currentDrawPointsRef.current = popupAnnotation.drawPoints.map(toVector3);
-
-        currentDrawPointsRef.current.forEach((point) => {
-          const dot = createDrawDot(point);
-          if (dot) currentDrawObjectsRef.current.push(dot);
-        });
-      }
-
-      setFormOpen(true);
-      return;
-    }
-
-    const marker = selectedMarkerRef.current;
-    if (!marker) return;
+    editingAnnotationRef.current = popupAnnotation;
 
     setLabel(popupAnnotation.label);
     setDescription(popupAnnotation.description);
-    pendingPointRef.current = marker.position.clone();
 
-    deleteSelectedAnnotation();
+    setPopupAnnotation(null);
+    setViewerPopupPosition(null);
     setFormOpen(true);
   }
 
@@ -964,51 +1089,6 @@ export default function Viewer() {
         y: screen.y,
       });
     }
-  }
-
-  function exportAnnotations() {
-    const json = JSON.stringify(annotations, null, 4);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'annotations.json';
-    link.click();
-
-    URL.revokeObjectURL(url);
-  }
-
-  function importAnnotations(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const imported = JSON.parse(String(e.target?.result));
-
-        if (!Array.isArray(imported)) {
-          alert('Invalid annotation file.');
-          return;
-        }
-
-        clearMarkers();
-        setAnnotations(imported);
-
-        imported.forEach((annotation: Annotation) => {
-          if (!annotation.kind) annotation.kind = 'point';
-          createAnnotationVisual(annotation);
-        });
-      } catch (error) {
-        alert('Could not read annotation JSON.');
-        console.error(error);
-      }
-    };
-
-    reader.readAsText(file);
-    event.target.value = '';
   }
 
   function cancelForm() {
@@ -1128,28 +1208,6 @@ export default function Viewer() {
           >
             {annotationsVisible ? 'Hide Annotations' : 'Show Annotations'}
           </button>
-
-          <button
-            onClick={exportAnnotations}
-            className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 bg-white hover:bg-slate-50"
-          >
-            Export JSON
-          </button>
-
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 bg-white hover:bg-slate-50"
-          >
-            Import JSON
-          </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            onChange={importAnnotations}
-            className="hidden"
-          />
         </div>
       </div>
 
