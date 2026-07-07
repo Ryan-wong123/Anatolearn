@@ -14,6 +14,20 @@ interface Video {
   linkedLabel?: string;
 }
 
+// TODO: replace with GET /api/models/:id/labels once Task 5.1 (Label Data API) exists.
+// Placeholder list so teachers can select a real-looking label instead of typing free text.
+const mockLabels = [
+  'Biceps Brachii',
+  'Triceps Brachii',
+  'Deltoid',
+  'Quadriceps Femoris',
+  'Gastrocnemius',
+  'Left Ventricle',
+  'Right Atrium',
+  'Alveoli',
+  'Diaphragm',
+];
+
 const mockVideos: Video[] = [
   {
     id: 'v1',
@@ -257,13 +271,16 @@ export default function Videos() {
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
                 Link to Anatomy Label
               </label>
-              <input
-                type="text"
+              <select
                 value={editingVideo.linkedLabel || ''}
-                onChange={(e) => setEditingVideo((prev) => prev ? { ...prev, linkedLabel: e.target.value } : null)}
-                placeholder="e.g. Biceps Brachii"
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
+                onChange={(e) => setEditingVideo((prev) => prev ? { ...prev, linkedLabel: e.target.value || undefined } : null)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">No label linked</option>
+                {mockLabels.map((label) => (
+                  <option key={label} value={label}>{label}</option>
+                ))}
+              </select>
               <p className="text-xs text-slate-400 mt-1">
                 When a student selects this label in the 3D viewer, this video will play automatically.
               </p>
