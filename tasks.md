@@ -793,14 +793,16 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Tasks 7.2 and 5.1
 
 Teacher only, in video edit form:
-- [ ] Dropdown to select a label to link the video to
+- [x] Dropdown to select a label to link the video to
 - [ ] Dropdown populated from `GET /api/models/:id/labels`
 - [ ] On save, update `linked_label_id` in `videos` table via `PUT /api/videos/:id`
-- [ ] Linked label shown in video management table
+- [x] Linked label shown in video management table
 
 Acceptance Criteria:
-- [ ] Teacher can link a video to a label from the edit form
+- [x] Teacher can link a video to a label from the edit form
 - [ ] Link is reflected in the viewer detail panel
+
+**Note:** Replaced the free-text "linked label" input with a real `<select>` dropdown, populated from a placeholder `mockLabels` array (marked with a TODO to swap for `GET /api/models/:id/labels` once Task 5.1 exists). Confirmed by manual test — dropdown shows a "No label linked" option plus real anatomy names, saves correctly, and no longer accepts arbitrary text like a URL. Not yet connected to the real backend or reflected in the Viewer page (Ryan's territory, Task 7.5).
 
 ---
 
