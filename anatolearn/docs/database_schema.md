@@ -133,7 +133,7 @@ No changes from original Task 1.2 spec.
 
 ---
 
-## Open Questions (for team discussion, not yet resolved)
+## Questions
 
 1. **Scoring open-ended (Practical) answers:** MCQ questions can be auto-graded (compare `correct_option` to student's selected answer). Open-ended questions have no fixed correct answer to compare against — does grading require a teacher to manually review and assign a score, or is there an auto-grading approach planned? This affects whether `quiz_attempts.score` can always be calculated immediately on submit, or sometimes needs to stay null/pending until a teacher reviews it.
 - Suggestion: teacher manually review and assign score.
