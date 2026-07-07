@@ -50,7 +50,10 @@ app.patch("/api/models/:id/thumbnail", async (req, res) => {
 
     const base64Data = thumbnailDataUrl.replace(/^data:image\/png;base64,/, "");
 
-    const thumbnailsDir = path.join(__dirname, "../../public/thumbnails");
+    const thumbnailsDir = path.join(
+      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      "thumbnails"
+    );
     await fs.mkdir(thumbnailsDir, { recursive: true });
 
     const filename = `model-${req.params.id}.png`;

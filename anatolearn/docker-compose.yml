@@ -15,5 +15,44 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  backend:
+    build: ./backend
+    container_name: anatolearn-backend
+    restart: unless-stopped
+
+    ports:
+      - "5000:5000"
+
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./public:/public
+
+    environment:
+      PORT: 5000
+      DATABASE_URL: postgres://anatolearn:password@postgres:5432/anatolearn
+      PUBLIC_DIR: /public
+
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+
+    container_name: anatolearn-frontend
+    restart: unless-stopped
+
+    ports:
+      - "5173:5173"
+
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
