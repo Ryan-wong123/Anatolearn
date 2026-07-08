@@ -1,5 +1,21 @@
 # Testing Log
 
+## Docker PostgreSQL Init Script Mount
+Date: 8 Jul 2026
+Tester: Codex
+
+### Test Method
+Updated `docker-compose.yml` so the Postgres service mounts `backend/sql` to `/docker-entrypoint-initdb.d` as read-only. Validated the Docker Compose file with `docker compose config`.
+
+### Expected Behavior
+On first startup with an empty `postgres_data` volume, the official PostgreSQL image runs `001_schema.sql` and then `002_seed.sql`, creating and seeding the `anatolearn` database automatically.
+
+### Results
+Pass. `docker compose config` accepted the compose file and resolved the init mount to `/docker-entrypoint-initdb.d:ro`.
+
+### Notes
+The init scripts only run automatically when the PostgreSQL data volume is empty. Existing local volumes keep their current database contents and require a deliberate `docker compose down -v` reset before init scripts rerun.
+
 ## Task 7.7 — Video Playback Compatibility Test
 Date: 15 Jun 2026
 Tester: Natalie

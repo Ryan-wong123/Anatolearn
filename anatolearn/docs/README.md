@@ -32,6 +32,7 @@ AnatoLearn lets students explore labelled 3D anatomical models directly in the b
 ### Prerequisites
 - Node.js (LTS recommended)
 - npm
+- Docker Desktop, for the full frontend/backend/PostgreSQL stack
 
 ### Installation
 
@@ -47,6 +48,30 @@ npm run dev
 ```
 
 The app will be available at the URL Vite prints in the terminal (typically `http://localhost:5173/`).
+
+### Full Docker setup
+
+```bash
+# from the repo root
+cd anatolearn
+
+# build and start frontend, backend, and PostgreSQL
+docker compose up --build
+```
+
+The PostgreSQL service creates the `anatolearn` database automatically and runs the SQL scripts in `backend/sql` on first startup:
+
+- `001_schema.sql`
+- `002_seed.sql`
+
+These scripts are mounted read-only into `/docker-entrypoint-initdb.d`, which the official PostgreSQL image runs only when the database volume is empty. If a local `postgres_data` volume already exists, Docker keeps the existing database and does not rerun the init scripts. For a clean development reset:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+Only use the volume reset command when local database contents can be deleted.
 
 ### Other useful commands
 

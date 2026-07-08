@@ -1,5 +1,14 @@
 # Database Schema
 
+## Docker initialization
+
+The local Docker Compose PostgreSQL service mounts `backend/sql` to `/docker-entrypoint-initdb.d` as a read-only init directory. On first startup with an empty `postgres_data` volume, the official PostgreSQL image runs the scripts in filename order:
+
+1. `001_schema.sql`
+2. `002_seed.sql`
+
+This creates the local `anatolearn` database schema and seed data automatically for new project setups. The init scripts do not rerun when an existing database volume is present.
+
 > Status: **Draft — database not yet built.** Based on Task 1.2's original table list, updated with confirmed requirements from 'Project Details Reference' tab under ITP Google Doc, and gaps found while reviewing the actual frontend (`Quizzes.tsx`, `Videos.tsx`). For Timothy's review before creating tables — not a final, locked spec.
 
 ---
