@@ -167,17 +167,388 @@ app.get("/api/videos/:id", async (req, res) => {
 });
 
 app.get("/api/quizzes", async (req, res) => {
+  const { published } = req.query;
+
+  if (published === "true") {
+    const result = await pool.query(
+      "SELECT * FROM quizzes WHERE is_published = true ORDER BY id"
+    );
+    return res.json(result.rows);
+  }
+
   const result = await pool.query("SELECT * FROM quizzes ORDER BY id");
   res.json(result.rows);
 });
 
 app.get("/api/quizzes/:id/questions", async (req, res) => {
   const result = await pool.query(
-    "SELECT * FROM quiz_questions WHERE quiz_id = $1 ORDER BY id",
+    "SELECT id, quiz_id, question, format, option_a, option_b, option_c, option_d FROM quiz_questions WHERE quiz_id = $1 ORDER BY id",
     [req.params.id]
   );
 
   res.json(result.rows);
+});
+
+app.post("/api/quizzes/:id/submit", async (req, res) => {
+  const { answers } = req.body;
+
+  if (!Array.isArray(answers)) {
+    return res.status(400).json({ message: "answers must be an array" });
+  }
+
+  try {
+    const questionsResult = await pool.query(
+      "SELECT id, format, correct_option FROM quiz_questions WHERE quiz_id = $1",
+      [req.params.id]
+    );
+
+    const questionMap = {};
+    questionsResult.rows.forEach((q) => {
+      questionMap[q.id] = q;
+    });
+
+    const total = questionsResult.rows.length;
+    let correctCount = 0;
+    let mcqCount = 0;
+    let hasOpenEnded = false;
+
+    const gradedAnswers = answers.map(({ question_id, selected_option, answer_text }) => {
+      const q = questionMap[question_id];
+
+      if (!q) {
+        return { question_id, selected_option: selected_option || null, answer_text: answer_text || null, is_correct: null };
+      }
+
+      if (q.format === "mcq") {
+        mcqCount++;
+        const isCorrect = q.correct_option === selected_option;
+        if (isCorrect) correctCount++;
+        return { question_id, selected_option: selected_option || null, answer_text: null, is_correct: isCorrect };
+      } else {
+        hasOpenEnded = true;
+        return { question_id, selected_option: null, answer_text: answer_text || null, is_correct: null };
+      }
+    });
+
+    const status = hasOpenEnded ? "pending_review" : "graded";
+    const score = status === "graded" && total > 0 ? Math.round((correctCount / total) * 100) : null;
+
+    const attemptResult = await pool.query(
+      `INSERT INTO quiz_attempts (quiz_id, score, total_questions, correct_count, status)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [req.params.id, score, total, status === "graded" ? correctCount : null, status]
+    );
+
+    const attempt = attemptResult.rows[0];
+
+    for (const ans of gradedAnswers) {
+      await pool.query(
+        `INSERT INTO quiz_attempt_answers (attempt_id, question_id, selected_option, answer_text, is_correct)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [attempt.id, ans.question_id, ans.selected_option, ans.answer_text, ans.is_correct]
+      );
+    }
+
+    const feedback = gradedAnswers
+      .filter((a) => questionMap[a.question_id]?.format === "mcq")
+      .map((a) => ({
+        question_id: a.question_id,
+        selected_option: a.selected_option,
+        correct_option: questionMap[a.question_id].correct_option,
+        is_correct: a.is_correct,
+      }));
+
+    res.json({
+      attempt,
+      status,
+      score,
+      total,
+      correct: status === "graded" ? correctCount : null,
+      incorrect: status === "graded" ? total - correctCount : null,
+      mcq_count: mcqCount,
+      open_ended_count: total - mcqCount,
+      feedback,
+    });
+  } catch (err) {
+    console.error("Failed to submit quiz:", err);
+    res.status(500).json({ message: "Failed to submit quiz" });
+  }
+});
+
+app.post("/api/quizzes", async (req, res) => {
+  const { title, description, type, category, program_id } = req.body;
+
+  if (!title || !type) {
+    return res.status(400).json({ message: "title and type are required" });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO quizzes (title, description, type, category, program_id, is_published)
+       VALUES ($1, $2, $3, $4, $5, false)
+       RETURNING *`,
+      [title, description || null, type, category || null, program_id || null]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to create quiz:", err);
+    res.status(500).json({ message: "Failed to create quiz" });
+  }
+});
+
+app.post("/api/quizzes/:id/questions", async (req, res) => {
+  const { question, format, option_a, option_b, option_c, option_d, correct_option, model_answer } = req.body;
+
+  if (!question) {
+    return res.status(400).json({ message: "question is required" });
+  }
+
+  const questionFormat = format === "open_ended" ? "open_ended" : "mcq";
+
+  if (questionFormat === "mcq") {
+    if (!option_a || !option_b || !option_c || !option_d || !correct_option) {
+      return res.status(400).json({ message: "MCQ questions require all 4 options and a correct_option" });
+    }
+    if (!["A", "B", "C", "D"].includes(correct_option)) {
+      return res.status(400).json({ message: "correct_option must be A, B, C, or D" });
+    }
+  } else {
+    if (!model_answer) {
+      return res.status(400).json({ message: "Open-ended questions require a model_answer" });
+    }
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO quiz_questions
+        (quiz_id, question, format, option_a, option_b, option_c, option_d, correct_option, model_answer)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        req.params.id,
+        question,
+        questionFormat,
+        questionFormat === "mcq" ? option_a : null,
+        questionFormat === "mcq" ? option_b : null,
+        questionFormat === "mcq" ? option_c : null,
+        questionFormat === "mcq" ? option_d : null,
+        questionFormat === "mcq" ? correct_option : null,
+        questionFormat === "open_ended" ? model_answer : null,
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to create question:", err);
+    res.status(500).json({ message: "Failed to create question" });
+  }
+});
+
+app.delete("/api/quizzes/:id", async (req, res) => {
+  const result = await pool.query(
+    "DELETE FROM quizzes WHERE id = $1 RETURNING *",
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Quiz not found" });
+  }
+
+  res.json({ message: "Quiz deleted" });
+});
+
+app.patch("/api/quizzes/:id/type", async (req, res) => {
+  const { type } = req.body;
+
+  if (!["MCQ", "Practical", "Mixed"].includes(type)) {
+    return res.status(400).json({ message: "type must be MCQ, Practical, or Mixed" });
+  }
+
+  const result = await pool.query(
+    `UPDATE quizzes SET type = $1 WHERE id = $2 RETURNING *`,
+    [type, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Quiz not found" });
+  }
+
+  res.json(result.rows[0]);
+});
+
+app.patch("/api/quizzes/:id/publish", async (req, res) => {
+  const { is_published } = req.body;
+
+  const result = await pool.query(
+    `UPDATE quizzes SET is_published = $1 WHERE id = $2 RETURNING *`,
+    [is_published, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Quiz not found" });
+  }
+
+  res.json(result.rows[0]);
+});
+
+app.get("/api/quizzes/:id/attempts/pending", async (req, res) => {
+  const result = await pool.query(
+    `SELECT * FROM quiz_attempts WHERE quiz_id = $1 AND status = 'pending_review' ORDER BY attempted_at`,
+    [req.params.id]
+  );
+  res.json(result.rows);
+});
+
+app.get("/api/attempts/:id/answers", async (req, res) => {
+  const result = await pool.query(
+    `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
+     FROM quiz_attempt_answers qaa
+     JOIN quiz_questions qq ON qq.id = qaa.question_id
+     WHERE qaa.attempt_id = $1
+     ORDER BY qaa.id`,
+    [req.params.id]
+  );
+  res.json(result.rows);
+});
+
+app.get("/api/attempts/:id", async (req, res) => {
+  const result = await pool.query(
+    "SELECT * FROM quiz_attempts WHERE id = $1",
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Attempt not found" });
+  }
+
+  res.json(result.rows[0]);
+});
+
+app.patch("/api/attempt-answers/:id/grade", async (req, res) => {
+  const { teacher_score } = req.body;
+
+  if (typeof teacher_score !== "number" || teacher_score < 0 || teacher_score > 100) {
+    return res.status(400).json({ message: "teacher_score must be a number between 0 and 100" });
+  }
+
+  try {
+    const updateResult = await pool.query(
+      `UPDATE quiz_attempt_answers SET teacher_score = $1, is_correct = $2 WHERE id = $3 RETURNING *`,
+      [teacher_score, teacher_score >= 50, req.params.id]
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({ message: "Answer not found" });
+    }
+
+    const answer = updateResult.rows[0];
+
+    const allAnswers = await pool.query(
+      `SELECT qaa.*, qq.format
+       FROM quiz_attempt_answers qaa
+       JOIN quiz_questions qq ON qq.id = qaa.question_id
+       WHERE qaa.attempt_id = $1`,
+      [answer.attempt_id]
+    );
+
+    const stillPending = allAnswers.rows.some(
+      (a) => a.format === "open_ended" && a.teacher_score === null
+    );
+
+    if (!stillPending) {
+      const mcqCorrect = allAnswers.rows.filter((a) => a.format === "mcq" && a.is_correct).length;
+      const mcqCount = allAnswers.rows.filter((a) => a.format === "mcq").length;
+      const openEndedTotal = allAnswers.rows
+        .filter((a) => a.format === "open_ended")
+        .reduce((sum, a) => sum + (a.teacher_score || 0), 0);
+      const openEndedCount = allAnswers.rows.filter((a) => a.format === "open_ended").length;
+      const totalQuestions = allAnswers.rows.length;
+
+      const mcqPercent = mcqCount > 0 ? (mcqCorrect / mcqCount) * 100 : 0;
+      const openEndedPercent = openEndedCount > 0 ? openEndedTotal / openEndedCount : 0;
+      const openEndedWeight = totalQuestions > 0 ? openEndedCount / totalQuestions : 0;
+      const mcqWeight = 1 - openEndedWeight;
+
+      const finalScore = Math.round(mcqPercent * mcqWeight + openEndedPercent * openEndedWeight);
+
+      await pool.query(
+        `UPDATE quiz_attempts SET score = $1, correct_count = $2, status = 'graded' WHERE id = $3`,
+        [finalScore, mcqCorrect, answer.attempt_id]
+      );
+    }
+
+    res.json(answer);
+  } catch (err) {
+    console.error("Failed to grade answer:", err);
+    res.status(500).json({ message: "Failed to grade answer" });
+  }
+});
+
+app.delete("/api/questions/:id", async (req, res) => {
+  const result = await pool.query(
+    "DELETE FROM quiz_questions WHERE id = $1 RETURNING *",
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Question not found" });
+  }
+
+  res.json({ message: "Question deleted" });
+});
+
+app.put("/api/questions/:id", async (req, res) => {
+  const { question, format, option_a, option_b, option_c, option_d, correct_option, model_answer } = req.body;
+
+  if (!question) {
+    return res.status(400).json({ message: "question is required" });
+  }
+
+  const questionFormat = format === "open_ended" ? "open_ended" : "mcq";
+
+  if (questionFormat === "mcq") {
+    if (!option_a || !option_b || !option_c || !option_d || !correct_option) {
+      return res.status(400).json({ message: "MCQ questions require all 4 options and a correct_option" });
+    }
+    if (!["A", "B", "C", "D"].includes(correct_option)) {
+      return res.status(400).json({ message: "correct_option must be A, B, C, or D" });
+    }
+  } else {
+    if (!model_answer) {
+      return res.status(400).json({ message: "Open-ended questions require a model_answer" });
+    }
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE quiz_questions
+       SET question = $1, format = $2, option_a = $3, option_b = $4, option_c = $5, option_d = $6, correct_option = $7, model_answer = $8
+       WHERE id = $9
+       RETURNING *`,
+      [
+        question,
+        questionFormat,
+        questionFormat === "mcq" ? option_a : null,
+        questionFormat === "mcq" ? option_b : null,
+        questionFormat === "mcq" ? option_c : null,
+        questionFormat === "mcq" ? option_d : null,
+        questionFormat === "mcq" ? correct_option : null,
+        questionFormat === "open_ended" ? model_answer : null,
+        req.params.id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to update question:", err);
+    res.status(500).json({ message: "Failed to update question" });
+  }
 });
 
 app.get("/api/resources", async (req, res) => {

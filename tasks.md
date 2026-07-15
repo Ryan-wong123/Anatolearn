@@ -637,12 +637,12 @@ Acceptance Criteria:
 - [ ] Add `is_published` boolean field to `anatomy_models`, `videos`, and `quizzes` tables
 - [ ] `PATCH /api/models/:id/publish` — toggle model visibility (teacher only)
 - [ ] `PATCH /api/videos/:id/publish` — toggle video visibility (teacher only)
-- [ ] `PATCH /api/quizzes/:id/publish` — toggle quiz visibility (teacher only)
+- [x] `PATCH /api/quizzes/:id/publish` — toggle quiz visibility (teacher only)
 - [ ] Student-facing APIs only return items where `is_published = true`
 
 Acceptance Criteria:
-- [ ] Published models/videos/quizzes visible to students
-- [ ] Unpublished items visible only in teacher management view
+- [~] Published models/videos/quizzes visible to students (quizzes done via `?published=true`; models/videos not yet built)
+- [~] Unpublished items visible only in teacher management view (quizzes done; models/videos not yet built)
 
 ---
 
@@ -831,31 +831,37 @@ Acceptance Criteria:
 ### Task 8.1 — Design Quiz Data Structure
 **Owner:** C | **Depends on:** Task 1.3
 
-- [ ] Confirm `quizzes`, `questions`, and `quiz_attempts` table schemas (from Task 1.3)
-- [ ] Add any missing fields: options stored as JSON array vs separate columns
-- [ ] Decision: store options as `option_a`, `option_b`, `option_c`, `option_d` columns
-- [ ] Document final schema in `docs/database_schema.md`
+- [x] Confirm `quizzes`, `questions`, and `quiz_attempts` table schemas (from Task 1.3)
+- [x] Add any missing fields: options stored as JSON array vs separate columns
+- [x] Decision: store options as `option_a`, `option_b`, `option_c`, `option_d` columns
+- [x] Document final schema in `docs/database_schema.md`
 
 Acceptance Criteria:
-- [ ] Schema finalised and documented before any quiz API is built
+- [x] Schema finalised and documented before any quiz API is built
+
+**Note:** Resolved. `quiz_questions` now has a `format` column (`mcq` / `open_ended`), with `option_a`–`d`/`correct_option` nullable (used only for MCQ) and a `model_answer` column (used only for open-ended). `quiz_attempts` gained a `status` column (`graded` / `pending_review`) and a companion table `quiz_attempt_answers` stores each individual answer for manual grading. This is a merged single-table design rather than the fully separate structure originally proposed in `docs/database_schema.md` — see that file for the divergence notes. `quizzes.type` (MCQ/Practical/Mixed) is auto-derived from the question formats actually present, rather than manually picked by the teacher.
 
 ---
 
 ### Task 8.2 — Build Quiz Management APIs (Teacher)
 **Owner:** B | **Depends on:** Task 8.1
 
-- [ ] `POST /api/quizzes` — create quiz: title, description
-- [ ] `GET /api/quizzes` — list all quizzes (teacher: all, student: published only)
-- [ ] `GET /api/quizzes/:id` — get quiz with questions
-- [ ] `PUT /api/quizzes/:id` — update quiz metadata
-- [ ] `DELETE /api/quizzes/:id` — delete quiz
-- [ ] `POST /api/quizzes/:id/questions` — add question with options and correct answer
-- [ ] `PUT /api/questions/:id` — update question
-- [ ] `DELETE /api/questions/:id` — delete question
+- [x] `POST /api/quizzes` — create quiz: title, description
+- [x] `GET /api/quizzes` — list all quizzes (teacher: all, student: published only, via `?published=true`)
+- [ ] `GET /api/quizzes/:id` — get quiz with questions (currently two separate calls: `GET /api/quizzes` + `GET /api/quizzes/:id/questions`, not combined)
+- [x] `PATCH /api/quizzes/:id/type` — update quiz type (added; not a full metadata `PUT` — title/description/category still can't be edited after creation)
+- [x] `DELETE /api/quizzes/:id` — delete quiz
+- [x] `POST /api/quizzes/:id/questions` — add question with options and correct answer (also supports open-ended format with `model_answer`)
+- [x] `PUT /api/questions/:id` — update question (supports switching format)
+- [x] `DELETE /api/questions/:id` — delete question
+- [x] `GET /api/quizzes/:id/attempts/pending` — list attempts awaiting manual review
+- [x] `GET /api/attempts/:id` — fetch a single attempt's own record (added for the sessionStorage result-visibility workaround)
+- [x] `GET /api/attempts/:id/answers` — get all answers for an attempt, joined with question data
+- [x] `PATCH /api/attempt-answers/:id/grade` — teacher assigns a 0-100 score to an open-ended answer
 
 Acceptance Criteria:
-- [ ] Full CRUD for quizzes and questions
-- [ ] Correct answer stored but not exposed in student-facing API response
+- [~] Full CRUD for quizzes and questions (quizzes: create/delete/publish/type-update done, full metadata `PUT` still missing; questions: full CRUD done including open-ended format)
+- [x] Correct answer stored but not exposed in student-facing API response (extended to also hide `model_answer`)
 
 ---
 
@@ -863,17 +869,17 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 8.2
 
 In `src/pages/Quizzes.tsx` (teacher view):
-- [x] `Create Quiz` button opens a form: title, description fields
-- [~] After creating a quiz, show a question editor
-- [x] Add Question form: question text, 4 options (A–D), correct answer selector
-- [ ] Save question calls `POST /api/quizzes/:id/questions`
-- [x] Questions listed below with edit and delete buttons
+- [x] `Create Quiz` button opens a form: title, description, category fields
+- [x] After creating a quiz, show a question editor (two-step flow: quiz created first, then a separate "Add Questions" modal)
+- [x] Add Question form: question text, format toggle (MCQ / Open Ended), 4 options + correct answer selector for MCQ, model answer field for Open Ended
+- [x] Save question calls `POST /api/quizzes/:id/questions`
+- [x] Questions listed below with edit and delete buttons (both wired to real `PUT`/`DELETE` endpoints, format-aware)
 
 Acceptance Criteria:
-- [x] Teacher can create a quiz with multiple questions (locally — confirmed: quiz now appears in list after saving, questions can be deleted before saving)
-- [ ] Questions saved to the backend
+- [x] Teacher can create a quiz with a mix of MCQ and open-ended questions, confirmed against real backend (verified via manual test — quiz persists after full page refresh)
+- [x] Questions saved to the backend
 
-**Note:** Quiz creation and question editing currently happen in a single combined modal, rather than a question editor appearing after the quiz itself is created. (does it  match intent?) `handleSaveQuiz` now adds the quiz to local state (fixed and manually verified) but is still not connected to `POST /api/quizzes` — blocked on Task 8.2 (no backend exists yet). Note: added Quiz Type (MCQ/Practical/Mixed) and open-ended answers go beyond the current schema in Task 1.2/8.1.
+**Note:** Resolved — quiz creation uses a two-step flow (create quiz → separate question editor). Cancelling before adding any questions deletes the abandoned quiz record. Quizzes are created unpublished; on "Done", the quiz's `type` is auto-derived from the question formats added (all MCQ → 'MCQ', all open-ended → 'Practical', mix → 'Mixed') via `PATCH /api/quizzes/:id/type`, then published. The manual Type `<select>` was removed from the quiz creation form since it no longer served a purpose once format is chosen per-question.
 
 ---
 
@@ -881,45 +887,50 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 8.2
 
 In `src/pages/Quizzes.tsx`:
-- [ ] Fetch quiz list on load
+- [x] Fetch quiz list on load
 - [x] Each row: quiz title, number of questions, status (completed/pending), type badge
-- [~] Student and teacher quiz row actions follow `design.md` section 9
+- [x] Student and teacher quiz row actions follow `design.md` section 9
 
 Acceptance Criteria:
-- [ ] Quiz list renders from API
-- [ ] Student and teacher views differ correctly
+- [x] Quiz list renders from API
+- [x] Student and teacher views differ correctly (row actions differ; teacher's "View Results" now opens the grading UI, no longer a dead stub)
 
 ---
 
 ### Task 8.5 — Build Quiz Attempt Flow (Student)
 **Owner:** C | **Depends on:** Task 8.4
 
-- [~] Clicking `Start Quiz` loads the quiz questions (bug: same fixed set regardless of which quiz was clicked)
-- [x] One question displayed at a time with 4 radio button options
+- [x] Clicking `Start Quiz` loads the quiz's own questions via `GET /api/quizzes/:id/questions`
+- [x] Question display branches by format: radio buttons for MCQ, free-text textarea for open-ended
 - [x] `Next` button advances to next question
-- [x] After last question, `Submit` button sends all answers
+- [x] After last question, `Submit` button sends all answers (`selected_option` for MCQ, `answer_text` for open-ended)
+- [x] Clicking `Start Quiz` on a quiz already attempted (same browser) shows the existing result instead of a fresh attempt, via a sessionStorage-based lookup
 
 Acceptance Criteria:
-- [x] Student can navigate through all questions
+- [x] Student can navigate through all questions regardless of format
 - [x] Answers are collected before submission
 
-**Note:** Confirmed by manual test — all quizzes currently share one hardcoded `mockQuestions` array; questions shown are not yet tied to which specific quiz was selected. This isn't a code error (the code behaves exactly as written), but it doesn't yet meet the task's intent of loading each quiz's own questions — would need a `questionSet` per quiz plus fetching by quiz id from the backend once Task 8.2 exists.
+**Note:** Resolved — each quiz correctly fetches and displays its own questions from the backend, and the quiz-taking UI correctly renders open-ended questions as a text box instead of the MCQ radio-button template. Additionally fixed a UX gap: after a teacher grades a pending attempt, the student previously had no way to see the result and could only start a fresh attempt. A sessionStorage workaround now lets them see their (possibly now-graded) result when revisiting the same quiz in the same browser — documented as a stopgap, not real quiz history, in `docs/api_endpoints.md`.
 
 ---
 
 ### Task 8.6 — Build Quiz Scoring API
 **Owner:** B | **Depends on:** Task 8.2
 
-- [ ] `POST /api/quizzes/:id/submit` — accepts `{ answers: { question_id, selected_option }[] }`
-- [ ] Compare each answer against stored correct answer
-- [ ] Calculate score as percentage
-- [ ] Store attempt in `quiz_attempts` table: quiz_id, student_id, score, attempted_at
-- [ ] Return `{ score, total, correct, incorrect, feedback: [...] }` — feedback shows correct answer per question
+- [x] `POST /api/quizzes/:id/submit` — accepts `{ answers: { question_id, selected_option? | answer_text? }[] }`
+- [x] Compare each MCQ answer against stored correct answer; store every answer (MCQ and open-ended) individually in `quiz_attempt_answers`
+- [x] Calculate score as percentage for fully-MCQ attempts
+- [x] If any open-ended answers are present, attempt is marked `status: 'pending_review'` and `score` stays null until manually graded
+- [x] `PATCH /api/attempt-answers/:id/grade` — teacher assigns 0-100 score per open-ended answer; once all are graded, final score is computed as a weighted blend of MCQ % and open-ended average, and status flips to `'graded'`
+- [!] Store attempt in `quiz_attempts` table: quiz_id, student_id, score, attempted_at — **blocked**: no `student_id` column, since there's no auth yet (Task 9). Attempts currently store quiz_id/score/total_questions/correct_count/status/attempted_at only, with no way to tell which student submitted. A sessionStorage-based same-browser workaround exists for result visibility only — it does not solve student attribution.
+- [x] Return `{ status, score, total, correct, incorrect, mcq_count, open_ended_count, feedback: [...] }` — feedback covers MCQ questions only
 
 Acceptance Criteria:
-- [ ] Score calculated correctly
-- [ ] Attempt stored with student ID and timestamp
-- [ ] Feedback returned per question
+- [x] Score calculated correctly for MCQ-only attempts (verified via manual test against `quiz_attempts` table)
+- [x] Open-ended answers correctly withhold scoring until manually reviewed (verified via manual test — mixed quiz returned `status: pending_review`, `score: null`)
+- [x] Weighted blend score is mathematically correct once graded — a bug where MCQ contribution was understated (dividing by total questions instead of MCQ count) was found and fixed during testing, verified across 3 scenarios
+- [!] Attempt stored with student ID and timestamp — timestamp yes, student ID blocked on Task 9 (auth)
+- [x] Feedback returned per MCQ question
 
 ---
 
@@ -927,17 +938,25 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 8.6
 
 After submitting:
-- [x] Show overall score: e.g. `You scored 7 / 10 (70%)`
-- [x] Show per-question feedback: student's answer vs correct answer
-- [x] Correct answers marked green, incorrect marked red
-- [x] `Retry` button resets and restarts the quiz
+- [x] Show overall score: e.g. `You scored 7 / 10 (70%)` for fully-graded attempts
+- [x] Show a "Submitted — Pending Review" state instead of a score when the attempt contains open-ended answers awaiting teacher grading
+- [x] Show per-question feedback for MCQ questions: student's answer vs correct answer
+- [x] Show per-question feedback for open-ended questions: student's own answer, plus "Awaiting teacher review" or the assigned score once graded (never the model answer)
+- [x] Correct answers marked green, incorrect marked red; open-ended cards use neutral/amber styling since scores aren't binary correct/incorrect
+- [x] `Retry` button resets and restarts the quiz (hidden while pending review, since there's nothing to retry yet); also clears the sessionStorage-stored attempt so a genuine retake is possible
 - [x] `Back to Quizzes` button returns to list
 
 Acceptance Criteria:
-- [] Score and feedback display from API response
+- [x] Score and feedback display from API response
+- [x] Pending-review attempts show the correct waiting state instead of a fabricated or missing score
+- [x] Open-ended questions have visible feedback, not just MCQ
 - [x] Retry restarts the question flow
 
-**Note:** All UI mechanics confirmed working by manual test — score calculation, per-question color-coded feedback, Retry, and Back to Quizzes all function correctly. However, the score is computed entirely client-side against the shared hardcoded `mockQuestions` (see Task 8.5 note) rather than from a `POST /api/quizzes/:id/submit` response — blocked on Task 8.6 (no backend exists yet).
+**Note:** Resolved — scoring is computed server-side in `POST /api/quizzes/:id/submit` and the results screen reads from that response instead of comparing locally. Also fixed a related security issue: `GET /api/quizzes/:id/questions` previously returned `correct_option` to students before they answered; that field (and `model_answer`, once open-ended questions were added) is now excluded from the response entirely.
+
+**Resolved gap:** The Practical/Mixed quiz types previously rendered identical MCQ radio-button question forms regardless of selected Type. This is now fixed — question format (MCQ / Open Ended) is chosen per-question by the teacher, and quiz `type` is auto-derived from what's actually in the quiz.
+
+**Resolved gap:** There was previously no teacher-facing UI to view and grade pending open-ended attempts. "View Results" on the teacher's quiz row now opens a list of pending attempts for that quiz; selecting one shows student answers alongside model answers with a 0-100 grading input per open-ended answer. Verified end-to-end: student submits → teacher grades → student sees the graded result on revisit (same browser).
 
 ---
 
@@ -951,6 +970,8 @@ Acceptance Criteria:
 Acceptance Criteria:
 - [ ] Student can see their past scores per quiz
 - [ ] Most recent attempt shown on quiz list row
+
+**Blocker:** Fully blocked on Task 9 (auth). `quiz_attempts` has no `student_id` column, so attempts can't currently be attributed to a specific student — there's no way to build a real "my history" endpoint until login exists. A same-browser sessionStorage workaround (Task 8.5/8.7) lets a student re-see one specific quiz's result, but this is not history — it doesn't list past quizzes, doesn't work across devices, and is not a substitute for this task.
 
 ---
 
@@ -1175,15 +1196,15 @@ These tasks run continuously throughout the 10-week project:
 - [ ] Anatomical labelling (create, view, click, hover)
 - [ ] Educational video browsing and playback
 - [ ] Video linked to label in viewer detail panel
-- [ ] Quiz creation (teacher) and quiz attempt + scoring (student)
+- [x] Quiz creation (teacher) and quiz attempt + scoring (student) — MCQ and open-ended both work end-to-end, including teacher grading UI for open-ended answers
 - [ ] Model and video upload with format validation
 - [ ] JWT authentication and role-based access control
 - [ ] Model download in original format
 - [ ] Label export in JSON and CSV
 
 ### Should Have
-- [ ] Content visibility (publish/unpublish toggle)
-- [ ] Quiz attempt history for students
+- [~] Content visibility (publish/unpublish toggle) — quizzes done, models/videos not yet
+- [ ] Quiz attempt history for students — real version blocked on auth; same-browser single-quiz stopgap exists
 - [ ] Video-to-label linking UI
 - [ ] Storage abstraction layer (cloud-ready)
 - [ ] Browser compatibility confirmed (Chrome + Firefox)

@@ -22,10 +22,10 @@ INSERT INTO models (program_id, title, description, file_path) VALUES
 INSERT INTO videos (program_id, title, description, video_path, thumbnail_path) VALUES
 (1, 'Introduction to Anatomy', 'Placeholder educational video for testing the videos page.', '/videos/s.mp4', NULL);
 
-INSERT INTO quizzes (program_id, title, description) VALUES
-(1, 'Muscular System Basics', 'Basic MCQ quiz for anatomy self-assessment.'),
-(1, 'Cardiovascular Anatomy Practical', 'Practical-style quiz for identifying anatomical structures.'),
-(1, 'Respiratory System Review', 'Mixed review quiz for respiratory anatomy.');
+INSERT INTO quizzes (program_id, title, description, type, category, is_published) VALUES
+(1, 'Muscular System Basics', 'Basic MCQ quiz for anatomy self-assessment.', 'MCQ', 'Muscular', true),
+(1, 'Cardiovascular Anatomy Practical', 'Practical-style quiz for identifying anatomical structures.', 'Practical', 'Cardiovascular', true),
+(1, 'Respiratory System Review', 'Mixed review quiz for respiratory anatomy.', 'Mixed', 'Respiratory', true);
 
 INSERT INTO quiz_questions (
     quiz_id,
