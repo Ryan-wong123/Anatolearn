@@ -9,7 +9,7 @@ The local Docker Compose PostgreSQL service mounts `backend/sql` to `/docker-ent
 
 This creates the local `anatolearn` database schema and seed data automatically for new project setups. The init scripts do not rerun when an existing database volume is present.
 
-> Status: **Draft — database not yet built.** Based on Task 1.2's original table list, updated with confirmed requirements from 'Project Details Reference' tab under ITP Google Doc, and gaps found while reviewing the actual frontend (`Quizzes.tsx`, `Videos.tsx`). For Timothy's review before creating tables — not a final, locked spec.
+> Status: **Draft — database not yet built.** Based on Task 1.2's original table list, updated with confirmed requirements from 'Project Details Reference' tab under ITP Google Doc, and gaps found while reviewing the actual frontend (`Quizzes.tsx`, `Videos.tsx`). For Member B's review before creating tables — not a final, locked spec.
 
 ---
 
@@ -44,12 +44,13 @@ No changes from original Task 1.2 spec.
 | created_at | timestamp | |
 | is_published | boolean | needed for Task 6.2, missing from original Task 1.2 list |
 
-**Status: Built as `models` (renamed from `anatomy_models`), diverges from this proposal.** No `file_format`, `body_system`, `body_part`, `is_published`, or `uploaded_by` columns exist. Actual columns: `id`, `program_id` (references `programs.id`), `title`, `description`, `file_path`, `thumbnail_path`, `created_at`, `updated_at`. Uses `program_id` rather than free-text `body_system`/`body_part`. No publish gating exists for models yet (Task 6.2 partially built — only quizzes have `is_published` so far).
+**Status: Built as `models` (renamed from `anatomy_models`), diverges from this proposal.** No `file_format`, `body_system`, `body_part`, `is_published`, or `uploaded_by` columns exist. Actual columns: `id`, `program_id` (references `programs.id`), `title`, `description`, `file_path`, `thumbnail_path`, `created_at`, `updated_at`. Uses `program_id` rather than free-text `body_system`/`body_part`. **Still no publish gating for models** — only `videos` and `quizzes` have `is_published` so far (see below). Models are viewed via a `ModelGallery.tsx` page (browsing) and `Viewer.tsx` (individual model + annotations), both confirmed working — see the `annotations` section below for how the 3D viewer actually works.
 
 ---
 
-## `labels`
-No changes from original Task 1.2 spec. **Status: Not built as designed here.** The actual implementation uses an `annotations` table instead, with a broader `annotation_type` enum (`point`/`highlight`/`region_fill`) and a flexible `annotation_data` JSONB column rather than fixed `position_x`/`position_y`/`position_z` fields. No `created_by` column (no auth yet).
+## `labels` — original proposal, superseded by `annotations`
+
+**Status: Not built as designed. Confirmed superseded by a different, working system.** This session confirmed `Viewer.tsx` (built by Member B) does not implement a simple point-label system at all — it implements a full annotation system with three types (`point`, `highlight` a.k.a. freehand draw, and `region_fill` a.k.a. filled surface region), each persisted via the `annotations` table below. This is more capable than what this section originally proposed, but means anything in `tasks.md` referring to "labels" (Tasks 5.x, 7.5, 7.6) needs reinterpreting against `annotations` — see `tasks.md` for the specific divergence notes on each task.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -81,7 +82,26 @@ No changes from original Task 1.2 spec. **Status: Not built as designed here.** 
 | thumbnail | text, nullable | **added** — frontend `Video` interface has this field |
 | is_published | boolean | **added** — needed for Task 6.2, missing from original Task 1.2 list |
 
-**Status: Built, diverges from this proposal.** Actual columns: `id`, `program_id` (references `programs.id`), `title`, `description`, `video_path` (not `file_path`), `thumbnail_path` (not `thumbnail`), `created_at`. No `category`, `linked_label_id`, `is_published`, or `uploaded_by` columns exist yet — the proposed `thumbnail`/`is_published` additions from this section were not carried into the built table. Task 6.4's video management and Task 7.6's video-to-label linking are still working against mock/local data as a result.
+**Status: Built, diverges from this proposal, updated 15 Jul 2026.** Actual columns: `id`, `program_id` (references `programs.id`), `title`, `description`, `video_path` (not `file_path`), `thumbnail_path` (not `thumbnail`), `is_published` (**added this session**, matches this proposal), `created_at`. No `category`, `linked_label_id`, or `uploaded_by` columns exist — since there's no `labels` table (see above), `linked_label_id` was never viable as originally proposed, and this remains an open architecture question rather than a simple gap to fill in.
+
+| Column (as built) | Type | Notes |
+|---|---|---|
+| id | SERIAL | primary key |
+| program_id | integer, nullable | references programs.id, ON DELETE SET NULL |
+| title | varchar(255) | not null |
+| description | text | |
+| video_path | text | not null |
+| thumbnail_path | text, nullable | |
+| is_published | boolean | not null, default false — **added 15 Jul 2026** |
+| created_at | timestamp | default CURRENT_TIMESTAMP |
+
+---
+
+## Static file serving — bug found and fixed (15 Jul 2026)
+
+Uploaded video files (and previously, model thumbnails) were being correctly saved to disk under `PUBLIC_DIR` (`/public` in the container), but **Express had no `express.static` middleware serving that directory at all**. This meant every `video_path` and `thumbnail_path` URL stored in the database (e.g. `/videos/s.mp4`) was a dead link — the file physically existed, but requesting its URL returned a 404. This predates this session's work; it affected the original seeded video and any model thumbnails generated by `Viewer.tsx` since Member B first built that feature.
+
+**Fix:** added `app.use(express.static(process.env.PUBLIC_DIR || path.join(__dirname, "../../public")));` near the top of `server.js`, after the JSON body-parser middleware. Verified by loading `http://localhost:5000/videos/s.mp4` directly in browser — confirmed playing.
 
 ---
 
@@ -178,7 +198,7 @@ Stores each individual answer within an attempt, so a teacher can review and gra
 | is_correct | boolean, nullable | auto-set for MCQ on submit; set by teacher grading for open-ended (true if `teacher_score >= 50`) |
 | teacher_score | integer, nullable | 0-100, set only when a teacher manually grades an open-ended answer |
 
-**Scoring resolution:** once every open-ended answer for an attempt has a `teacher_score`, the attempt's final `score` is computed as a weighted blend — MCQ percentage (correct MCQs ÷ MCQ count) weighted by the proportion of MCQ questions, open-ended average weighted by the proportion of open-ended questions — and `quiz_attempts.status` flips to `'graded'`. This is an implementation decision (not specified anywhere in the original requirements docs) made to combine auto- and manually-graded portions into one meaningful score; flag to Ryan/Timothy if a different weighting is intended.
+**Scoring resolution:** once every open-ended answer for an attempt has a `teacher_score`, the attempt's final `score` is computed as a weighted blend — MCQ percentage (correct MCQs ÷ MCQ count) weighted by the proportion of MCQ questions, open-ended average weighted by the proportion of open-ended questions — and `quiz_attempts.status` flips to `'graded'`. This is an implementation decision (not specified anywhere in the original requirements docs) made to combine auto- and manually-graded portions into one meaningful score; flag to the team if a different weighting is intended.
 
 **Scoring bug fix (15 Jul 2026):** the weighted blend originally divided `mcqCorrect` by `totalQuestions` instead of `mcqCount`, which understated the MCQ portion's contribution to the final score (e.g. 1/1 MCQ correct + all open-ended scored 100 returned 81% instead of the correct 100%). Fixed to divide by `mcqCount`. Any attempts graded before this fix have an incorrect stored `score` and were not retroactively recalculated — only relevant to test data from this development session.
 
@@ -226,6 +246,8 @@ Serves the Library page's learning materials / links content, not covered in the
 
 ## `annotations` (as built, replaces the `labels` proposal above)
 
+**Confirmed fully working as of 15 Jul 2026** — powers the entire `Viewer.tsx` 3D interaction system (Tasks 2.x/3.x/5.x in `tasks.md`), not just a simple label system.
+
 | Column | Type | Notes |
 |---|---|---|
 | id | SERIAL | primary key |
@@ -238,7 +260,11 @@ Serves the Library page's learning materials / links content, not covered in the
 | created_at | timestamp | default CURRENT_TIMESTAMP |
 | updated_at | timestamp | default CURRENT_TIMESTAMP |
 
-No `position_x`/`position_y`/`position_z` or `created_by` columns — position data lives inside the flexible `annotation_data` JSONB column instead, and there's no user attribution since auth doesn't exist yet.
+No `position_x`/`position_y`/`position_z` or `created_by` columns — position data lives inside the flexible `annotation_data` JSONB column instead (varies by type: a single point, a freehand list of draw points, or a filled region's boundary + triangulated surface mesh + camera plane), and there's no user attribution since auth doesn't exist yet.
+
+`annotation_type` mapping to the frontend's internal `AnnotationKind`: `'point'` ↔ simple point marker, `'highlight'` ↔ freehand draw (a connected line of surface dots), `'region_fill'` ↔ closed-boundary filled surface region (computed via raycasting a screen-space polygon onto the model's actual mesh faces).
+
+**No `video_id`/linked-video field exists on this table** — this is the crux of the open architecture question flagged for Tasks 7.5/7.6 in `tasks.md`: since `annotations` (not `labels`) is what actually exists, "linking a video to a label" has no current home in the schema and needs a decision before any code is written for it.
 
 ---
 
@@ -251,3 +277,5 @@ No `position_x`/`position_y`/`position_z` or `created_by` columns — position d
 - **Resolved.** Teacher manually reviews and assigns a 0-100 score per open-ended answer via `PATCH /api/attempt-answers/:id/grade`, through a dedicated "View Results" grading UI. Matches the original suggestion above. See `quiz_attempt_answers` for the implementation. Once every open-ended answer in an attempt is scored, the final blended score is computed automatically and `status` flips from `pending_review` to `graded`.
 
 2. **Student attribution on `quiz_attempts`:** blocked on Task 9 (auth/`users` table). Once auth exists, `quiz_attempts` needs a `student_id` column added via migration, and `POST /api/quizzes/:id/submit` needs to accept/derive the authenticated student's ID. **Interim workaround (15 Jul 2026):** the frontend stores the attempt id in `sessionStorage` keyed by quiz id after submission, so a student can see their graded result if they revisit the same quiz in the same browser. This is not real student attribution — it doesn't survive a different device, a cleared cache, or a different student using the same browser. See `docs/api_endpoints.md` for the full caveat.
+
+3. **Video-to-annotation linking (new, 15 Jul 2026):** `tasks.md` Tasks 7.5/7.6 describe linking a video to a "label," but the actual 3D viewer implementation uses `annotations`, not `labels` — there is no video field anywhere in the annotation data model. Needs a decision from the team on whether to (a) add a nullable `video_id` to `annotations` and build a teacher UI to attach a video when creating/editing an annotation, or (b) treat this as out of scope given the architecture divergence. Not yet decided.

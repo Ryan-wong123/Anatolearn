@@ -75,6 +75,7 @@ CREATE TABLE videos (
 
     video_path TEXT NOT NULL,
     thumbnail_path TEXT,
+    is_published BOOLEAN NOT NULL DEFAULT false,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

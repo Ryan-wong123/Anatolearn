@@ -19,8 +19,8 @@ INSERT INTO models (program_id, title, description, file_path) VALUES
 (1, 'A2 (SketchFab)', 'SketchFab exported model.', '/models/anatomy/scene.gltf'),
 (1, 'A1 Copy', 'Duplicate demo entry for testing model selection.', '/models/anatomy/scene.glb');
 
-INSERT INTO videos (program_id, title, description, video_path, thumbnail_path) VALUES
-(1, 'Introduction to Anatomy', 'Placeholder educational video for testing the videos page.', '/videos/s.mp4', NULL);
+INSERT INTO videos (program_id, title, description, video_path, thumbnail_path, is_published) VALUES
+(1, 'Introduction to Anatomy', 'Placeholder educational video for testing the videos page.', '/videos/s.mp4', NULL, true);
 
 INSERT INTO quizzes (program_id, title, description, type, category, is_published) VALUES
 (1, 'Muscular System Basics', 'Basic MCQ quiz for anatomy self-assessment.', 'MCQ', 'Muscular', true),

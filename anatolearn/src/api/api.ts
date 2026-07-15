@@ -23,8 +23,52 @@ export const api = {
             if (!res.ok) throw new Error(`API error: ${res.status}`);
             return res.json();
         }),
-    getVideos: () => request("/videos"),
-    getVideo: (id: number) => request(`/videos/${id}`),
+    getVideos: (publishedOnly?: boolean) =>
+        request(`/videos${publishedOnly ? '?published=true' : ''}`), getVideo: (id: number) => request(`/videos/${id}`),
+
+    uploadVideo: (data: { title: string; description?: string; program_id?: number; file: File }) => {
+        const formData = new FormData();
+        formData.append('title', data.title);
+        if (data.description) formData.append('description', data.description);
+        if (data.program_id) formData.append('program_id', String(data.program_id));
+        formData.append('video', data.file);
+
+        return fetch(`http://localhost:5000/api/videos/upload`, {
+            method: 'POST',
+            body: formData,
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        });
+    },
+
+    deleteVideo: (id: number) =>
+        fetch(`http://localhost:5000/api/videos/${id}`, {
+            method: 'DELETE',
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
+
+    publishVideo: (id: number, isPublished: boolean) =>
+        fetch(`http://localhost:5000/api/videos/${id}/publish`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_published: isPublished }),
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
+
+    updateVideo: (id: number, data: { title: string; description?: string }) =>
+        fetch(`http://localhost:5000/api/videos/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
 
     getQuizzes: (publishedOnly?: boolean) =>
         request(`/quizzes${publishedOnly ? '?published=true' : ''}`),
@@ -196,7 +240,7 @@ export const api = {
         request(`/attempts/${attemptId}/answers`),
 
     getAttempt: (id: number) => request(`/attempts/${id}`),
-    
+
     gradeAttemptAnswer: (answerId: number, teacherScore: number) =>
         fetch(`http://localhost:5000/api/attempt-answers/${answerId}/grade`, {
             method: 'PATCH',

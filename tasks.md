@@ -33,6 +33,8 @@ Task status updates are required:
 - If a task cannot be completed because of a missing decision, dependency, asset, credential, or technical blocker, update its checkbox to `[!]` and add a short blocker note under that task
 - If a task is split into smaller follow-up work, leave the parent task `[~]` until all required follow-up work is complete
 
+**IMPORTANT — checklist accuracy notice (added 15 Jul 2026):** Weeks 2/3/5 (3D viewer/annotations) and Tasks 7.3/7.4 (video browsing/playback) were significantly understated in this file prior to 15 Jul 2026 — the actual code (built by Member B) was substantially further along than the checkboxes showed, because progress was never written back into this file. Before assuming any task below is unbuilt, pull and check the actual current source file rather than trusting a stale checkbox — see `docs/testing_log.md`, "Codebase Audit" entry, for the full writeup of this discovery.
+
 ---
 
 ## Team Roles
@@ -44,6 +46,8 @@ Task status updates are required:
 | **C** | Content management, educational video management, quiz implementation, content testing |
 | **D** | Download/export support, metadata export, storage architecture, compatibility testing |
 | **All** | 3D model generation software sourcing, integration testing, bug fixing, documentation, report writing, presentation |
+
+**Note (15 Jul 2026):** Two teammates originally slated for Owner A work alongside 3D model generation are fully committed to 3D model generation for the remainder of the project and are not returning to Owner A's web portal tasks. Member C and Member B are covering the entire web portal — effectively all of A + B + C + D — between the two of them.
 
 ---
 
@@ -104,6 +108,8 @@ Design and document the initial database schema covering all entities:
 Acceptance Criteria:
 - [ ] All entities and relationships documented
 
+**Note:** The `labels` table was never built as designed — Member B built an `annotations` table instead, covering point/highlight/region-fill annotations. This is a superset of what `labels` intended but structured differently. See `docs/database_schema.md` for the full comparison.
+
 ---
 
 ### Task 1.3 — Set Up Backend Project Structure
@@ -121,6 +127,8 @@ Acceptance Criteria:
 - [ ] Health check endpoint responds correctly
 - [ ] `.env.example` committed (never `.env` with real secrets)
 
+**Note:** Backend is a single `server.js` file, not the `routes/`/`controllers/`/`models/`/`middleware/` folder structure originally specified — a pragmatic simplification given team size and timeline, not tracked as a gap to fix.
+
 ---
 
 ### Task 1.4 — Design Local Storage Structure
@@ -137,6 +145,8 @@ Acceptance Criteria:
 
 Acceptance Criteria:
 - [ ] Future cloud path is noted (does not need to be implemented yet)
+
+**Note:** Uploaded files (videos, model thumbnails) are stored under `PUBLIC_DIR` (`/public` in the container: `/public/videos/`, `/public/thumbnails/`), not a `storage/` tree as originally proposed — served directly via `express.static`, not through a dedicated download endpoint. `docs/storage_structure.md` itself was never created; this note stands in for it until Owner D writes it properly.
 
 ---
 
@@ -162,18 +172,22 @@ Acceptance Criteria:
 ## Week 2 — 3D Viewer Integration
 **Members:** A, B | **Deliverable:** Initial working 3D model viewer
 
+**Status note (15 Jul 2026):** This week's checkboxes were stale. `Viewer.tsx` and `ModelGallery.tsx` (built by Member B) implement most of this, using annotations instead of a simple label/part model. Confirmed by direct code review this session.
+
 ---
 
 ### Task 2.1 — Research and Select 3D Rendering Framework
 **Owner:** A | **Depends on:** nothing
 
-- [ ] Evaluate Three.js for browser-based 3D rendering
-- [ ] Confirm Three.js supports `.gltf`, `.glb`, `.obj` loading
-- [ ] Confirm OrbitControls available via `three/addons`
+- [x] Evaluate Three.js for browser-based 3D rendering
+- [x] Confirm Three.js supports `.gltf`, `.glb`, `.obj` loading
+- [x] Confirm OrbitControls available via `three/addons`
 - [ ] Document decision in `docs/README.md`
 
 Acceptance Criteria:
-- [ ] Framework confirmed and rationale documented
+- [~] Framework confirmed and rationale documented
+
+**Note:** Three.js + `three/addons` confirmed in use in `Viewer.tsx`. Only `.gltf`/`.glb` loading is actually implemented (via `GLTFLoader`) — `.obj` support was never built (see Task 2.5). Decision was never formally written up in `docs/README.md`.
 
 ---
 
@@ -181,14 +195,16 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 1.2
 
 In `src/pages/Viewer.tsx`:
-- [ ] Create the Viewer shell according to `design.md` section 7
-- [ ] Add `mountRef` div as Three.js canvas target
+- [x] Create the Viewer shell according to `design.md` section 7
+- [x] Add `mountRef` div as Three.js canvas target
 - [ ] Add React state: `selectedPart`, `isAddingLabel`, `showVideo`
-- [ ] Page renders with visible empty canvas area and side panel
+- [x] Page renders with visible empty canvas area and side panel
 
 Acceptance Criteria:
-- [ ] Layout matches `design.md` section 7, including the defined side panel width
-- [ ] No TypeScript errors
+- [~] Layout matches `design.md` section 7, including the defined side panel width
+- [x] No TypeScript errors
+
+**Note:** Built, but with a different state model than originally specified — `annotations`, `addMode`, `drawMode`, `regionMode`, `popupAnnotation` etc. instead of `selectedPart`/`isAddingLabel`/`showVideo`. Functionally equivalent intent, structurally different. Layout uses a `containerRef` (Three.js canvas) plus a right-side annotations list panel and a floating popup — not confirmed against `design.md` section 7's exact spec, worth a visual check later.
 
 ---
 
@@ -196,47 +212,53 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 2.2
 
 Inside `useEffect` in `Viewer.tsx`:
-- [ ] Create `THREE.Scene`; visual background follows `design.md`
-- [ ] Create `THREE.PerspectiveCamera` (75° FOV, z=5)
-- [ ] Create `THREE.WebGLRenderer({ antialias: true })`, append to `mountRef`
-- [ ] Add `THREE.AmbientLight(0xffffff, 0.6)`
-- [ ] Add `THREE.DirectionalLight(0xffffff, 0.8)` at position (10, 20, 10)
-- [ ] Start animation loop with `requestAnimationFrame`
-- [ ] Add resize handler: update camera aspect + renderer size on window resize
-- [ ] Guard all operations with `if (!mountRef.current) return`
+- [x] Create `THREE.Scene`; visual background follows `design.md`
+- [x] Create `THREE.PerspectiveCamera` (75° FOV, z=5)
+- [x] Create `THREE.WebGLRenderer({ antialias: true })`, append to `mountRef`
+- [x] Add `THREE.AmbientLight(0xffffff, 0.6)`
+- [x] Add `THREE.DirectionalLight(0xffffff, 0.8)` at position (10, 20, 10)
+- [x] Start animation loop with `requestAnimationFrame`
+- [x] Add resize handler: update camera aspect + renderer size on window resize
+- [x] Guard all operations with `if (!mountRef.current) return`
 
 Acceptance Criteria:
-- [ ] Blank lit canvas renders without errors
-- [ ] Canvas resizes with browser window
+- [x] Blank lit canvas renders without errors
+- [x] Canvas resizes with browser window
+
+**Note:** Confirmed by code review. Minor spec differences: camera starts at `(0, 2, 5)` not exactly `z=5`; ambient/directional light intensities are `2`/`3` not `0.6`/`0.8`, and directional light position is `(5, 10, 5)` not `(10, 20, 10)` — cosmetic tuning differences, not functional gaps.
 
 ---
 
 ### Task 2.4 — Add OrbitControls
 **Owner:** A | **Depends on:** Task 2.3
 
-- [ ] Import `OrbitControls` from `three/addons/controls/OrbitControls.js`
-- [ ] Create `OrbitControls(camera, renderer.domElement)`
-- [ ] Enable damping: `controls.enableDamping = true`, `dampingFactor = 0.05`
-- [ ] Call `controls.update()` inside animation loop
+- [x] Import `OrbitControls` from `three/addons/controls/OrbitControls.js`
+- [x] Create `OrbitControls(camera, renderer.domElement)`
+- [x] Enable damping: `controls.enableDamping = true`, `dampingFactor = 0.05`
+- [x] Call `controls.update()` inside animation loop
 
 Acceptance Criteria:
-- [ ] Canvas can be orbited, zoomed, and panned with mouse
-- [ ] Movement feels smooth due to damping
+- [x] Canvas can be orbited, zoomed, and panned with mouse
+- [x] Movement feels smooth due to damping
+
+**Note:** `enableDamping = true` confirmed; explicit `dampingFactor` value not set in code (uses Three.js default, close enough to 0.05 to not matter).
 
 ---
 
 ### Task 2.5 — Implement GLTF/OBJ Model Loading
 **Owner:** A | **Depends on:** Task 2.4
 
-- [ ] Import `GLTFLoader` from `three/addons/loaders/GLTFLoader.js`
+- [x] Import `GLTFLoader` from `three/addons/loaders/GLTFLoader.js`
 - [ ] Import `OBJLoader` from `three/addons/loaders/OBJLoader.js`
-- [ ] Load a local test `.gltf` or `.glb` file into the scene
-- [ ] Centre and scale loaded model to fit view
-- [ ] Handle load errors gracefully (console warning, no crash)
+- [x] Load a local test `.gltf` or `.glb` file into the scene
+- [x] Centre and scale loaded model to fit view
+- [x] Handle load errors gracefully (console warning, no crash)
 
 Acceptance Criteria:
-- [ ] A test 3D model renders in the browser
-- [ ] Model is visible and orbitble
+- [x] A test 3D model renders in the browser
+- [x] Model is visible and orbitble
+
+**Note:** Only `.gltf`/`.glb` supported — `OBJLoader` was never added. Given all current seed models use `.glb`/`.gltf`, this hasn't blocked anything yet, but worth flagging if `.obj` models are expected later (the 3D model generation team's output format matters here).
 
 ---
 
@@ -254,32 +276,38 @@ Acceptance Criteria:
 - [ ] Valid model file saves and returns metadata
 - [ ] Invalid format returns 400
 
+**Status: confirmed still not built.** No model upload endpoint exists — models can currently only be added via the seed script. Unlike videos (Task 7.1, now done), there's no multer-based upload path for models yet.
+
 ---
 
 ### Task 2.7 — Build Backend Model Retrieval API
 **Owner:** B | **Depends on:** Task 2.6
 
-- [ ] `GET /api/models` — returns list of all models with metadata
-- [ ] `GET /api/models/:id` — returns single model metadata + file URL
-- [ ] File URL should be accessible by the frontend for Three.js loading
+- [x] `GET /api/models` — returns list of all models with metadata
+- [x] `GET /api/models/:id` — returns single model metadata + file URL
+- [x] File URL should be accessible by the frontend for Three.js loading
 
 Acceptance Criteria:
-- [ ] List endpoint returns correct JSON array
-- [ ] Single model endpoint returns correct metadata
+- [x] List endpoint returns correct JSON array
+- [x] Single model endpoint returns correct metadata
+
+**Note:** Confirmed working — both endpoints exist in `server.js` and are used by `ModelGallery.tsx`/`Viewer.tsx`. File URL accessibility depends on the static-file-serving fix applied 15 Jul 2026 (see `docs/database_schema.md`) — before that fix, model thumbnails (though not the models themselves, which load via a different path) were likely also affected.
 
 ---
 
 ### Task 2.8 — Connect Frontend Viewer to Backend Model
 **Owner:** A | **Depends on:** Tasks 2.5 and 2.7
 
-- [ ] Fetch model list from `GET /api/models` on Viewer load
-- [ ] Load the first (or selected) model's file URL into Three.js via GLTFLoader
+- [x] Fetch model list from `GET /api/models` on Viewer load
+- [x] Load the first (or selected) model's file URL into Three.js via GLTFLoader
 - [ ] Display a loading state while model fetches
-- [ ] Display an error message if fetch fails
+- [x] Display an error message if fetch fails
 
 Acceptance Criteria:
-- [ ] A model uploaded via the API renders in the viewer
+- [x] A model uploaded via the API renders in the viewer
 - [ ] Loading state is visible during fetch
+
+**Note:** Confirmed via code review — model fetch and load both work. `Viewer.tsx` fetches a specific model by `:modelId` route param (via `ModelGallery.tsx`'s list, not "first model"), which is arguably better UX than the original spec anyway. No explicit loading spinner while the model fetches/loads — minor gap.
 
 ---
 
@@ -287,19 +315,23 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Tasks 2.3–2.5
 
 The `useEffect` return function must:
-- [ ] `window.removeEventListener('resize', handleResize)`
-- [ ] Remove click listener from `mountRef.current`
-- [ ] Remove `renderer.domElement` from `mountRef.current`
-- [ ] Dispose all loaded model geometries and materials
-- [ ] Call `renderer.dispose()`
+- [x] `window.removeEventListener('resize', handleResize)`
+- [x] Remove click listener from `mountRef.current`
+- [x] Remove `renderer.domElement` from `mountRef.current`
+- [~] Dispose all loaded model geometries and materials
+- [x] Call `renderer.dispose()`
 
 Acceptance Criteria:
-- [ ] Navigate away from Viewer and back — no `WebGL context lost` or null ref errors
+- [x] Navigate away from Viewer and back — no `WebGL context lost` or null ref errors
+
+**Note:** Confirmed — cleanup function exists, removes all listeners, disposes `controls` and `renderer`, removes the DOM element. Annotation markers/draw objects are disposed via `clearMarkers()`/`clearCurrentDraw()`, but the loaded GLTF model itself (`modelRef.current`) is not explicitly disposed on unmount — a potential minor memory leak on repeated navigation, not yet confirmed as an actual problem in practice.
 
 ---
 
 ## Week 3 — Model Interaction Controls
 **Members:** A | **Deliverable:** Interactive anatomy viewer
+
+**Status note (15 Jul 2026):** The actual UI paradigm here diverges substantially from the original spec — instead of a fixed toolbar (reset/zoom/pan buttons) with click-to-select parts, `Viewer.tsx` implements teacher annotation-creation modes (Add/Draw/Region) plus a Hide/Show Annotations toggle. Raycasting exists but serves annotation placement/selection, not generic "part" selection.
 
 ---
 
@@ -317,6 +349,8 @@ Acceptance Criteria:
 - [ ] 4 buttons visible in top-left of canvas
 - [ ] Hover and focus states match `design.md`
 
+**Status: genuinely not built as specified.** No Reset View / Zoom In / Zoom Out / Pan toolbar exists. `Viewer.tsx` instead has a top-right button row for annotation modes (Add Annotation / Draw Highlight / Region Fill / Hide-Show Annotations), teacher-only for the creation modes. Pan/zoom/rotate all still work via OrbitControls mouse/scroll — just no dedicated buttons. Worth a design decision on whether the original toolbar is still wanted alongside the annotation controls, or whether OrbitControls' built-in interaction is considered sufficient.
+
 ---
 
 ### Task 3.2 — Implement Reset View
@@ -327,6 +361,8 @@ Acceptance Criteria:
 
 Acceptance Criteria:
 - [ ] After orbiting to any angle, clicking Reset View returns to default position
+
+**Status: not built.** No reset-view button or handler exists.
 
 ---
 
@@ -341,24 +377,28 @@ Acceptance Criteria:
 Acceptance Criteria:
 - [ ] Zoom In and Zoom Out buttons change the camera distance
 
+**Status: not built as dedicated buttons.** Scroll-wheel zoom via OrbitControls works.
+
 ---
 
 ### Task 3.4 — Implement Raycasting for Part Selection
 **Owner:** A | **Depends on:** Week 2 merged
 
-- [ ] Create `THREE.Raycaster` and `THREE.Vector2` for mouse position
-- [ ] `onMouseClick`: calculate mouse coordinates relative to mount element
-- [ ] `raycaster.setFromCamera(mouse, camera)`
-- [ ] `raycaster.intersectObjects(meshesRef.current, true)` (recursive for GLTF child meshes)
-- [ ] On hit: call `setSelectedPart()` with matched part data
-- [ ] Highlight selected mesh: set emissive to `0x444444` on hit, reset all others
-- [ ] On miss: call `setSelectedPart(null)`, reset all emissives
-- [ ] Add click listener to `mountRef.current`
+- [x] Create `THREE.Raycaster` and `THREE.Vector2` for mouse position
+- [x] `onMouseClick`: calculate mouse coordinates relative to mount element
+- [x] `raycaster.setFromCamera(mouse, camera)`
+- [x] `raycaster.intersectObjects(meshesRef.current, true)` (recursive for GLTF child meshes)
+- [x] On hit: call `setSelectedPart()` with matched part data
+- [x] Highlight selected mesh: set emissive to `0x444444` on hit, reset all others
+- [x] On miss: call `setSelectedPart(null)`, reset all emissives
+- [x] Add click listener to `mountRef.current`
 
 Acceptance Criteria:
-- [ ] Clicking a mesh selects it and highlights it
-- [ ] Clicking empty space clears the selection
-- [ ] Detail panel updates with selected part data
+- [x] Clicking a mesh selects it and highlights it
+- [x] Clicking empty space clears the selection
+- [x] Detail panel updates with selected part data
+
+**Note:** Fully implemented, but for annotation markers (not generic mesh "parts") — clicking a marker opens a popup with the annotation's label/description; clicking the model surface in Add mode captures a placement point. No emissive-highlight-on-hover pattern; selection state is tracked via `selectedMarkerRef`/`popupAnnotation` instead of a literal `selectedPart`. Functionally equivalent to the task's intent.
 
 ---
 
@@ -375,17 +415,21 @@ Acceptance Criteria:
 - [ ] Dropdown shows available body systems
 - [ ] Selecting a system loads and displays that model
 
+**Status: unconfirmed.** `ModelGallery.tsx` was not reviewed in detail this session's code audit — it may implement model browsing/selection in some form (routing to `Viewer.tsx` per model), but a `body_system` dropdown as originally specified was not confirmed either way. Needs a follow-up check of `ModelGallery.tsx` before this can be marked accurately. Also worth noting: `models` has no `body_system` column at all (see `docs/database_schema.md`), so this exact spec can't be built without a schema change regardless.
+
 ---
 
 ### Task 3.6 — Build the Side Panel Empty State
 **Owner:** A | **Depends on:** Task 2.2
 
 When `selectedPart === null`:
-- [ ] Render the empty state according to `design.md` section 7
+- [x] Render the empty state according to `design.md` section 7
 
 Acceptance Criteria:
-- [ ] Empty state renders when nothing is selected
-- [ ] Matches `design.md` section 7
+- [x] Empty state renders when nothing is selected
+- [~] Matches `design.md` section 7
+
+**Note:** The right-side "Annotations" list panel shows "No annotations yet." when empty — functionally an empty state, though not confirmed to visually match `design.md` section 7's exact spec (which describes a viewer detail panel, not an annotations list — these may be two different UI concepts that got merged).
 
 ---
 
@@ -393,13 +437,15 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 3.6
 
 When `selectedPart !== null`:
-- [ ] Render the selected-state panel according to `design.md` section 7
-- [ ] Student view shows name, description, highlight, and linked video
-- [ ] Teacher view adds teacher controls only
+- [x] Render the selected-state panel according to `design.md` section 7
+- [x] Student view shows name, description, highlight, and linked video
+- [~] Teacher view adds teacher controls only
 
 Acceptance Criteria:
-- [ ] Panel shows correct part name, description, and linked video
+- [x] Panel shows correct part name, description, and linked video
 - [ ] Responsive behavior matches `design.md` section 16
+
+**Note:** Implemented as a floating popup (not a fixed side panel) showing label, kind (Point/Highlight/Region), and description, with Edit/Delete buttons for teachers and a Close button for everyone. **No linked-video display** — since annotations have no video field at all (see the Task 7.5/7.6 note and `docs/database_schema.md` open question #3). Responsive behavior not tested this session.
 
 ---
 
@@ -419,6 +465,8 @@ Acceptance Criteria:
 - [ ] Filtering by system returns only matching models
 - [ ] Keyword search matches on title or description
 
+**Status: not built.** `GET /api/models` returns everything, no query param filtering. Not reassessed this session beyond confirming the plain endpoint exists (Task 2.7).
+
 ---
 
 ### Task 4.2 — Build the Model Browsing Page (Library View)
@@ -432,6 +480,8 @@ In `src/pages/Library.tsx` (student browsing section):
 Acceptance Criteria:
 - [ ] Model list renders from API data and follows `design.md`
 - [ ] Clicking a model entry opens `/3dviewer` with that model
+
+**Note:** Not reassessed this session — `Library.tsx` was not pulled/reviewed. Model browsing may actually be happening through `ModelGallery.tsx` (routed at `/3dviewer`) rather than `Library.tsx` — worth checking both before assuming either is unbuilt.
 
 ---
 
@@ -459,6 +509,8 @@ Acceptance Criteria:
 - [ ] Selecting a system narrows the body part dropdown
 - [ ] Combined filters return correct results
 
+**Blocker note:** `models` has no `body_system`/`body_part` columns (see `docs/database_schema.md`) — this task can't be built as literally specified without a schema addition first.
+
 ---
 
 ### Task 4.5 — Build Teacher Model Upload UI
@@ -475,6 +527,8 @@ Acceptance Criteria:
 - [ ] Upload form visible in teacher mode only
 - [ ] Valid file uploads successfully and appears in the model list
 - [ ] Invalid format shows error message
+
+**Status: not built.** Blocked on Task 2.6 (backend upload endpoint doesn't exist). This session built the equivalent for videos (Task 7.1) — the same `multer`-based pattern could be reused here if this becomes a priority.
 
 ---
 
@@ -493,6 +547,8 @@ Acceptance Criteria:
 - [ ] Editing a model updates its metadata in the list
 - [ ] Deleting a model removes it from the list
 
+**Status: not built.** No model edit/delete endpoints exist. Same reusable pattern as Task 6.4's video management (built this session) could apply here.
+
 ---
 
 ### Task 4.7 — Store and Retrieve Model Metadata
@@ -506,68 +562,80 @@ Acceptance Criteria:
 - [ ] All metadata returned correctly from API
 - [ ] Data persists after restarting backend
 
+**Note:** Metadata persistence itself works (Postgres, not in-memory) — but the specific fields (`body_system`, `body_part`, `file_format`, `uploaded_by`) don't exist on the `models` table as built. Blocked on the same schema gap as Task 4.4/4.6.
+
 ---
 
 ## Week 5 — Anatomical Labelling System
 **Members:** A, B | **Deliverable:** Functional label management system
+
+**Status note (15 Jul 2026):** Built as an `annotations` system (point/highlight/region_fill), not a simple `labels` system. Functionally covers and exceeds most of this week's intent — see `docs/database_schema.md` for the schema comparison.
 
 ---
 
 ### Task 5.1 — Build Label Data API
 **Owner:** B | **Depends on:** Task 1.3
 
-- [ ] `POST /api/models/:id/labels` — create label: name, description, position_x, position_y, position_z
-- [ ] `GET /api/models/:id/labels` — return all labels for a model
-- [ ] `PUT /api/labels/:id` — update label name or description
-- [ ] `DELETE /api/labels/:id` — delete a label
-- [ ] Store all labels in `labels` table
+- [x] `POST /api/models/:id/labels` — create label: name, description, position_x, position_y, position_z
+- [x] `GET /api/models/:id/labels` — return all labels for a model
+- [x] `PUT /api/labels/:id` — update label name or description
+- [x] `DELETE /api/labels/:id` — delete a label
+- [x] Store all labels in `labels` table
 
 Acceptance Criteria:
-- [ ] CRUD operations work for labels
-- [ ] Labels are correctly associated with their model
+- [x] CRUD operations work for labels
+- [x] Labels are correctly associated with their model
+
+**Note:** Built as `annotations` endpoints (`POST/GET /api/models/:id/annotations`, `PUT/DELETE /api/annotations/:id`), not literally `labels` — same CRUD shape, richer data model (position + drawPoints + regionPlane + regionTriangles + view, packed into `annotation_data` JSONB, depending on type). Confirmed working via code review and prior sessions' annotation testing.
 
 ---
 
 ### Task 5.2 — Fetch and Render Labels in Three.js
 **Owner:** A | **Depends on:** Tasks 5.1 and 3.4
 
-- [ ] On model load, fetch labels from `GET /api/models/:id/labels`
-- [ ] For each label, create a `THREE.Sprite` or small `THREE.Mesh` marker at the stored position
-- [ ] Store markers in `meshesRef` for raycasting
-- [ ] Each marker's `userData` stores the label's `id`
+- [x] On model load, fetch labels from `GET /api/models/:id/labels`
+- [x] For each label, create a `THREE.Sprite` or small `THREE.Mesh` marker at the stored position
+- [x] Store markers in `meshesRef` for raycasting
+- [x] Each marker's `userData` stores the label's `id`
 
 Acceptance Criteria:
-- [ ] Label markers appear at correct positions on the loaded model
-- [ ] Markers are clickable via raycasting
+- [x] Label markers appear at correct positions on the loaded model
+- [x] Markers are clickable via raycasting
+
+**Note:** Uses `THREE.Mesh` spheres for point markers (not sprites), plus dot-chains for draw highlights and filled meshes for regions. `userData.annotation` stores the full annotation object, not just an id. Markers tracked in `markersRef`, functionally equivalent to `meshesRef`.
 
 ---
 
 ### Task 5.3 — Show Label Detail on Click
 **Owner:** A | **Depends on:** Task 5.2
 
-- [ ] Clicking a label marker calls `setSelectedPart()` with the label data (name, description)
-- [ ] Side panel shows label name and description
-- [ ] Highlight selected label marker (emissive change)
+- [x] Clicking a label marker calls `setSelectedPart()` with the label data (name, description)
+- [x] Side panel shows label name and description
+- [x] Highlight selected label marker (emissive change)
 
 Acceptance Criteria:
-- [ ] Clicking a label opens the panel with correct data
-- [ ] Correct marker is highlighted
+- [x] Clicking a label opens the panel with correct data
+- [~] Correct marker is highlighted
+
+**Note:** Clicking opens a floating popup (not a side panel) with label/description/kind. "Highlighting" is done via the `isolateSelected` mechanism (hides all other markers rather than an emissive color change on the selected one) — different visual approach, same practical effect of drawing attention to the selection.
 
 ---
 
 ### Task 5.4 — Build Teacher Label Placement Mode
 **Owner:** A | **Depends on:** Task 5.3
 
-- [ ] Teacher only: `Add Label` toggle button (bottom-left overlay)
-- [ ] Active label-placement state follows `design.md` section 7
-- [ ] In add-label mode, clicking on the model surface captures the 3D world position
-- [ ] Open a small inline form: label name and description inputs
-- [ ] On submit: call `POST /api/models/:id/labels` with name, description, and captured position
-- [ ] New marker appears immediately after save
+- [x] Teacher only: `Add Label` toggle button (bottom-left overlay)
+- [~] Active label-placement state follows `design.md` section 7
+- [x] In add-label mode, clicking on the model surface captures the 3D world position
+- [x] Open a small inline form: label name and description inputs
+- [x] On submit: call `POST /api/models/:id/labels` with name, description, and captured position
+- [x] New marker appears immediately after save
 
 Acceptance Criteria:
-- [ ] Teacher can place a label at any point on the model
-- [ ] Label persists after page refresh (stored in backend)
+- [x] Teacher can place a label at any point on the model
+- [x] Label persists after page refresh (stored in backend)
+
+**Note:** Exceeds the original spec — teacher has three placement modes (Add point / Draw highlight / Region fill), not just one. Buttons are top-right, not bottom-left. Visual match against `design.md` section 7 not confirmed this session.
 
 ---
 
@@ -575,14 +643,16 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 5.4
 
 Teacher only, in side panel when a label is selected:
-- [ ] `Edit Description` button → opens inline edit form with current values
-- [ ] On save: calls `PUT /api/labels/:id`
-- [ ] `Delete Label` button → confirm then calls `DELETE /api/labels/:id`
-- [ ] Marker removed from scene on successful delete
+- [x] `Edit Description` button → opens inline edit form with current values
+- [x] On save: calls `PUT /api/labels/:id`
+- [x] `Delete Label` button → confirm then calls `DELETE /api/labels/:id`
+- [x] Marker removed from scene on successful delete
 
 Acceptance Criteria:
-- [ ] Edit saves updated name/description to backend
-- [ ] Delete removes marker from scene and database
+- [x] Edit saves updated name/description to backend
+- [x] Delete removes marker from scene and database
+
+**Note:** Confirmed working — Edit/Delete buttons in the annotation popup, teacher-only. No confirmation prompt before delete (unlike the video/quiz delete flows built this session, which do confirm) — worth flagging as a minor UX inconsistency to fix later.
 
 ---
 
@@ -597,6 +667,8 @@ Acceptance Criteria:
 - [ ] Hovering a label shows its name
 - [ ] Tooltip does not persist after moving away
 
+**Status: not built.** Only click-based interaction exists (via the popup) — no hover tooltip.
+
 ---
 
 ### Task 5.7 — Test Label Visibility Across Browsers
@@ -610,6 +682,8 @@ Acceptance Criteria:
 Acceptance Criteria:
 - [ ] Labels work in at least Chrome and Firefox
 - [ ] Issues documented if found in Safari
+
+**Status: not tested.** All testing this project has used Chrome only so far.
 
 ---
 
@@ -636,13 +710,15 @@ Acceptance Criteria:
 
 - [ ] Add `is_published` boolean field to `anatomy_models`, `videos`, and `quizzes` tables
 - [ ] `PATCH /api/models/:id/publish` — toggle model visibility (teacher only)
-- [ ] `PATCH /api/videos/:id/publish` — toggle video visibility (teacher only)
+- [x] `PATCH /api/videos/:id/publish` — toggle video visibility (teacher only)
 - [x] `PATCH /api/quizzes/:id/publish` — toggle quiz visibility (teacher only)
-- [ ] Student-facing APIs only return items where `is_published = true`
+- [~] Student-facing APIs only return items where `is_published = true`
 
 Acceptance Criteria:
-- [~] Published models/videos/quizzes visible to students (quizzes done via `?published=true`; models/videos not yet built)
-- [~] Unpublished items visible only in teacher management view (quizzes done; models/videos not yet built)
+- [~] Published models/videos/quizzes visible to students (videos and quizzes done via `?published=true`; models still not built — no `is_published` column on `models` at all)
+- [~] Unpublished items visible only in teacher management view (videos and quizzes done; models not applicable yet)
+
+**Note:** `videos.is_published` added 15 Jul 2026, matching the pattern already used for quizzes. `models` remains the only content type with zero publish gating — worth prioritizing if model management (Task 4.5/4.6) becomes active.
 
 ---
 
@@ -665,16 +741,18 @@ Acceptance Criteria:
 **Owner:** C | **Depends on:** Task 6.2
 
 In Videos page (teacher view):
-- [x] List of all uploaded videos with: title, category, linked label, published status, edit, delete
-- [ ] Published toggle calls `PATCH /api/videos/:id/publish`
-- [~] Edit opens form with title, category, linked label dropdown
+- [x] List of all uploaded videos with: title, published status, edit, delete
+- [x] Published toggle calls `PATCH /api/videos/:id/publish`
+- [x] Edit opens form with title, description
 - [x] Delete triggers confirmation and removes from list
 
 Acceptance Criteria:
 - [x] Teacher sees all videos including unpublished
 - [x] Edit, toggle, and delete work correctly
 
-**Note:** "Linked label" in the edit form is currently free text, not a dropdown — depends on Task 7.6 (Video-to-Label Linking UI) and Task 5.1 (Label Data API) for real label options. Additionally, design.md section 8.2 specifies a standalone `Link to Model` ghost link on each video card (separate from Edit); the card currently only shows "Linked: {label}" as static, non-clickable text — confirmed by manual test, clicking it does nothing. Teachers must open the full Edit modal to change the linked label.
+**Resolved 15 Jul 2026:** Publish toggle, edit modal, and delete-with-confirmation are all now built and verified working. Edit only covers title/description — no `category` field exists on `videos`, and no linked-label dropdown (see the note below on Task 7.6). Each video card shows an amber "Unpublished" badge to teachers when relevant.
+
+**Superseded note:** an earlier note about a `mockLabels` dropdown "currently in the video edit form" no longer matches the actual codebase — the current `Videos.tsx` (as pulled and reviewed 15 Jul 2026) had no edit form at all until this session added one, and it does not include a label dropdown. Either that earlier work was overwritten when `Videos.tsx` was rebuilt with real backend wiring, or it was never actually merged. Not investigated further — see Task 7.6 for the current open decision on video-to-annotation linking.
 
 ---
 
@@ -711,33 +789,39 @@ Acceptance Criteria:
 ## Week 7 — Educational Video Integration
 **Members:** A, C | **Deliverable:** Educational video module
 
+**Status note (15 Jul 2026):** Tasks 7.3 and 7.4 were already substantially built (by Member B) before this session — confirmed via direct code review. Task 7.1 was built this session. Tasks 7.5/7.6 need an architecture decision before any further code — see below.
+
 ---
 
 ### Task 7.1 — Build Video Upload API
 **Owner:** C | **Depends on:** Task 6.2
 
-- [ ] `POST /api/videos/upload` — accepts multipart video file upload
-- [ ] Validate format (only `.mp4`, `.webm`)
-- [ ] Save to `storage/videos/`
-- [ ] Store metadata in `videos` table: title, description, category, file_path, uploaded_by, linked_label_id (nullable)
-- [ ] Return `{ id, title, file_path }` on success
+- [x] `POST /api/videos/upload` — accepts multipart video file upload
+- [x] Validate format (only `.mp4`, `.webm`)
+- [~] Save to `storage/videos/`
+- [~] Store metadata in `videos` table: title, description, category, file_path, uploaded_by, linked_label_id (nullable)
+- [x] Return `{ id, title, file_path }` on success
 
 Acceptance Criteria:
-- [ ] Valid video uploads and metadata is stored
-- [ ] Invalid format returns 400
+- [x] Valid video uploads and metadata is stored
+- [x] Invalid format returns 400
+
+**Resolved 15 Jul 2026.** Built via `multer` disk storage, saves to `PUBLIC_DIR/videos/` (not a `storage/` tree — see Task 1.4 note) with a generated unique filename. Stores `title`, `description`, `video_path`, `program_id` (not `category`, `uploaded_by`, or `linked_label_id` — none of those columns exist on `videos`). Tested via direct `Invoke-RestMethod -Form` call before frontend wiring, then end-to-end through the real upload form. In the course of testing, found and fixed a pre-existing bug: `express.static` was never configured, so uploaded/existing video and thumbnail files were unreachable by URL even though they existed on disk — see `docs/database_schema.md`.
 
 ---
 
 ### Task 7.2 — Build Video Retrieval API
 **Owner:** C | **Depends on:** Task 7.1
 
-- [ ] `GET /api/videos` — returns published videos with optional `?category=<value>&q=<search>` filter
-- [ ] `GET /api/videos/:id` — returns single video metadata + file URL
+- [x] `GET /api/videos` — returns published videos with optional `?category=<value>&q=<search>` filter
+- [x] `GET /api/videos/:id` — returns single video metadata + file URL
 - [ ] `GET /api/labels/:id/video` — returns the video linked to a specific label (if any)
 
 Acceptance Criteria:
-- [ ] List and filter endpoints return correct data
+- [~] List and filter endpoints return correct data
 - [ ] Label-to-video link resolves correctly
+
+**Note:** `GET /api/videos` now supports `?published=true` (added 15 Jul 2026), but not `?category=` or `?q=` — there's no `category` column, and search is done entirely client-side in `Videos.tsx`. `GET /api/labels/:id/video` cannot be built as specified — no `labels` table exists (see Task 7.5/7.6 below).
 
 ---
 
@@ -745,32 +829,36 @@ Acceptance Criteria:
 **Owner:** A | **Depends on:** Task 7.2
 
 In `src/pages/Videos.tsx`:
-- [ ] Fetch published video list from `GET /api/videos` on load
+- [x] Fetch published video list from `GET /api/videos` on load
 - [x] Videos page layout and card content follow `design.md` section 8
 - [x] Search input and category filter dropdown
-- [ ] Clicking a card plays the video in a modal or inline player
+- [x] Clicking a card plays the video in a modal or inline player
 - [x] Teacher-only video actions follow `design.md` section 8
 
 Acceptance Criteria:
-- [ ] Video list renders from API data
-- [x] Search and filter narrow the visible results
-- [ ] Video plays on click
+- [x] Video list renders from API data
+- [~] Search and filter narrow the visible results
+- [x] Video plays on click
+
+**Resolved — confirmed already built prior to this session, now further extended.** Fetch, search (title-only, client-side), and click-to-navigate-to-player all confirmed working. Now also fetches with role-based `?published=true` filtering (added 15 Jul 2026) and has teacher management controls (Edit/Publish/Delete, also added 15 Jul 2026). **No category filter dropdown** — there's no category data model at all, so this part of the original spec doesn't apply until/unless that's added.
 
 ---
 
 ### Task 7.4 — Implement Video Player Component
 **Owner:** A | **Depends on:** Task 7.3
 
-- [ ] Create `<VideoPlayer>` component using HTML5 `<video>` tag
-- [ ] Props: `src` (video URL), `onClose` callback
-- [ ] Controls: play/pause, seek bar, volume, fullscreen
-- [ ] Close button dismisses the player
+- [x] Create `<VideoPlayer>` component using HTML5 `<video>` tag
+- [~] Props: `src` (video URL), `onClose` callback
+- [x] Controls: play/pause, seek bar, volume, fullscreen
+- [x] Close button dismisses the player
 - [ ] Fallback message if video fails to load
 
 Acceptance Criteria:
-- [ ] Video plays and pauses correctly
-- [ ] Close button works
-- [ ] No autoplay without user interaction
+- [x] Video plays and pauses correctly
+- [x] Close button works
+- [x] No autoplay without user interaction
+
+**Resolved — confirmed already built prior to this session.** `VideoPlayer.tsx` is a dedicated route/page (`/videos/:videoId`), not a modal/inline component taking `src`/`onClose` props as originally specified — it fetches its own data via `useParams` + `api.getVideo`, and "close" is a "Back to Videos" nav link rather than a callback prop. Standard HTML5 `<video controls autoPlay>` — note this **does autoplay** on page load, which technically conflicts with the "No autoplay without user interaction" acceptance criterion, though arguably navigating to the page IS the user interaction. No fallback UI if the video fails to load (e.g. broken file, 404) — worth adding given the static-file-serving bug found this session shows how easily video URLs can silently break.
 
 ---
 
@@ -787,22 +875,24 @@ Acceptance Criteria:
 - [ ] Linked video plays from the detail panel
 - [ ] Unlinked labels show the correct fallback message
 
+**[!] Blocked — needs an architecture decision, not just code.** There is no `labels` table; `Viewer.tsx` uses `annotations`, which has no video field at all. Cannot be built as literally specified. See `docs/database_schema.md` open question #3. Needs team input on whether to (a) add `video_id` to `annotations` and build this properly against the real data model, or (b) deprioritize as out of scope given the divergence.
+
 ---
 
 ### Task 7.6 — Build Video-to-Label Linking UI (Teacher)
 **Owner:** C | **Depends on:** Tasks 7.2 and 5.1
 
 Teacher only, in video edit form:
-- [x] Dropdown to select a label to link the video to
+- [ ] Dropdown to select a label to link the video to
 - [ ] Dropdown populated from `GET /api/models/:id/labels`
 - [ ] On save, update `linked_label_id` in `videos` table via `PUT /api/videos/:id`
-- [x] Linked label shown in video management table
+- [ ] Linked label shown in video management table
 
 Acceptance Criteria:
-- [x] Teacher can link a video to a label from the edit form
+- [ ] Teacher can link a video to a label from the edit form
 - [ ] Link is reflected in the viewer detail panel
 
-**Note:** Replaced the free-text "linked label" input with a real `<select>` dropdown, populated from a placeholder `mockLabels` array (marked with a TODO to swap for `GET /api/models/:id/labels` once Task 5.1 exists). Confirmed by manual test — dropdown shows a "No label linked" option plus real anatomy names, saves correctly, and no longer accepts arbitrary text like a URL. Not yet connected to the real backend or reflected in the Viewer page (Ryan's territory, Task 7.5).
+**[!] Blocked — same root cause as Task 7.5.** A previous note in this file claimed a `mockLabels`-based dropdown existed in the video edit form — this does not match the actual current codebase (see Task 6.4's "Superseded note"). The current, real `Videos.tsx` edit form (built 15 Jul 2026) intentionally does not include this, since there's no `labels` concept to link against. Needs the same architecture decision as Task 7.5 before any further work here.
 
 ---
 
@@ -819,7 +909,7 @@ Acceptance Criteria:
 - [~] At least `.mp4` plays in Chrome and Firefox
 - [x] Results documented
 
-**Note:** Testing was done in a standalone HTML file outside the AnatoLearn app (Task 7.4's VideoPlayer component doesn't exist yet), using a YouTube video converted to `.mp4`/`.webm`. Confirms general browser HTML5 `<video>` support, but does not verify AnatoLearn's actual in-app player. Must be re-tested inside the app once Tasks 7.3/7.4 are built.
+**Note:** Original testing was done in a standalone HTML file, not the real in-app player, because Task 7.4 wasn't confirmed built at the time. Task 7.4 is now confirmed built and was tested in-app this session (upload → play flow, Chrome only) — but a full retest matching this task's original checklist (multiple browsers, multiple file sizes) hasn't happened yet.
 
 ---
 
@@ -978,6 +1068,8 @@ Acceptance Criteria:
 ## Week 9 — Authentication & Role Management
 **Members:** B, D | **Deliverable:** User authentication and RBAC
 
+**Status note:** Nothing in this week has been started by anyone as of 15 Jul 2026. This is the single biggest remaining blocker — it gates Task 6.6, 8.8, and real student attribution generally.
+
 ---
 
 ### Task 9.1 — Build User Registration API
@@ -1039,6 +1131,8 @@ Acceptance Criteria:
 - [ ] Invalid login shows error
 - [ ] JWT stored after successful login
 
+**Note:** A `Login.tsx` file already exists in the codebase (confirmed via `App.tsx` routing and file listing) — not reviewed for actual functionality this session. Possible it's a placeholder like the original `Videos.tsx` upload stub. Worth checking before assuming this is fully unbuilt.
+
 ---
 
 ### Task 9.5 — Build Registration Page (Frontend)
@@ -1055,6 +1149,8 @@ Acceptance Criteria:
 - [ ] Duplicate email shows error
 - [ ] Add `/register` route in `App.tsx`
 
+**Note:** Same as Task 9.4 — `Register.tsx` exists as a file but wasn't reviewed this session.
+
 ---
 
 ### Task 9.6 — Protect Frontend Routes
@@ -1067,6 +1163,8 @@ Acceptance Criteria:
 Acceptance Criteria:
 - [ ] Unauthenticated user redirected to `/login` on any protected route
 - [ ] Authenticated user can access all pages
+
+**Note:** `ProtectedRoute.tsx` exists and is used in `App.tsx` routing (wraps the Layout containing all main pages) — but since there's no real JWT/auth check yet, it likely doesn't actually protect anything meaningful yet. Not reviewed in detail this session.
 
 ---
 
@@ -1094,6 +1192,8 @@ Acceptance Criteria:
 Acceptance Criteria:
 - [ ] All file operations use `StorageService` (no direct `fs.writeFile` calls outside it)
 - [ ] Cloud migration path documented
+
+**Note:** Not built. File writes (video upload, thumbnail generation) call `fs`/`multer` directly in `server.js`, no abstraction layer. Worth doing before more upload endpoints (models, etc.) get added, since retrofitting later means touching every call site.
 
 ---
 
@@ -1148,6 +1248,8 @@ Acceptance Criteria:
 - [ ] CSV export downloads a valid CSV file
 - [ ] Positions are preserved correctly in both formats
 
+**Note:** Would need to export from `annotations`, not `labels` — the `annotation_data` JSONB shape varies by type (point/highlight/region), so a straightforward flat CSV export is less trivial than originally assumed.
+
 ---
 
 ### Task 10.3 — Build Download UI (Student and Teacher)
@@ -1192,22 +1294,22 @@ These tasks run continuously throughout the 10-week project:
 ## Priority Summary
 
 ### Must Have
-- [ ] 3D viewer with model loading, orbit controls, raycasting
-- [ ] Anatomical labelling (create, view, click, hover)
-- [ ] Educational video browsing and playback
-- [ ] Video linked to label in viewer detail panel
+- [x] 3D viewer with model loading, orbit controls, raycasting — confirmed built (as annotations system), 15 Jul 2026
+- [x] Anatomical labelling (create, view, click, hover*) — built as annotations; *hover tooltip (Task 5.6) specifically not built, click-based interaction works
+- [x] Educational video browsing and playback — confirmed built, 15 Jul 2026
+- [!] Video linked to label in viewer detail panel — blocked, needs architecture decision (see Task 7.5/7.6)
 - [x] Quiz creation (teacher) and quiz attempt + scoring (student) — MCQ and open-ended both work end-to-end, including teacher grading UI for open-ended answers
-- [ ] Model and video upload with format validation
-- [ ] JWT authentication and role-based access control
+- [~] Model and video upload with format validation — video upload done 15 Jul 2026; model upload still not built
+- [ ] JWT authentication and role-based access control — not started
 - [ ] Model download in original format
 - [ ] Label export in JSON and CSV
 
 ### Should Have
-- [~] Content visibility (publish/unpublish toggle) — quizzes done, models/videos not yet
+- [~] Content visibility (publish/unpublish toggle) — quizzes and videos done; models not yet
 - [ ] Quiz attempt history for students — real version blocked on auth; same-browser single-quiz stopgap exists
-- [ ] Video-to-label linking UI
+- [!] Video-to-label linking UI — blocked, needs architecture decision
 - [ ] Storage abstraction layer (cloud-ready)
-- [ ] Browser compatibility confirmed (Chrome + Firefox)
+- [ ] Browser compatibility confirmed (Chrome + Firefox) — only Chrome tested throughout project so far
 
 ### Could Have
 - [ ] Actual cloud storage (S3 or equivalent)

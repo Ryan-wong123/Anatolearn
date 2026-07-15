@@ -4,6 +4,8 @@ Base URL (local dev): `http://localhost:5000/api`
 
 No authentication exists yet (Task 9 not built) — all endpoints below are currently open, unauthenticated.
 
+**Static files:** as of 15 Jul 2026, `express.static` serves `PUBLIC_DIR` (`/public` in the container) directly — any `video_path`, `thumbnail_path`, or model `file_path` stored in the database is reachable at that exact URL path (e.g. `video_path: "/videos/s.mp4"` → `http://localhost:5000/videos/s.mp4`). This was previously broken (files existed on disk but had no route serving them) — see `docs/database_schema.md` for the bug writeup.
+
 ---
 
 ## Health
@@ -29,11 +31,15 @@ Returns all models.
 Returns a single model. 404 if not found.
 
 ### `PATCH /api/models/:id/thumbnail`
-Body: `{ thumbnailDataUrl: string }` (base64 PNG data URL). Saves a thumbnail image to disk and updates `thumbnail_path`. 400 if missing data, 404 if model not found.
+Body: `{ thumbnailDataUrl: string }` (base64 PNG data URL). Saves a thumbnail image to disk and updates `thumbnail_path`. 400 if missing data, 404 if model not found. Called automatically by `Viewer.tsx` the first time a model is opened and has no existing thumbnail.
+
+**Note:** models have no `is_published` column and no upload/delete/update endpoints — unlike videos and quizzes, there is currently no way to add a new model or manage visibility through the API at all (Tasks 2.6, 4.5, 4.6, 6.2/6.3 model-publish portions remain unbuilt).
 
 ---
 
 ## Annotations
+
+Powers the full `Viewer.tsx` 3D interaction system — point markers, freehand draw highlights, and filled surface regions. Confirmed working end-to-end as of 15 Jul 2026.
 
 ### `GET /api/models/:id/annotations`
 Returns all annotations for a model.
@@ -52,10 +58,22 @@ Deletes an annotation. 404 if not found.
 ## Videos
 
 ### `GET /api/videos`
-Returns all videos.
+Returns videos. Optional query param `?published=true` filters to `is_published = true` only (added 15 Jul 2026, matches the same pattern as quizzes). No server-side `?category=` or `?q=` filtering exists — search in `Videos.tsx` is done entirely client-side against the already-loaded list, and there's no `category` column on `videos` at all.
 
 ### `GET /api/videos/:id`
 Returns a single video. 404 if not found.
+
+### `POST /api/videos/upload` (added 15 Jul 2026)
+Multipart form upload (`multipart/form-data`, not JSON). Fields: `video` (file, required — `.mp4`/`.webm` only, 200MB limit), `title` (required), `description` (optional), `program_id` (optional). Saves the file to `PUBLIC_DIR/videos/` with a generated unique filename (`video-<timestamp>.<ext>`), creates a `videos` row with `is_published: false`. Returns the created video record. 400 if no file, wrong format, or missing title.
+
+### `DELETE /api/videos/:id` (added 15 Jul 2026)
+Deletes a video's database row. 404 if not found. **Does not delete the underlying file from disk** — only removes the database record. Worth flagging as a known gap if disk space becomes a concern.
+
+### `PATCH /api/videos/:id/publish` (added 15 Jul 2026)
+Body: `{ is_published: boolean }`. Toggles publish state, same pattern as the quiz equivalent. 404 if not found.
+
+### `PUT /api/videos/:id` (added 15 Jul 2026)
+Body: `{ title, description? }`. Updates a video's metadata. Does not support changing the video file itself or `program_id`. 400 if `title` missing, 404 if not found.
 
 ---
 
@@ -139,9 +157,8 @@ Returns all resources (learning materials / links).
 - `PUT /api/quizzes/:id` — full quiz metadata update (title/description/category); only `type` and `is_published` can currently be updated after creation, via their own dedicated `PATCH` endpoints
 - `GET /api/quizzes/:id` — combined quiz + questions in one call (currently two separate requests)
 - `GET /api/students/me/attempts` — real quiz history, blocked on auth (Task 9); a same-browser sessionStorage stopgap exists instead (see note above), which is not a substitute for this
-- All model/video upload endpoints (Task 2.6, 7.1)
+- All model upload/edit/delete/publish endpoints (Task 2.6, 4.6, 6.2/6.3 model portions) — models have no management API at all right now
 - All auth endpoints (Task 9.1, 9.2)
-- Publish toggles for models and videos (`PATCH /api/models/:id/publish`, `PATCH /api/videos/:id/publish`) — only the quiz one exists so far
-- `PUT /api/models/:id`, `DELETE /api/models/:id` (Task 4.6)
-- All label/annotation position-editing beyond current CRUD (Task 5.4/5.5 wiring on the frontend side)
+- `GET /api/labels/:id/video` — cannot be built as originally specified; there is no `labels` table (see `docs/database_schema.md`, open question #3, for the architecture decision needed)
+- All label/annotation position-editing beyond current CRUD (Task 5.4/5.5 wiring is actually done on the frontend side — see `tasks.md` — this line is now stale, kept for reference until confirmed)
 - All download/export endpoints (Task 10.1, 10.2)

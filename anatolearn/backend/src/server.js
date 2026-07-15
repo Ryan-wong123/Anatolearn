@@ -3,11 +3,44 @@ const cors = require("cors");
 const fs = require("fs/promises");
 const path = require("path");
 const pool = require("./db");
+const multer = require("multer");
 
 const app = express();
 
+const videoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const videosDir = path.join(
+      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      "videos"
+    );
+    fs.mkdir(videosDir, { recursive: true })
+      .then(() => cb(null, videosDir))
+      .catch((err) => cb(err, videosDir));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const safeName = `video-${Date.now()}${ext}`;
+    cb(null, safeName);
+  },
+});
+
+const uploadVideo = multer({
+  storage: videoStorage,
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+  fileFilter: (req, file, cb) => {
+    const allowed = [".mp4", ".webm"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .mp4 and .webm files are allowed"));
+    }
+  },
+});
+
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+app.use(express.static(process.env.PUBLIC_DIR || path.join(__dirname, "../../public")));
 
 app.get("/api/health", async (req, res) => {
   try {
@@ -150,6 +183,15 @@ app.put("/api/annotations/:id", async (req, res) => {
 });
 
 app.get("/api/videos", async (req, res) => {
+  const { published } = req.query;
+
+  if (published === "true") {
+    const result = await pool.query(
+      "SELECT * FROM videos WHERE is_published = true ORDER BY id"
+    );
+    return res.json(result.rows);
+  }
+
   const result = await pool.query("SELECT * FROM videos ORDER BY id");
   res.json(result.rows);
 });
@@ -158,6 +200,81 @@ app.get("/api/videos/:id", async (req, res) => {
   const result = await pool.query("SELECT * FROM videos WHERE id = $1", [
     req.params.id,
   ]);
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Video not found" });
+  }
+
+  res.json(result.rows[0]);
+});
+
+app.post("/api/videos/upload", uploadVideo.single("video"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No video file uploaded" });
+    }
+
+    const { title, description, program_id } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ message: "title is required" });
+    }
+
+    const videoPath = `/videos/${req.file.filename}`;
+
+    const result = await pool.query(
+      `INSERT INTO videos (title, description, video_path, program_id, is_published)
+       VALUES ($1, $2, $3, $4, false)
+       RETURNING *`,
+      [title, description || null, videoPath, program_id || null]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to upload video:", err);
+    res.status(500).json({ message: err.message || "Failed to upload video" });
+  }
+});
+
+app.delete("/api/videos/:id", async (req, res) => {
+  const result = await pool.query(
+    "DELETE FROM videos WHERE id = $1 RETURNING *",
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Video not found" });
+  }
+
+  res.json({ message: "Video deleted" });
+});
+
+app.patch("/api/videos/:id/publish", async (req, res) => {
+  const { is_published } = req.body;
+
+  const result = await pool.query(
+    `UPDATE videos SET is_published = $1 WHERE id = $2 RETURNING *`,
+    [is_published, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Video not found" });
+  }
+
+  res.json(result.rows[0]);
+});
+
+app.put("/api/videos/:id", async (req, res) => {
+  const { title, description } = req.body;
+
+  if (!title) {
+    return res.status(400).json({ message: "title is required" });
+  }
+
+  const result = await pool.query(
+    `UPDATE videos SET title = $1, description = $2 WHERE id = $3 RETURNING *`,
+    [title, description || null, req.params.id]
+  );
 
   if (result.rows.length === 0) {
     return res.status(404).json({ message: "Video not found" });
