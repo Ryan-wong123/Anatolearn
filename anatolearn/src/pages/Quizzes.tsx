@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, Clock, BookOpen } from 'lucide-react';
+import { Clock, BookOpen } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../api/api';
 
@@ -110,6 +110,12 @@ export default function Quizzes() {
   const [gradingError, setGradingError] = useState<string | null>(null);
   const [gradingAnswerId, setGradingAnswerId] = useState<number | null>(null);
   const [openEndedResults, setOpenEndedResults] = useState<any[]>([]);
+
+  const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
+  const [editQuizTitle, setEditQuizTitle] = useState('');
+  const [editQuizDescription, setEditQuizDescription] = useState('');
+  const [editQuizCategory, setEditQuizCategory] = useState('');
+  const [editQuizError, setEditQuizError] = useState<string | null>(null);
 
   useEffect(() => {
     api.getQuizzes(role === 'student')
@@ -441,6 +447,44 @@ export default function Quizzes() {
     setGradingError(null);
   };
 
+  const openEditQuiz = (quiz: Quiz) => {
+    setEditingQuiz(quiz);
+    setEditQuizTitle(quiz.title);
+    setEditQuizDescription(quiz.description || '');
+    setEditQuizCategory(quiz.category || '');
+    setEditQuizError(null);
+  };
+
+  const closeEditQuiz = () => {
+    setEditingQuiz(null);
+    setEditQuizTitle('');
+    setEditQuizDescription('');
+    setEditQuizCategory('');
+    setEditQuizError(null);
+  };
+
+  const handleSaveQuizEdit = async () => {
+    if (!editingQuiz) return;
+
+    if (!editQuizTitle.trim()) {
+      setEditQuizError('Title is required.');
+      return;
+    }
+
+    try {
+      const updated = await api.updateQuiz(editingQuiz.id, {
+        title: editQuizTitle,
+        description: editQuizDescription || undefined,
+        category: editQuizCategory || undefined,
+      });
+      setQuizzes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+      closeEditQuiz();
+    } catch (err) {
+      console.error('Failed to update quiz:', err);
+      setEditQuizError('Failed to save changes. Please try again.');
+    }
+  };
+
   const handleSelectAttempt = async (attemptId: number) => {
     setSelectedAttemptId(attemptId);
     setGradingError(null);
@@ -553,7 +597,10 @@ export default function Quizzes() {
 
               {role === 'teacher' && (
                 <div className="flex items-center gap-3">
-                  <button className="text-sm text-slate-500 hover:text-blue-600 transition-colors">
+                  <button
+                    onClick={() => openEditQuiz(quiz)}
+                    className="text-sm text-slate-500 hover:text-blue-600 transition-colors"
+                  >
                     Edit
                   </button>
                   <button
@@ -1183,6 +1230,74 @@ export default function Quizzes() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {editingQuiz && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-md p-6">
+            <h2 className="text-lg font-semibold text-slate-900 font-display mb-4">
+              Edit Quiz
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={editQuizTitle}
+                  onChange={(e) => setEditQuizTitle(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Description
+                </label>
+                <textarea
+                  value={editQuizDescription}
+                  onChange={(e) => setEditQuizDescription(e.target.value)}
+                  rows={3}
+                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={editQuizCategory}
+                  onChange={(e) => setEditQuizCategory(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            {editQuizError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 mt-4">
+                {editQuizError}
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={closeEditQuiz}
+                className="text-sm text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveQuizEdit}
+                className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
       )}

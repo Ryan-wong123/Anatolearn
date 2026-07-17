@@ -41,6 +41,7 @@ CREATE TABLE models (
 
     file_path TEXT NOT NULL,
     thumbnail_path TEXT,
+    is_published BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -33,11 +33,13 @@ Task status updates are required:
 - If a task cannot be completed because of a missing decision, dependency, asset, credential, or technical blocker, update its checkbox to `[!]` and add a short blocker note under that task
 - If a task is split into smaller follow-up work, leave the parent task `[~]` until all required follow-up work is complete
 
-**IMPORTANT — checklist accuracy notice (added 15 Jul 2026):** Weeks 2/3/5 (3D viewer/annotations) and Tasks 7.3/7.4 (video browsing/playback) were significantly understated in this file prior to 15 Jul 2026 — the actual code (built by Member B) was substantially further along than the checkboxes showed, because progress was never written back into this file. Before assuming any task below is unbuilt, pull and check the actual current source file rather than trusting a stale checkbox — see `docs/testing_log.md`, "Codebase Audit" entry, for the full writeup of this discovery.
+**IMPORTANT — checklist accuracy notice (added 15 Jul 2026):** Weeks 2/3/5 (3D viewer/annotations) and Tasks 7.3/7.4 (video browsing/playback) were significantly understated in this file prior to 15 Jul 2026 — the actual code was substantially further along than the checkboxes showed, because progress was never written back into this file. Before assuming any task below is unbuilt, pull and check the actual current source file rather than trusting a stale checkbox — see `docs/testing_log.md`, "Codebase Audit" entry, for the full writeup of this discovery.
+
+**Ownership note (15 Jul 2026):** Individual task ownership labels (previously A/B/C/D) have been removed, since the original four-person split no longer reflects reality. The web portal is now handled solo, with one confirmed exception: the 3D Viewer page itself is owned by Tim. Which specific tasks below fall under "the 3D Viewer page" versus general web portal work has not been precisely confirmed — don't assume a task is Tim's just because its code happens to live in `Viewer.tsx`; check before picking it up if in doubt.
 
 ---
 
-## Team Roles
+## Team Roles (historical — kept for context only, no longer reflects actual task assignment)
 
 | Member | Primary Responsibility |
 |---|---|
@@ -47,7 +49,7 @@ Task status updates are required:
 | **D** | Download/export support, metadata export, storage architecture, compatibility testing |
 | **All** | 3D model generation software sourcing, integration testing, bug fixing, documentation, report writing, presentation |
 
-**Note (15 Jul 2026):** Two teammates originally slated for Owner A work alongside 3D model generation are fully committed to 3D model generation for the remainder of the project and are not returning to Owner A's web portal tasks. Member C and Member B are covering the entire web portal — effectively all of A + B + C + D — between the two of them.
+**Note (15 Jul 2026):** Two teammates originally slated for frontend work alongside 3D model generation are fully committed to 3D model generation for the remainder of the project and are not returning to web portal tasks. The web portal is now handled solo except for the 3D Viewer page, which Tim owns.
 
 ---
 
@@ -66,12 +68,12 @@ Task status updates are required:
 ---
 
 ## Week 1 — Project Setup & Architecture
-**Members:** All | **Deliverable:** Project architecture, database design, initial UI design
+**Deliverable:** Project architecture, database design, initial UI design
 
 ---
 
 ### Task 1.1 — Scaffold Frontend Project
-**Owner:** A | **Depends on:** none
+**Depends on:** none
 
 - [x] Initialise React + TypeScript project with Vite: `npm create vite@latest anatolearn -- --template react-ts`
 - [x] Install runtime deps: `react-router-dom`, `three`, `lucide-react`
@@ -92,7 +94,7 @@ Acceptance Criteria:
 ---
 
 ### Task 1.2 — Design Database Schema
-**Owner:** B | **Depends on:** none
+**Depends on:** none
 
 Design and document the initial database schema covering all entities:
 - [ ] `users` table: id, name, email, password hash, role (student/teacher), program, created_at
@@ -108,12 +110,12 @@ Design and document the initial database schema covering all entities:
 Acceptance Criteria:
 - [ ] All entities and relationships documented
 
-**Note:** The `labels` table was never built as designed — Member B built an `annotations` table instead, covering point/highlight/region-fill annotations. This is a superset of what `labels` intended but structured differently. See `docs/database_schema.md` for the full comparison.
+**Note:** The `labels` table was never built as designed — an `annotations` table was built instead, covering point/highlight/region-fill annotations. This is a superset of what `labels` intended but structured differently. See `docs/database_schema.md` for the full comparison.
 
 ---
 
 ### Task 1.3 — Set Up Backend Project Structure
-**Owner:** B | **Depends on:** none
+**Depends on:** none
 
 - [ ] Initialise backend project (choose framework: Express/Node or FastAPI/Python)
 - [ ] Create folder structure: `routes/`, `controllers/`, `models/`, `middleware/`, `config/`
@@ -132,7 +134,7 @@ Acceptance Criteria:
 ---
 
 ### Task 1.4 — Design Local Storage Structure
-**Owner:** D | **Depends on:** none
+**Depends on:** none
 
 - [ ] Define local folder structure for uploaded files: `storage/models/`, `storage/videos/`, `storage/exports/`
 - [ ] Document supported upload formats per type:
@@ -146,12 +148,12 @@ Acceptance Criteria:
 Acceptance Criteria:
 - [ ] Future cloud path is noted (does not need to be implemented yet)
 
-**Note:** Uploaded files (videos, model thumbnails) are stored under `PUBLIC_DIR` (`/public` in the container: `/public/videos/`, `/public/thumbnails/`), not a `storage/` tree as originally proposed — served directly via `express.static`, not through a dedicated download endpoint. `docs/storage_structure.md` itself was never created; this note stands in for it until Owner D writes it properly.
+**Note:** Uploaded files (videos, models, model thumbnails) are stored under `PUBLIC_DIR` (`/public` in the container: `/public/videos/`, `/public/models/anatomy/`, `/public/thumbnails/`), not a `storage/` tree as originally proposed — served directly via `express.static`, not through a dedicated download endpoint. `docs/storage_structure.md` itself was never created; this note stands in for it until it's written properly.
 
 ---
 
 ### Task 1.5 — Create UI Wireframes
-**Owner:** A | **Depends on:** nothing
+**Depends on:** nothing
 
 Create low-fidelity wireframes for all screens:
 - [ ] Dashboard (student view)
@@ -170,14 +172,14 @@ Acceptance Criteria:
 ---
 
 ## Week 2 — 3D Viewer Integration
-**Members:** A, B | **Deliverable:** Initial working 3D model viewer
+**Deliverable:** Initial working 3D model viewer
 
-**Status note (15 Jul 2026):** This week's checkboxes were stale. `Viewer.tsx` and `ModelGallery.tsx` (built by Member B) implement most of this, using annotations instead of a simple label/part model. Confirmed by direct code review this session.
+**Status note (15 Jul 2026):** This week's checkboxes were stale. `Viewer.tsx` and `ModelGallery.tsx` implement most of this, using annotations instead of a simple label/part model. Confirmed by direct code review this session.
 
 ---
 
 ### Task 2.1 — Research and Select 3D Rendering Framework
-**Owner:** A | **Depends on:** nothing
+**Depends on:** nothing
 
 - [x] Evaluate Three.js for browser-based 3D rendering
 - [x] Confirm Three.js supports `.gltf`, `.glb`, `.obj` loading
@@ -192,7 +194,7 @@ Acceptance Criteria:
 ---
 
 ### Task 2.2 — Create the Viewer Page Shell
-**Owner:** A | **Depends on:** Task 1.2
+**Depends on:** Task 1.2
 
 In `src/pages/Viewer.tsx`:
 - [x] Create the Viewer shell according to `design.md` section 7
@@ -209,7 +211,7 @@ Acceptance Criteria:
 ---
 
 ### Task 2.3 — Implement Three.js Scene Setup
-**Owner:** A | **Depends on:** Task 2.2
+**Depends on:** Task 2.2
 
 Inside `useEffect` in `Viewer.tsx`:
 - [x] Create `THREE.Scene`; visual background follows `design.md`
@@ -230,7 +232,7 @@ Acceptance Criteria:
 ---
 
 ### Task 2.4 — Add OrbitControls
-**Owner:** A | **Depends on:** Task 2.3
+**Depends on:** Task 2.3
 
 - [x] Import `OrbitControls` from `three/addons/controls/OrbitControls.js`
 - [x] Create `OrbitControls(camera, renderer.domElement)`
@@ -246,7 +248,7 @@ Acceptance Criteria:
 ---
 
 ### Task 2.5 — Implement GLTF/OBJ Model Loading
-**Owner:** A | **Depends on:** Task 2.4
+**Depends on:** Task 2.4
 
 - [x] Import `GLTFLoader` from `three/addons/loaders/GLTFLoader.js`
 - [ ] Import `OBJLoader` from `three/addons/loaders/OBJLoader.js`
@@ -263,25 +265,25 @@ Acceptance Criteria:
 ---
 
 ### Task 2.6 — Build Backend Model Upload API
-**Owner:** B | **Depends on:** Task 1.4
+**Depends on:** Task 1.4
 
-- [ ] `POST /api/models/upload` — accepts multipart file upload
-- [ ] Validate file format (only `.obj`, `.gltf`, `.glb`, `.usdz`, `.uasset`)
-- [ ] Save file to `storage/models/`
-- [ ] Store metadata in `anatomy_models` table: title, description, file_path, file_format, body_system, body_part, uploaded_by
-- [ ] Return `{ id, title, file_path }` on success
-- [ ] Return `400` with error message on invalid format
+- [x] `POST /api/models/upload` — accepts multipart file upload
+- [~] Validate file format (only `.obj`, `.gltf`, `.glb`, `.usdz`, `.uasset`)
+- [x] Save file to `PUBLIC_DIR/models/anatomy/`
+- [~] Store metadata in `models` table: title, description, file_path, program_id
+- [x] Return the created model record on success
+- [x] Return `400` with error message on invalid format
 
 Acceptance Criteria:
-- [ ] Valid model file saves and returns metadata
-- [ ] Invalid format returns 400
+- [x] Valid model file saves and returns metadata
+- [x] Invalid format returns 400
 
-**Status: confirmed still not built.** No model upload endpoint exists — models can currently only be added via the seed script. Unlike videos (Task 7.1, now done), there's no multer-based upload path for models yet.
+**Resolved 15 Jul 2026.** Built via `multer` disk storage, matching the same pattern used for video upload (Task 7.1). Validates only `.glb`, `.gltf`, `.obj` — not `.usdz`/`.uasset`, since `Viewer.tsx` can't load those formats anyway (see Task 2.5). Stores `title`, `description`, `file_path`, `program_id`, `is_published: false` — no `file_format`, `body_system`, `body_part`, or `uploaded_by` columns exist on `models` (see `docs/database_schema.md`).
 
 ---
 
 ### Task 2.7 — Build Backend Model Retrieval API
-**Owner:** B | **Depends on:** Task 2.6
+**Depends on:** Task 2.6
 
 - [x] `GET /api/models` — returns list of all models with metadata
 - [x] `GET /api/models/:id` — returns single model metadata + file URL
@@ -291,12 +293,12 @@ Acceptance Criteria:
 - [x] List endpoint returns correct JSON array
 - [x] Single model endpoint returns correct metadata
 
-**Note:** Confirmed working — both endpoints exist in `server.js` and are used by `ModelGallery.tsx`/`Viewer.tsx`. File URL accessibility depends on the static-file-serving fix applied 15 Jul 2026 (see `docs/database_schema.md`) — before that fix, model thumbnails (though not the models themselves, which load via a different path) were likely also affected.
+**Note:** Confirmed working — both endpoints exist in `server.js` and are used by `ModelGallery.tsx`/`Viewer.tsx`. `GET /api/models` now also supports `?published=true` filtering, added 15 Jul 2026 alongside Task 2.6. File URL accessibility depends on the static-file-serving fix applied 15 Jul 2026 (see `docs/database_schema.md`).
 
 ---
 
 ### Task 2.8 — Connect Frontend Viewer to Backend Model
-**Owner:** A | **Depends on:** Tasks 2.5 and 2.7
+**Depends on:** Tasks 2.5 and 2.7
 
 - [x] Fetch model list from `GET /api/models` on Viewer load
 - [x] Load the first (or selected) model's file URL into Three.js via GLTFLoader
@@ -312,7 +314,7 @@ Acceptance Criteria:
 ---
 
 ### Task 2.9 — Implement Full Three.js Cleanup
-**Owner:** A | **Depends on:** Tasks 2.3–2.5
+**Depends on:** Tasks 2.3–2.5
 
 The `useEffect` return function must:
 - [x] `window.removeEventListener('resize', handleResize)`
@@ -329,14 +331,14 @@ Acceptance Criteria:
 ---
 
 ## Week 3 — Model Interaction Controls
-**Members:** A | **Deliverable:** Interactive anatomy viewer
+**Deliverable:** Interactive anatomy viewer
 
 **Status note (15 Jul 2026):** The actual UI paradigm here diverges substantially from the original spec — instead of a fixed toolbar (reset/zoom/pan buttons) with click-to-select parts, `Viewer.tsx` implements teacher annotation-creation modes (Add/Draw/Region) plus a Hide/Show Annotations toggle. Raycasting exists but serves annotation placement/selection, not generic "part" selection.
 
 ---
 
 ### Task 3.1 — Build the Viewer Toolbar UI
-**Owner:** A | **Depends on:** Week 2 merged
+**Depends on:** Week 2 merged
 
 Toolbar overlay:
 - [ ] Implement the toolbar visual layout according to `design.md` section 7
@@ -354,7 +356,7 @@ Acceptance Criteria:
 ---
 
 ### Task 3.2 — Implement Reset View
-**Owner:** A | **Depends on:** Task 3.1
+**Depends on:** Task 3.1
 
 - [ ] `handleResetView`: set camera position to `(0, 0, 5)`, reset controls target to `(0, 0, 0)`, call `controls.update()`
 - [ ] Wire Reset View toolbar button to `handleResetView`
@@ -367,7 +369,7 @@ Acceptance Criteria:
 ---
 
 ### Task 3.3 — Implement Zoom In and Zoom Out Controls
-**Owner:** A | **Depends on:** Task 3.1
+**Depends on:** Task 3.1
 
 - [ ] Zoom In: move camera closer along its current forward axis
 - [ ] Zoom Out: move camera further back
@@ -382,7 +384,7 @@ Acceptance Criteria:
 ---
 
 ### Task 3.4 — Implement Raycasting for Part Selection
-**Owner:** A | **Depends on:** Week 2 merged
+**Depends on:** Week 2 merged
 
 - [x] Create `THREE.Raycaster` and `THREE.Vector2` for mouse position
 - [x] `onMouseClick`: calculate mouse coordinates relative to mount element
@@ -403,7 +405,7 @@ Acceptance Criteria:
 ---
 
 ### Task 3.5 — Build the System Selector Dropdown
-**Owner:** A | **Depends on:** Task 2.2
+**Depends on:** Task 2.2
 
 System selector overlay:
 - [ ] Implement the selector visual layout according to `design.md` section 7
@@ -415,12 +417,12 @@ Acceptance Criteria:
 - [ ] Dropdown shows available body systems
 - [ ] Selecting a system loads and displays that model
 
-**Status: unconfirmed.** `ModelGallery.tsx` was not reviewed in detail this session's code audit — it may implement model browsing/selection in some form (routing to `Viewer.tsx` per model), but a `body_system` dropdown as originally specified was not confirmed either way. Needs a follow-up check of `ModelGallery.tsx` before this can be marked accurately. Also worth noting: `models` has no `body_system` column at all (see `docs/database_schema.md`), so this exact spec can't be built without a schema change regardless.
+**Status: unconfirmed.** `ModelGallery.tsx` does not implement a `body_system` dropdown — it's a plain grid with no filtering at all as of 15 Jul 2026. Also worth noting: `models` has no `body_system` column at all (see `docs/database_schema.md`), so this exact spec can't be built without a schema addition regardless.
 
 ---
 
 ### Task 3.6 — Build the Side Panel Empty State
-**Owner:** A | **Depends on:** Task 2.2
+**Depends on:** Task 2.2
 
 When `selectedPart === null`:
 - [x] Render the empty state according to `design.md` section 7
@@ -434,7 +436,7 @@ Acceptance Criteria:
 ---
 
 ### Task 3.7 — Build the Side Panel Selected State (Structure Info)
-**Owner:** A | **Depends on:** Task 3.6
+**Depends on:** Task 3.6
 
 When `selectedPart !== null`:
 - [x] Render the selected-state panel according to `design.md` section 7
@@ -450,12 +452,12 @@ Acceptance Criteria:
 ---
 
 ## Week 4 — Model Browsing & Search
-**Members:** A, B | **Deliverable:** Browsing and search module
+**Deliverable:** Browsing and search module
 
 ---
 
 ### Task 4.1 — Build Backend Search and Filter API
-**Owner:** B | **Depends on:** Task 2.7
+**Depends on:** Task 2.7
 
 - [ ] `GET /api/models?system=<value>&part=<value>&q=<search>` — supports filtering by body system, body part, and keyword search on title/description
 - [ ] Returns filtered array of model metadata
@@ -465,12 +467,12 @@ Acceptance Criteria:
 - [ ] Filtering by system returns only matching models
 - [ ] Keyword search matches on title or description
 
-**Status: not built.** `GET /api/models` returns everything, no query param filtering. Not reassessed this session beyond confirming the plain endpoint exists (Task 2.7).
+**Status: not built.** `GET /api/models` returns everything (or `?published=true` filtered), no `system`/`part`/`q` query param filtering. `models` also has no `body_system`/`body_part` columns to filter by — blocked on the same schema gap as Task 4.4.
 
 ---
 
 ### Task 4.2 — Build the Model Browsing Page (Library View)
-**Owner:** A | **Depends on:** Task 4.1
+**Depends on:** Task 4.1
 
 In `src/pages/Library.tsx` (student browsing section):
 - [ ] Fetch model list from `GET /api/models` on page load
@@ -481,12 +483,12 @@ Acceptance Criteria:
 - [ ] Model list renders from API data and follows `design.md`
 - [ ] Clicking a model entry opens `/3dviewer` with that model
 
-**Note:** Not reassessed this session — `Library.tsx` was not pulled/reviewed. Model browsing may actually be happening through `ModelGallery.tsx` (routed at `/3dviewer`) rather than `Library.tsx` — worth checking both before assuming either is unbuilt.
+**Note:** Model browsing actually happens through `ModelGallery.tsx` (routed at `/3dviewer`), not `Library.tsx` as originally specified — fetch, grid display, and click-through to `/3dviewer/:modelId` are all confirmed working there as of 15 Jul 2026, including upload/edit/publish/delete for teachers (Tasks 2.6, 4.5, 4.6). `Library.tsx` itself has not been reviewed this session — its actual current content/purpose is unconfirmed.
 
 ---
 
 ### Task 4.3 — Add Search Input to Library Page
-**Owner:** A | **Depends on:** Task 4.2
+**Depends on:** Task 4.2
 
 - [ ] Search input follows `design.md` Library input patterns
 - [ ] On input change, call `GET /api/models?q=<query>` with debounce (300ms)
@@ -496,10 +498,12 @@ Acceptance Criteria:
 - [ ] Typing in search filters the model list
 - [ ] No API call is made on every keystroke (debounced)
 
+**Status: not built.** No search input exists on `ModelGallery.tsx` as of 15 Jul 2026.
+
 ---
 
 ### Task 4.4 — Add Body System and Body Part Filter Dropdowns
-**Owner:** A | **Depends on:** Task 4.3
+**Depends on:** Task 4.3
 
 - [ ] Body system dropdown: populated from unique values in model list
 - [ ] Body part dropdown: populated based on selected system
@@ -514,67 +518,67 @@ Acceptance Criteria:
 ---
 
 ### Task 4.5 — Build Teacher Model Upload UI
-**Owner:** A | **Depends on:** Task 2.6
+**Depends on:** Task 2.6
 
 Teacher only (in Library page):
-- [ ] Upload drop zone follows `design.md` section 10
-- [ ] File picker input: accept `.obj,.gltf,.glb,.usdz,.uasset`
-- [ ] Form fields: title, description, body system, body part
-- [ ] On submit, `POST /api/models/upload` with multipart form
-- [ ] Show success message or error from API response
+- [x] Upload drop zone follows `design.md` section 10
+- [~] File picker input: accept `.obj,.gltf,.glb,.usdz,.uasset`
+- [x] Form fields: title, description
+- [x] On submit, `POST /api/models/upload` with multipart form
+- [x] Show success message or error from API response
 
 Acceptance Criteria:
-- [ ] Upload form visible in teacher mode only
-- [ ] Valid file uploads successfully and appears in the model list
-- [ ] Invalid format shows error message
+- [x] Upload form visible in teacher mode only
+- [x] Valid file uploads successfully and appears in the model list
+- [x] Invalid format shows error message
 
-**Status: not built.** Blocked on Task 2.6 (backend upload endpoint doesn't exist). This session built the equivalent for videos (Task 7.1) — the same `multer`-based pattern could be reused here if this becomes a priority.
+**Resolved 15 Jul 2026.** Built in `ModelGallery.tsx` (not `Library.tsx` — see Task 4.2 note), same pattern as video upload. File picker accepts `.glb,.gltf,.obj` only, not `.usdz`/`.uasset` (see Task 2.6 note on why). No `body_system`/`body_part` fields, since those columns don't exist. Tested end-to-end: upload → unpublished badge → publish → visible to students.
 
 ---
 
 ### Task 4.6 — Build Teacher Model Management Actions
-**Owner:** B | **Depends on:** Task 2.7
+**Depends on:** Task 2.7
 
 APIs:
-- [ ] `PUT /api/models/:id` — update model metadata (title, description, system, part)
-- [ ] `DELETE /api/models/:id` — soft delete or remove model
+- [x] `PUT /api/models/:id` — update model metadata (title, description)
+- [x] `DELETE /api/models/:id` — remove model
 
-Frontend (teacher only in Library):
-- [ ] Edit button per model card → opens edit form with pre-filled values
-- [ ] Delete button per model card → confirm then calls delete API
+Frontend (teacher only, in `ModelGallery.tsx`):
+- [x] Edit button per model card → opens edit form with pre-filled values
+- [x] Delete button per model card → confirm then calls delete API
 
 Acceptance Criteria:
-- [ ] Editing a model updates its metadata in the list
-- [ ] Deleting a model removes it from the list
+- [x] Editing a model updates its metadata in the list
+- [x] Deleting a model removes it from the list
 
-**Status: not built.** No model edit/delete endpoints exist. Same reusable pattern as Task 6.4's video management (built this session) could apply here.
+**Resolved 15 Jul 2026.** `PUT`/`DELETE /api/models/:id` built, same pattern as video management. Edit only covers title/description (no `system`/`part`, since those don't exist as fields). Delete removes the database row but not the underlying file from disk — same known gap as video delete. Confirmed via manual test.
 
 ---
 
 ### Task 4.7 — Store and Retrieve Model Metadata
-**Owner:** B | **Depends on:** Task 2.6
+**Depends on:** Task 2.6
 
 - [ ] Ensure all metadata fields are stored in `anatomy_models` table on upload
 - [ ] `GET /api/models/:id` includes all metadata: title, description, body_system, body_part, file_format, uploaded_by, created_at
 - [ ] Verify metadata survives server restart (persistent storage, not in-memory)
 
 Acceptance Criteria:
-- [ ] All metadata returned correctly from API
-- [ ] Data persists after restarting backend
+- [~] All metadata returned correctly from API
+- [x] Data persists after restarting backend
 
-**Note:** Metadata persistence itself works (Postgres, not in-memory) — but the specific fields (`body_system`, `body_part`, `file_format`, `uploaded_by`) don't exist on the `models` table as built. Blocked on the same schema gap as Task 4.4/4.6.
+**Note:** Metadata persistence itself works (Postgres, not in-memory, confirmed via restart) — but the specific fields (`body_system`, `body_part`, `file_format`, `uploaded_by`) don't exist on the `models` table as built. Blocked on the same schema gap as Task 4.4/4.6.
 
 ---
 
 ## Week 5 — Anatomical Labelling System
-**Members:** A, B | **Deliverable:** Functional label management system
+**Deliverable:** Functional label management system
 
 **Status note (15 Jul 2026):** Built as an `annotations` system (point/highlight/region_fill), not a simple `labels` system. Functionally covers and exceeds most of this week's intent — see `docs/database_schema.md` for the schema comparison.
 
 ---
 
 ### Task 5.1 — Build Label Data API
-**Owner:** B | **Depends on:** Task 1.3
+**Depends on:** Task 1.3
 
 - [x] `POST /api/models/:id/labels` — create label: name, description, position_x, position_y, position_z
 - [x] `GET /api/models/:id/labels` — return all labels for a model
@@ -591,7 +595,7 @@ Acceptance Criteria:
 ---
 
 ### Task 5.2 — Fetch and Render Labels in Three.js
-**Owner:** A | **Depends on:** Tasks 5.1 and 3.4
+**Depends on:** Tasks 5.1 and 3.4
 
 - [x] On model load, fetch labels from `GET /api/models/:id/labels`
 - [x] For each label, create a `THREE.Sprite` or small `THREE.Mesh` marker at the stored position
@@ -607,7 +611,7 @@ Acceptance Criteria:
 ---
 
 ### Task 5.3 — Show Label Detail on Click
-**Owner:** A | **Depends on:** Task 5.2
+**Depends on:** Task 5.2
 
 - [x] Clicking a label marker calls `setSelectedPart()` with the label data (name, description)
 - [x] Side panel shows label name and description
@@ -622,7 +626,7 @@ Acceptance Criteria:
 ---
 
 ### Task 5.4 — Build Teacher Label Placement Mode
-**Owner:** A | **Depends on:** Task 5.3
+**Depends on:** Task 5.3
 
 - [x] Teacher only: `Add Label` toggle button (bottom-left overlay)
 - [~] Active label-placement state follows `design.md` section 7
@@ -640,7 +644,7 @@ Acceptance Criteria:
 ---
 
 ### Task 5.5 — Build Teacher Label Edit and Delete UI
-**Owner:** A | **Depends on:** Task 5.4
+**Depends on:** Task 5.4
 
 Teacher only, in side panel when a label is selected:
 - [x] `Edit Description` button → opens inline edit form with current values
@@ -652,12 +656,12 @@ Acceptance Criteria:
 - [x] Edit saves updated name/description to backend
 - [x] Delete removes marker from scene and database
 
-**Note:** Confirmed working — Edit/Delete buttons in the annotation popup, teacher-only. No confirmation prompt before delete (unlike the video/quiz delete flows built this session, which do confirm) — worth flagging as a minor UX inconsistency to fix later.
+**Note:** Confirmed working — Edit/Delete buttons in the annotation popup, teacher-only. No confirmation prompt before delete (unlike the video/quiz/model delete flows, which do confirm) — worth flagging as a minor UX inconsistency to fix later.
 
 ---
 
 ### Task 5.6 — Label Hover Tooltip
-**Owner:** A | **Depends on:** Task 5.2
+**Depends on:** Task 5.2
 
 - [ ] On mouse move over label markers, show a small HTML tooltip with the label name
 - [ ] Tooltip follows cursor or is pinned near the marker
@@ -672,7 +676,7 @@ Acceptance Criteria:
 ---
 
 ### Task 5.7 — Test Label Visibility Across Browsers
-**Owner:** B | **Depends on:** Task 5.3
+**Depends on:** Task 5.3
 
 - [ ] Test label markers visible and clickable in Chrome
 - [ ] Test in Firefox
@@ -688,12 +692,12 @@ Acceptance Criteria:
 ---
 
 ## Week 6 — Teacher Content Management
-**Members:** B, C | **Deliverable:** Teacher management module
+**Deliverable:** Teacher management module
 
 ---
 
 ### Task 6.1 — Build Teacher Dashboard Page Shell
-**Owner:** C | **Depends on:** Milestone 2 (Layout) merged
+**Depends on:** Milestone 2 (Layout) merged
 
 In `src/pages/Dashboard.tsx` (teacher view):
 - [x] Teacher stats and quick actions follow `design.md` section 6
@@ -706,39 +710,41 @@ Acceptance Criteria:
 ---
 
 ### Task 6.2 — Build Content Visibility Controls
-**Owner:** B | **Depends on:** Task 4.6
+**Depends on:** Task 4.6
 
-- [ ] Add `is_published` boolean field to `anatomy_models`, `videos`, and `quizzes` tables
-- [ ] `PATCH /api/models/:id/publish` — toggle model visibility (teacher only)
+- [x] Add `is_published` boolean field to `models`, `videos`, and `quizzes` tables
+- [x] `PATCH /api/models/:id/publish` — toggle model visibility (teacher only)
 - [x] `PATCH /api/videos/:id/publish` — toggle video visibility (teacher only)
 - [x] `PATCH /api/quizzes/:id/publish` — toggle quiz visibility (teacher only)
-- [~] Student-facing APIs only return items where `is_published = true`
+- [x] Student-facing APIs only return items where `is_published = true`
 
 Acceptance Criteria:
-- [~] Published models/videos/quizzes visible to students (videos and quizzes done via `?published=true`; models still not built — no `is_published` column on `models` at all)
-- [~] Unpublished items visible only in teacher management view (videos and quizzes done; models not applicable yet)
+- [x] Published models/videos/quizzes visible to students
+- [x] Unpublished items visible only in teacher management view
 
-**Note:** `videos.is_published` added 15 Jul 2026, matching the pattern already used for quizzes. `models` remains the only content type with zero publish gating — worth prioritizing if model management (Task 4.5/4.6) becomes active.
+**Resolved 15 Jul 2026.** All three content types now have full publish gating — `models.is_published` was the last gap and was added this session alongside Task 2.6/4.5/4.6. All three `GET` endpoints support `?published=true` filtering, and all three have a working teacher-facing toggle in their respective pages.
 
 ---
 
 ### Task 6.3 — Build Teacher Model Management Interface
-**Owner:** C | **Depends on:** Task 4.6
+**Depends on:** Task 4.6
 
-In Library page (teacher view):
-- [~] Table or list of all uploaded models (including unpublished)
-- [~] Each row: model name, system, part, format, published status toggle, edit button, delete button
-- [ ] Published toggle calls `PATCH /api/models/:id/publish`
+In `ModelGallery.tsx` (teacher view):
+- [x] Grid of all uploaded models (including unpublished, shown with an "Unpublished" badge)
+- [x] Each card: model title, description, published status toggle, edit button, delete button
+- [x] Published toggle calls `PATCH /api/models/:id/publish`
 - [x] Edit opens form, delete triggers confirmation
 
 Acceptance Criteria:
 - [x] Teacher can see all models including unpublished ones
 - [x] Toggle, edit, and delete all work without page refresh
 
+**Resolved 15 Jul 2026.** Built as a grid (not a table, per the original phrasing) in `ModelGallery.tsx`, following the exact same pattern as Task 6.4's video management. No `system`/`part`/`format` columns shown, since those fields don't exist on `models`.
+
 ---
 
 ### Task 6.4 — Build Teacher Video Management Interface
-**Owner:** C | **Depends on:** Task 6.2
+**Depends on:** Task 6.2
 
 In Videos page (teacher view):
 - [x] List of all uploaded videos with: title, published status, edit, delete
@@ -757,7 +763,7 @@ Acceptance Criteria:
 ---
 
 ### Task 6.5 — Build Role-Based Access Control (Middleware)
-**Owner:** B | **Depends on:** Task 1.4
+**Depends on:** Task 1.4
 
 - [ ] Create `authenticate` middleware: verifies JWT token from `Authorization` header
 - [ ] Create `requireTeacher` middleware: checks `role === 'teacher'`, returns 403 if not
@@ -773,7 +779,7 @@ Acceptance Criteria:
 ---
 
 ### Task 6.6 — Update Frontend Role-Gating with Real Auth
-**Owner:** C | **Depends on:** Task 6.5
+**Depends on:** Task 6.5
 
 - [ ] Store JWT token in memory or `sessionStorage` after login
 - [ ] Include `Authorization: Bearer <token>` header on all API calls
@@ -787,14 +793,14 @@ Acceptance Criteria:
 ---
 
 ## Week 7 — Educational Video Integration
-**Members:** A, C | **Deliverable:** Educational video module
+**Deliverable:** Educational video module
 
-**Status note (15 Jul 2026):** Tasks 7.3 and 7.4 were already substantially built (by Member B) before this session — confirmed via direct code review. Task 7.1 was built this session. Tasks 7.5/7.6 need an architecture decision before any further code — see below.
+**Status note (15 Jul 2026):** Tasks 7.3 and 7.4 were already substantially built before this session — confirmed via direct code review. Task 7.1 was built this session. Tasks 7.5/7.6 need an architecture decision before any further code — see below.
 
 ---
 
 ### Task 7.1 — Build Video Upload API
-**Owner:** C | **Depends on:** Task 6.2
+**Depends on:** Task 6.2
 
 - [x] `POST /api/videos/upload` — accepts multipart video file upload
 - [x] Validate format (only `.mp4`, `.webm`)
@@ -811,7 +817,7 @@ Acceptance Criteria:
 ---
 
 ### Task 7.2 — Build Video Retrieval API
-**Owner:** C | **Depends on:** Task 7.1
+**Depends on:** Task 7.1
 
 - [x] `GET /api/videos` — returns published videos with optional `?category=<value>&q=<search>` filter
 - [x] `GET /api/videos/:id` — returns single video metadata + file URL
@@ -826,7 +832,7 @@ Acceptance Criteria:
 ---
 
 ### Task 7.3 — Build the Videos Browsing Page
-**Owner:** A | **Depends on:** Task 7.2
+**Depends on:** Task 7.2
 
 In `src/pages/Videos.tsx`:
 - [x] Fetch published video list from `GET /api/videos` on load
@@ -845,7 +851,7 @@ Acceptance Criteria:
 ---
 
 ### Task 7.4 — Implement Video Player Component
-**Owner:** A | **Depends on:** Task 7.3
+**Depends on:** Task 7.3
 
 - [x] Create `<VideoPlayer>` component using HTML5 `<video>` tag
 - [~] Props: `src` (video URL), `onClose` callback
@@ -863,7 +869,7 @@ Acceptance Criteria:
 ---
 
 ### Task 7.5 — Link Video to Label in Viewer
-**Owner:** A | **Depends on:** Tasks 5.3 and 7.4
+**Depends on:** Tasks 5.3 and 7.4
 
 In the viewer detail panel, when a label is selected:
 - [ ] Call `GET /api/labels/:id/video` to check for a linked video
@@ -875,12 +881,12 @@ Acceptance Criteria:
 - [ ] Linked video plays from the detail panel
 - [ ] Unlinked labels show the correct fallback message
 
-**[!] Blocked — needs an architecture decision, not just code.** There is no `labels` table; `Viewer.tsx` uses `annotations`, which has no video field at all. Cannot be built as literally specified. See `docs/database_schema.md` open question #3. Needs team input on whether to (a) add `video_id` to `annotations` and build this properly against the real data model, or (b) deprioritize as out of scope given the divergence.
+**[!] Blocked — needs an architecture decision, not just code.** There is no `labels` table; `Viewer.tsx` uses `annotations`, which has no video field at all. Cannot be built as literally specified. See `docs/database_schema.md` open question #3. Needs a decision on whether to (a) add `video_id` to `annotations` and build this properly against the real data model, or (b) deprioritize as out of scope given the divergence. This work, if it proceeds, would live inside `Viewer.tsx`.
 
 ---
 
 ### Task 7.6 — Build Video-to-Label Linking UI (Teacher)
-**Owner:** C | **Depends on:** Tasks 7.2 and 5.1
+**Depends on:** Tasks 7.2 and 5.1
 
 Teacher only, in video edit form:
 - [ ] Dropdown to select a label to link the video to
@@ -892,12 +898,12 @@ Acceptance Criteria:
 - [ ] Teacher can link a video to a label from the edit form
 - [ ] Link is reflected in the viewer detail panel
 
-**[!] Blocked — same root cause as Task 7.5.** A previous note in this file claimed a `mockLabels`-based dropdown existed in the video edit form — this does not match the actual current codebase (see Task 6.4's "Superseded note"). The current, real `Videos.tsx` edit form (built 15 Jul 2026) intentionally does not include this, since there's no `labels` concept to link against. Needs the same architecture decision as Task 7.5 before any further work here.
+**[!] Blocked — same root cause as Task 7.5.** A previous note in this file claimed a `mockLabels`-based dropdown existed in the video edit form — this does not match the actual current codebase (see Task 6.4's "Superseded note"). The current, real `Videos.tsx` edit form (built 15 Jul 2026) intentionally does not include this, since there's no `labels` concept to link against. Needs the same architecture decision as Task 7.5 before any further work here. Unlike 7.5, this half (the dropdown in the video edit form) lives in `Videos.tsx`, not `Viewer.tsx`.
 
 ---
 
 ### Task 7.7 — Test Video Playback Compatibility
-**Owner:** C | **Depends on:** Task 7.4
+**Depends on:** Task 7.4
 
 - [~] Test `.mp4` playback in Chrome — pass/fail
 - [~] Test `.mp4` playback in Firefox — pass/fail
@@ -914,12 +920,12 @@ Acceptance Criteria:
 ---
 
 ## Week 8 — Quiz Module Development
-**Members:** B, C | **Deliverable:** Self-assessment system
+**Deliverable:** Self-assessment system
 
 ---
 
 ### Task 8.1 — Design Quiz Data Structure
-**Owner:** C | **Depends on:** Task 1.3
+**Depends on:** Task 1.3
 
 - [x] Confirm `quizzes`, `questions`, and `quiz_attempts` table schemas (from Task 1.3)
 - [x] Add any missing fields: options stored as JSON array vs separate columns
@@ -934,12 +940,13 @@ Acceptance Criteria:
 ---
 
 ### Task 8.2 — Build Quiz Management APIs (Teacher)
-**Owner:** B | **Depends on:** Task 8.1
+**Depends on:** Task 8.1
 
 - [x] `POST /api/quizzes` — create quiz: title, description
 - [x] `GET /api/quizzes` — list all quizzes (teacher: all, student: published only, via `?published=true`)
 - [ ] `GET /api/quizzes/:id` — get quiz with questions (currently two separate calls: `GET /api/quizzes` + `GET /api/quizzes/:id/questions`, not combined)
-- [x] `PATCH /api/quizzes/:id/type` — update quiz type (added; not a full metadata `PUT` — title/description/category still can't be edited after creation)
+- [x] `PUT /api/quizzes/:id` — update quiz metadata (title, description, category)
+- [x] `PATCH /api/quizzes/:id/type` — update quiz type (auto-derived, not manually set — see Task 8.3)
 - [x] `DELETE /api/quizzes/:id` — delete quiz
 - [x] `POST /api/quizzes/:id/questions` — add question with options and correct answer (also supports open-ended format with `model_answer`)
 - [x] `PUT /api/questions/:id` — update question (supports switching format)
@@ -950,13 +957,15 @@ Acceptance Criteria:
 - [x] `PATCH /api/attempt-answers/:id/grade` — teacher assigns a 0-100 score to an open-ended answer
 
 Acceptance Criteria:
-- [~] Full CRUD for quizzes and questions (quizzes: create/delete/publish/type-update done, full metadata `PUT` still missing; questions: full CRUD done including open-ended format)
+- [~] Full CRUD for quizzes and questions (quizzes: create/delete/publish/type-update/metadata-update all done; questions: full CRUD done including open-ended format — only the combined get-with-questions endpoint is still missing)
 - [x] Correct answer stored but not exposed in student-facing API response (extended to also hide `model_answer`)
+
+**Resolved 15 Jul 2026 (partial):** `PUT /api/quizzes/:id` built and tested — a quiz's title/description/category can now be edited on any quiz, including already-published ones. Wired to a real Edit modal in `Quizzes.tsx`, verified via manual test (edit persists, list updates without refresh).
 
 ---
 
 ### Task 8.3 — Build Quiz Creation UI (Teacher)
-**Owner:** C | **Depends on:** Task 8.2
+**Depends on:** Task 8.2
 
 In `src/pages/Quizzes.tsx` (teacher view):
 - [x] `Create Quiz` button opens a form: title, description, category fields
@@ -971,10 +980,14 @@ Acceptance Criteria:
 
 **Note:** Resolved — quiz creation uses a two-step flow (create quiz → separate question editor). Cancelling before adding any questions deletes the abandoned quiz record. Quizzes are created unpublished; on "Done", the quiz's `type` is auto-derived from the question formats added (all MCQ → 'MCQ', all open-ended → 'Practical', mix → 'Mixed') via `PATCH /api/quizzes/:id/type`, then published. The manual Type `<select>` was removed from the quiz creation form since it no longer served a purpose once format is chosen per-question.
 
+**Known gap (15 Jul 2026):** this question editor is only reachable during initial quiz creation. Once a quiz is published, there is currently no UI to add, edit, or delete its questions — only title/description/category can be changed (via Task 8.2's `PUT` endpoint) and the questions themselves are frozen. The backend endpoints (`POST`/`PUT`/`DELETE .../questions`) all still work and could support this if a "Manage Questions" UI were added to the published-quiz view; not yet built.
+
+**Known gap (15 Jul 2026):** there is no Publish/Unpublish toggle on the quiz list itself after creation — a quiz is published automatically when the creation flow finishes, but there's currently no way to manually unpublish or republish it afterward from the list view, even though `PATCH /api/quizzes/:id/publish` exists and works (used internally by the creation flow). Not yet wired to a visible button.
+
 ---
 
 ### Task 8.4 — Build Quiz List View (Student and Teacher)
-**Owner:** C | **Depends on:** Task 8.2
+**Depends on:** Task 8.2
 
 In `src/pages/Quizzes.tsx`:
 - [x] Fetch quiz list on load
@@ -983,12 +996,12 @@ In `src/pages/Quizzes.tsx`:
 
 Acceptance Criteria:
 - [x] Quiz list renders from API
-- [x] Student and teacher views differ correctly (row actions differ; teacher's "View Results" now opens the grading UI, no longer a dead stub)
+- [x] Student and teacher views differ correctly (row actions differ; teacher's "View Results" now opens the grading UI, no longer a dead stub; "Edit" opens a real title/description/category editor)
 
 ---
 
 ### Task 8.5 — Build Quiz Attempt Flow (Student)
-**Owner:** C | **Depends on:** Task 8.4
+**Depends on:** Task 8.4
 
 - [x] Clicking `Start Quiz` loads the quiz's own questions via `GET /api/quizzes/:id/questions`
 - [x] Question display branches by format: radio buttons for MCQ, free-text textarea for open-ended
@@ -1005,7 +1018,7 @@ Acceptance Criteria:
 ---
 
 ### Task 8.6 — Build Quiz Scoring API
-**Owner:** B | **Depends on:** Task 8.2
+**Depends on:** Task 8.2
 
 - [x] `POST /api/quizzes/:id/submit` — accepts `{ answers: { question_id, selected_option? | answer_text? }[] }`
 - [x] Compare each MCQ answer against stored correct answer; store every answer (MCQ and open-ended) individually in `quiz_attempt_answers`
@@ -1025,7 +1038,7 @@ Acceptance Criteria:
 ---
 
 ### Task 8.7 — Display Quiz Results (Student)
-**Owner:** C | **Depends on:** Task 8.6
+**Depends on:** Task 8.6
 
 After submitting:
 - [x] Show overall score: e.g. `You scored 7 / 10 (70%)` for fully-graded attempts
@@ -1044,14 +1057,14 @@ Acceptance Criteria:
 
 **Note:** Resolved — scoring is computed server-side in `POST /api/quizzes/:id/submit` and the results screen reads from that response instead of comparing locally. Also fixed a related security issue: `GET /api/quizzes/:id/questions` previously returned `correct_option` to students before they answered; that field (and `model_answer`, once open-ended questions were added) is now excluded from the response entirely.
 
-**Resolved gap:** The Practical/Mixed quiz types previously rendered identical MCQ radio-button question forms regardless of selected Type. This is now fixed — question format (MCQ / Open Ended) is chosen per-question by the teacher, and quiz `type` is auto-derived from what's actually in the quiz.
+**Resolved gap:** The Practical/Mixed quiz types previously rendered identical MCQ radio-button question forms regardless of selected Type. This is now fixed — question format (MCQ / Open Ended) is chosen per-question, and quiz `type` is auto-derived from what's actually in the quiz.
 
-**Resolved gap:** There was previously no teacher-facing UI to view and grade pending open-ended attempts. "View Results" on the teacher's quiz row now opens a list of pending attempts for that quiz; selecting one shows student answers alongside model answers with a 0-100 grading input per open-ended answer. Verified end-to-end: student submits → teacher grades → student sees the graded result on revisit (same browser).
+**Resolved gap:** There was previously no teacher-facing UI to view and grade pending open-ended attempts. "View Results" on the quiz row now opens a list of pending attempts for that quiz; selecting one shows student answers alongside model answers with a 0-100 grading input per open-ended answer. Verified end-to-end: student submits → grading happens → student sees the graded result on revisit (same browser).
 
 ---
 
 ### Task 8.8 — Build Quiz History (Student)
-**Owner:** B | **Depends on:** Task 8.6
+**Depends on:** Task 8.6
 
 - [ ] `GET /api/students/me/attempts` — returns all quiz attempts for the logged-in student
 - [ ] Each attempt: quiz title, score, date
@@ -1066,14 +1079,14 @@ Acceptance Criteria:
 ---
 
 ## Week 9 — Authentication & Role Management
-**Members:** B, D | **Deliverable:** User authentication and RBAC
+**Deliverable:** User authentication and RBAC
 
 **Status note:** Nothing in this week has been started by anyone as of 15 Jul 2026. This is the single biggest remaining blocker — it gates Task 6.6, 8.8, and real student attribution generally.
 
 ---
 
 ### Task 9.1 — Build User Registration API
-**Owner:** B | **Depends on:** Task 1.4
+**Depends on:** Task 1.4
 
 - [ ] `POST /api/auth/register` — accepts name, email, password, role, program
 - [ ] Hash password with bcrypt before storing
@@ -1088,7 +1101,7 @@ Acceptance Criteria:
 ---
 
 ### Task 9.2 — Build Login and JWT API
-**Owner:** B | **Depends on:** Task 9.1
+**Depends on:** Task 9.1
 
 - [ ] `POST /api/auth/login` — accepts email, password
 - [ ] Verify password against hash with bcrypt
@@ -1104,7 +1117,7 @@ Acceptance Criteria:
 ---
 
 ### Task 9.3 — Apply Authentication Middleware to All Routes
-**Owner:** B | **Depends on:** Tasks 6.5 and 9.2
+**Depends on:** Tasks 6.5 and 9.2
 
 - [ ] Apply `authenticate` middleware to all model, label, video, quiz, and user routes
 - [ ] Public routes (no auth): `POST /api/auth/register`, `POST /api/auth/login`
@@ -1117,7 +1130,7 @@ Acceptance Criteria:
 ---
 
 ### Task 9.4 — Build Login Page (Frontend)
-**Owner:** D | **Depends on:** Task 9.2
+**Depends on:** Task 9.2
 
 Create `src/pages/Login.tsx`:
 - [ ] Email and password input fields
@@ -1136,7 +1149,7 @@ Acceptance Criteria:
 ---
 
 ### Task 9.5 — Build Registration Page (Frontend)
-**Owner:** D | **Depends on:** Task 9.1
+**Depends on:** Task 9.1
 
 Create `src/pages/Register.tsx`:
 - [ ] Name, email, password, role select (Student/Teacher), program select
@@ -1154,7 +1167,7 @@ Acceptance Criteria:
 ---
 
 ### Task 9.6 — Protect Frontend Routes
-**Owner:** D | **Depends on:** Task 9.4
+**Depends on:** Task 9.4
 
 - [ ] Create `ProtectedRoute` component: checks for JWT in `sessionStorage`, redirects to `/login` if missing
 - [ ] Wrap all app routes (Dashboard, Viewer, Videos, Quizzes, Library) in `ProtectedRoute`
@@ -1169,7 +1182,7 @@ Acceptance Criteria:
 ---
 
 ### Task 9.7 — Build Logout
-**Owner:** D | **Depends on:** Task 9.4
+**Depends on:** Task 9.4
 
 - [ ] Add Logout button in the Layout header (replacing or next to the user avatar)
 - [ ] On click: remove JWT from `sessionStorage`, redirect to `/login`
@@ -1181,7 +1194,7 @@ Acceptance Criteria:
 ---
 
 ### Task 9.8 — Prepare Storage Architecture for Cloud Migration
-**Owner:** D | **Depends on:** Task 1.5
+**Depends on:** Task 1.5
 
 - [ ] Abstract all file read/write operations behind a `StorageService` class or module
 - [ ] `StorageService` methods: `saveFile(path, buffer)`, `getFileUrl(path)`, `deleteFile(path)`
@@ -1193,12 +1206,12 @@ Acceptance Criteria:
 - [ ] All file operations use `StorageService` (no direct `fs.writeFile` calls outside it)
 - [ ] Cloud migration path documented
 
-**Note:** Not built. File writes (video upload, thumbnail generation) call `fs`/`multer` directly in `server.js`, no abstraction layer. Worth doing before more upload endpoints (models, etc.) get added, since retrofitting later means touching every call site.
+**Note:** Not built. File writes (video upload, model upload, thumbnail generation) call `fs`/`multer` directly in `server.js`, no abstraction layer. Worth doing before any more upload endpoints get added, since retrofitting later means touching every call site.
 
 ---
 
 ### Task 9.9 — Test Role-Based Access Control
-**Owner:** D | **Depends on:** Tasks 6.5 and 9.3
+**Depends on:** Tasks 6.5 and 9.3
 
 Test each role-gated endpoint:
 - [ ] Student token: `POST /api/models/upload` → 403
@@ -1215,12 +1228,12 @@ Acceptance Criteria:
 ---
 
 ## Week 10 — Download Support & Final Integration
-**Members:** All | **Deliverable:** Final integrated system and documentation
+**Deliverable:** Final integrated system and documentation
 
 ---
 
 ### Task 10.1 — Implement Model Download Endpoint
-**Owner:** D | **Depends on:** Task 2.6
+**Depends on:** Task 2.6
 
 - [ ] `GET /api/models/:id/download` — streams the model file to the client
 - [ ] Set correct `Content-Disposition: attachment` header with original filename
@@ -1236,7 +1249,7 @@ Acceptance Criteria:
 ---
 
 ### Task 10.2 — Build Label Export to JSON and CSV
-**Owner:** D | **Depends on:** Task 5.1
+**Depends on:** Task 5.1
 
 - [ ] `GET /api/models/:id/labels/export?format=json` — returns label data as downloadable `.json`
 - [ ] `GET /api/models/:id/labels/export?format=csv` — returns label data as downloadable `.csv`
@@ -1253,7 +1266,7 @@ Acceptance Criteria:
 ---
 
 ### Task 10.3 — Build Download UI (Student and Teacher)
-**Owner:** D | **Depends on:** Tasks 10.1 and 10.2
+**Depends on:** Tasks 10.1 and 10.2
 
 In Library page:
 - [ ] Download button per model: calls `GET /api/models/:id/download`
@@ -1267,7 +1280,7 @@ Acceptance Criteria:
 ---
 
 ### Task 10.4 — Test Downloaded File Compatibility
-**Owner:** D | **Depends on:** Task 10.1
+**Depends on:** Task 10.1
 
 - [ ] Download a `.gltf` model and open in Blender — verify renders correctly
 - [ ] Download a `.obj` model and open in MeshLab or Blender — verify renders correctly
@@ -1285,9 +1298,9 @@ Acceptance Criteria:
 
 These tasks run continuously throughout the 10-week project:
 
-| Task | Cadence | Owner |
-|---|---|---|
-| Update `docs/testing_log.md` with findings | After every test session | Whoever tested |
+| Task | Cadence |
+|---|---|
+| Update `docs/testing_log.md` with findings | After every test session |
 
 ---
 
@@ -1298,14 +1311,14 @@ These tasks run continuously throughout the 10-week project:
 - [x] Anatomical labelling (create, view, click, hover*) — built as annotations; *hover tooltip (Task 5.6) specifically not built, click-based interaction works
 - [x] Educational video browsing and playback — confirmed built, 15 Jul 2026
 - [!] Video linked to label in viewer detail panel — blocked, needs architecture decision (see Task 7.5/7.6)
-- [x] Quiz creation (teacher) and quiz attempt + scoring (student) — MCQ and open-ended both work end-to-end, including teacher grading UI for open-ended answers
-- [~] Model and video upload with format validation — video upload done 15 Jul 2026; model upload still not built
+- [~] Quiz creation (teacher) and quiz attempt + scoring (student) — MCQ and open-ended both work end-to-end including teacher grading UI; known gaps: no post-publish question editing, no publish/unpublish toggle on the quiz list
+- [x] Model and video upload with format validation — both done, 15 Jul 2026
 - [ ] JWT authentication and role-based access control — not started
 - [ ] Model download in original format
 - [ ] Label export in JSON and CSV
 
 ### Should Have
-- [~] Content visibility (publish/unpublish toggle) — quizzes and videos done; models not yet
+- [x] Content visibility (publish/unpublish toggle) — models, videos, and quizzes (at creation time) all done; quiz list-level toggle after creation still missing
 - [ ] Quiz attempt history for students — real version blocked on auth; same-browser single-quiz stopgap exists
 - [!] Video-to-label linking UI — blocked, needs architecture decision
 - [ ] Storage abstraction layer (cloud-ready)

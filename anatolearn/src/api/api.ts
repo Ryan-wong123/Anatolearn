@@ -12,8 +12,12 @@ async function request(endpoint: string) {
 
 export const api = {
     getPrograms: () => request("/programs"),
-    getModels: () => request("/models"),
+
+    getModels: (publishedOnly?: boolean) =>
+        request(`/models${publishedOnly ? '?published=true' : ''}`),
+
     getModel: (id: number) => request(`/models/${id}`),
+
     saveModelThumbnail: (id: number, thumbnailDataUrl: string) =>
         fetch(`http://localhost:5000/api/models/${id}/thumbnail`, {
             method: 'PATCH',
@@ -23,8 +27,55 @@ export const api = {
             if (!res.ok) throw new Error(`API error: ${res.status}`);
             return res.json();
         }),
+
+    uploadModel: (data: { title: string; description?: string; program_id?: number; file: File }) => {
+        const formData = new FormData();
+        formData.append('title', data.title);
+        if (data.description) formData.append('description', data.description);
+        if (data.program_id) formData.append('program_id', String(data.program_id));
+        formData.append('model', data.file);
+
+        return fetch(`http://localhost:5000/api/models/upload`, {
+            method: 'POST',
+            body: formData,
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        });
+    },
+
+    deleteModel: (id: number) =>
+        fetch(`http://localhost:5000/api/models/${id}`, {
+            method: 'DELETE',
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
+
+    publishModel: (id: number, isPublished: boolean) =>
+        fetch(`http://localhost:5000/api/models/${id}/publish`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_published: isPublished }),
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
+
+    updateModel: (id: number, data: { title: string; description?: string }) =>
+        fetch(`http://localhost:5000/api/models/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
+
     getVideos: (publishedOnly?: boolean) =>
-        request(`/videos${publishedOnly ? '?published=true' : ''}`), getVideo: (id: number) => request(`/videos/${id}`),
+        request(`/videos${publishedOnly ? '?published=true' : ''}`),
+
+    getVideo: (id: number) => request(`/videos/${id}`),
 
     uploadVideo: (data: { title: string; description?: string; program_id?: number; file: File }) => {
         const formData = new FormData();
@@ -76,6 +127,16 @@ export const api = {
     deleteQuiz: (id: number) =>
         fetch(`http://localhost:5000/api/quizzes/${id}`, {
             method: 'DELETE',
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
+
+    updateQuiz: (id: number, data: { title: string; description?: string; category?: string }) =>
+        fetch(`http://localhost:5000/api/quizzes/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
         }).then((res) => {
             if (!res.ok) throw new Error(`API error: ${res.status}`);
             return res.json();

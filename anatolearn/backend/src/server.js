@@ -38,6 +38,37 @@ const uploadVideo = multer({
   },
 });
 
+const modelStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const modelsDir = path.join(
+      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      "models/anatomy"
+    );
+    fs.mkdir(modelsDir, { recursive: true })
+      .then(() => cb(null, modelsDir))
+      .catch((err) => cb(err, modelsDir));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const safeName = `model-${Date.now()}${ext}`;
+    cb(null, safeName);
+  },
+});
+
+const uploadModel = multer({
+  storage: modelStorage,
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+  fileFilter: (req, file, cb) => {
+    const allowed = [".glb", ".gltf", ".obj"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .glb, .gltf, and .obj files are allowed"));
+    }
+  },
+});
+
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(process.env.PUBLIC_DIR || path.join(__dirname, "../../public")));
@@ -57,6 +88,15 @@ app.get("/api/programs", async (req, res) => {
 });
 
 app.get("/api/models", async (req, res) => {
+  const { published } = req.query;
+
+  if (published === "true") {
+    const result = await pool.query(
+      "SELECT * FROM models WHERE is_published = true ORDER BY id"
+    );
+    return res.json(result.rows);
+  }
+
   const result = await pool.query("SELECT * FROM models ORDER BY id");
   res.json(result.rows);
 });
@@ -65,6 +105,81 @@ app.get("/api/models/:id", async (req, res) => {
   const result = await pool.query("SELECT * FROM models WHERE id = $1", [
     req.params.id,
   ]);
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Model not found" });
+  }
+
+  res.json(result.rows[0]);
+});
+
+app.post("/api/models/upload", uploadModel.single("model"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No model file uploaded" });
+    }
+
+    const { title, description, program_id } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ message: "title is required" });
+    }
+
+    const filePath = `/models/anatomy/${req.file.filename}`;
+
+    const result = await pool.query(
+      `INSERT INTO models (title, description, file_path, program_id, is_published)
+       VALUES ($1, $2, $3, $4, false)
+       RETURNING *`,
+      [title, description || null, filePath, program_id || null]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to upload model:", err);
+    res.status(500).json({ message: err.message || "Failed to upload model" });
+  }
+});
+
+app.delete("/api/models/:id", async (req, res) => {
+  const result = await pool.query(
+    "DELETE FROM models WHERE id = $1 RETURNING *",
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Model not found" });
+  }
+
+  res.json({ message: "Model deleted" });
+});
+
+app.patch("/api/models/:id/publish", async (req, res) => {
+  const { is_published } = req.body;
+
+  const result = await pool.query(
+    `UPDATE models SET is_published = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+    [is_published, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Model not found" });
+  }
+
+  res.json(result.rows[0]);
+});
+
+app.put("/api/models/:id", async (req, res) => {
+  const { title, description } = req.body;
+
+  if (!title) {
+    return res.status(400).json({ message: "title is required" });
+  }
+
+  const result = await pool.query(
+    `UPDATE models SET title = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *`,
+    [title, description || null, req.params.id]
+  );
 
   if (result.rows.length === 0) {
     return res.status(404).json({ message: "Model not found" });
@@ -461,6 +576,25 @@ app.post("/api/quizzes/:id/questions", async (req, res) => {
     console.error("Failed to create question:", err);
     res.status(500).json({ message: "Failed to create question" });
   }
+});
+
+app.put("/api/quizzes/:id", async (req, res) => {
+  const { title, description, category } = req.body;
+
+  if (!title) {
+    return res.status(400).json({ message: "title is required" });
+  }
+
+  const result = await pool.query(
+    `UPDATE quizzes SET title = $1, description = $2, category = $3 WHERE id = $4 RETURNING *`,
+    [title, description || null, category || null, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Quiz not found" });
+  }
+
+  res.json(result.rows[0]);
 });
 
 app.delete("/api/quizzes/:id", async (req, res) => {
