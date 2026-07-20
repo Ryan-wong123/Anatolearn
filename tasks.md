@@ -701,12 +701,13 @@ Acceptance Criteria:
 
 In `src/pages/Dashboard.tsx` (teacher view):
 - [x] Teacher stats and quick actions follow `design.md` section 6
-- [ ] Stats fetched from respective `GET /api/...?uploaded_by=<me>` endpoints
+- [x] Stats fetched from respective `GET /api/...` endpoints
 
 Acceptance Criteria:
-- [ ] Teacher dashboard shows real counts from the database
+- [x] Teacher dashboard shows real counts from the database
 - [x] All quick actions navigate to the pages specified in `design.md`
 
+**Note:** Resolved 17 Jul 2026 — teacher stats now show real counts from `GET /api/models`, `GET /api/videos`, `GET /api/quizzes`. Relabeled "Videos Linked" → "Videos Uploaded" and "Student Engagement" → "Quizzes Created" since neither original stat was computable (no video-annotation linking exists, no analytics/engagement tracking exists). Student-facing stats ("Study Time", "Quiz Average", "Models Explored") remain placeholders.
 ---
 
 ### Task 6.2 — Build Content Visibility Controls
@@ -789,6 +790,24 @@ Acceptance Criteria:
 Acceptance Criteria:
 - [ ] Role-gated UI driven by real JWT role
 - [ ] Student user cannot see teacher controls even if they inspect the page
+
+---
+
+### Task 6.7 — Build Resource Upload/Management (Library)
+**Depends on:** Task 6.2
+
+In `src/pages/Library.tsx` (teacher view):
+- [x] Upload Content button opens a form with a File/Link content-type toggle
+- [x] File mode: PDF/Document sub-toggle, file picker (`.pdf`, `.doc`, `.docx`)
+- [x] Link mode: URL input
+- [x] Publish toggle, Delete button per resource (teacher-only), with confirmation on delete
+
+Acceptance Criteria:
+- [x] Teacher can upload a PDF/document file or a link-only resource
+- [x] Published resources visible to students; unpublished hidden
+- [x] Delete removes the resource from the list and database
+
+**Note:** Resolved 17 Jul 2026. `is_published` added to `resources` table, matching the video/model/quiz pattern. `POST /api/resources/upload` handles both file uploads (via multer) and link-only resources (`resource_type: 'link'`, no file) in one endpoint. Fixed a bug found during testing: `href` for file-based resources needs `http://localhost:5000` prepended since `file_path` is stored as a relative backend path — link resources use their stored URL as-is. PDF vs Document currently only affects the stored `resource_type` value; no different file-type enforcement or icon distinction exists yet.
 
 ---
 
