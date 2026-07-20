@@ -421,6 +421,15 @@ export default function Quizzes() {
     }
   };
 
+  const handleToggleQuizPublish = async (quiz: Quiz) => {
+    try {
+      const updated = await api.publishQuiz(quiz.id, !quiz.is_published);
+      setQuizzes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+    } catch (err) {
+      console.error('Failed to update quiz publish state:', err);
+    }
+  };
+
   const handleOpenResults = async (quiz: Quiz) => {
     setShowResultsQuiz(quiz);
     setSelectedAttemptId(null);
@@ -572,8 +581,7 @@ export default function Quizzes() {
             key={quiz.id}
             className="px-5 py-4 flex items-center gap-3 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors"
           >
-            <Clock className="w-5 h-5 flex-shrink-0 text-amber-400" />
-
+            <BookOpen className="w-5 h-5 flex-shrink-0 text-blue-400" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-blue-600">{quiz.title}</p>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -602,6 +610,12 @@ export default function Quizzes() {
                     className="text-sm text-slate-500 hover:text-blue-600 transition-colors"
                   >
                     Edit
+                  </button>
+                  <button
+                    onClick={() => handleToggleQuizPublish(quiz)}
+                    className="text-sm text-slate-500 hover:text-blue-600 transition-colors"
+                  >
+                    {quiz.is_published ? 'Unpublish' : 'Publish'}
                   </button>
                   <button
                     onClick={() => handleOpenResults(quiz)}

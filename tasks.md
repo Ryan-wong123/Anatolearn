@@ -1001,7 +1001,7 @@ Acceptance Criteria:
 
 **Known gap (15 Jul 2026):** this question editor is only reachable during initial quiz creation. Once a quiz is published, there is currently no UI to add, edit, or delete its questions — only title/description/category can be changed (via Task 8.2's `PUT` endpoint) and the questions themselves are frozen. The backend endpoints (`POST`/`PUT`/`DELETE .../questions`) all still work and could support this if a "Manage Questions" UI were added to the published-quiz view; not yet built.
 
-**Known gap (15 Jul 2026):** there is no Publish/Unpublish toggle on the quiz list itself after creation — a quiz is published automatically when the creation flow finishes, but there's currently no way to manually unpublish or republish it afterward from the list view, even though `PATCH /api/quizzes/:id/publish` exists and works (used internally by the creation flow). Not yet wired to a visible button.
+**Resolved 20 Jul 2026:** Publish/Unpublish button added to each quiz row (teacher view), wired to the existing `PATCH /api/quizzes/:id/publish` endpoint. Confirmed working: toggling flips the button label immediately, student-facing visibility updates correctly, and state persists correctly after a page refresh.
 
 ---
 
@@ -1337,7 +1337,8 @@ These tasks run continuously throughout the 10-week project:
 - [ ] Label export in JSON and CSV
 
 ### Should Have
-- [x] Content visibility (publish/unpublish toggle) — models, videos, and quizzes (at creation time) all done; quiz list-level toggle after creation still missing
+- [x] Content visibility (publish/unpublish toggle) — models, videos, and quizzes (at creation time) all done
+- [x] Quiz list-level publish/unpublish toggle
 - [ ] Quiz attempt history for students — real version blocked on auth; same-browser single-quiz stopgap exists
 - [!] Video-to-label linking UI — blocked, needs architecture decision
 - [ ] Storage abstraction layer (cloud-ready)
