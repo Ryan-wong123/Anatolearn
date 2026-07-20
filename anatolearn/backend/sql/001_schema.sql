@@ -140,6 +140,7 @@ CREATE TABLE resources (
 
     resource_type resource_type NOT NULL,
     file_path TEXT NOT NULL,
+    is_published BOOLEAN NOT NULL DEFAULT false,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

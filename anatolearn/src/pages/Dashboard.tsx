@@ -1,17 +1,13 @@
+import { useEffect, useState } from 'react';
 import { Clock, Trophy, Activity, Box, Video, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
+import { api } from '../api/api';
 
 const studentStats = [
   { label: 'Study Time', value: '12.5h', icon: Clock, iconColor: 'text-blue-500' },
   { label: 'Quiz Average', value: '85%', icon: Trophy, iconColor: 'text-yellow-500' },
   { label: 'Models Explored', value: '24', icon: Activity, iconColor: 'text-green-500' },
-];
-
-const teacherStats = [
-  { label: 'Models Uploaded', value: '12', icon: Box, iconColor: 'text-blue-500' },
-  { label: 'Videos Linked', value: '45', icon: Video, iconColor: 'text-purple-500' },
-  { label: 'Student Engagement', value: 'High', icon: Activity, iconColor: 'text-green-500' },
 ];
 
 const learningCards = [
@@ -50,6 +46,33 @@ const quickActions = [
 
 export default function Dashboard() {
   const { role, program } = useAppContext();
+
+  const [modelCount, setModelCount] = useState<number | null>(null);
+  const [videoCount, setVideoCount] = useState<number | null>(null);
+  const [quizCount, setQuizCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (role !== 'teacher') return;
+
+    api.getModels()
+      .then((models) => setModelCount(models.length))
+      .catch((err) => console.error('Failed to load model count:', err));
+
+    api.getVideos()
+      .then((videos) => setVideoCount(videos.length))
+      .catch((err) => console.error('Failed to load video count:', err));
+
+    api.getQuizzes()
+      .then((quizzes) => setQuizCount(quizzes.length))
+      .catch((err) => console.error('Failed to load quiz count:', err));
+  }, [role]);
+
+  const teacherStats = [
+    { label: 'Models Uploaded', value: modelCount === null ? '—' : String(modelCount), icon: Box, iconColor: 'text-blue-500' },
+    { label: 'Videos Uploaded', value: videoCount === null ? '—' : String(videoCount), icon: Video, iconColor: 'text-purple-500' },
+    { label: 'Quizzes Created', value: quizCount === null ? '—' : String(quizCount), icon: Activity, iconColor: 'text-green-500' },
+  ];
+
   const stats = role === 'teacher' ? teacherStats : studentStats;
 
   return (

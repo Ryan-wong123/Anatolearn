@@ -144,7 +144,51 @@ export const api = {
 
     getQuizQuestions: (id: number) => request(`/quizzes/${id}/questions`),
 
-    getResources: () => request("/resources"),
+    getResources: (publishedOnly?: boolean) =>
+        request(`/resources${publishedOnly ? '?published=true' : ''}`),
+
+    uploadResource: (data: {
+        title: string;
+        description?: string;
+        resource_type: 'pdf' | 'document' | 'link';
+        url?: string;
+        file?: File;
+        program_id?: number;
+    }) => {
+        const formData = new FormData();
+        formData.append('title', data.title);
+        if (data.description) formData.append('description', data.description);
+        formData.append('resource_type', data.resource_type);
+        if (data.url) formData.append('url', data.url);
+        if (data.file) formData.append('file', data.file);
+        if (data.program_id) formData.append('program_id', String(data.program_id));
+
+        return fetch(`http://localhost:5000/api/resources/upload`, {
+            method: 'POST',
+            body: formData,
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        });
+    },
+
+    deleteResource: (id: number) =>
+        fetch(`http://localhost:5000/api/resources/${id}`, {
+            method: 'DELETE',
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
+
+    publishResource: (id: number, isPublished: boolean) =>
+        fetch(`http://localhost:5000/api/resources/${id}/publish`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_published: isPublished }),
+        }).then((res) => {
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        }),
 
     getAnnotations: (modelId: number) =>
         request(`/models/${modelId}/annotations`),

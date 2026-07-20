@@ -53,7 +53,8 @@ INSERT INTO resources (
     title,
     description,
     resource_type,
-    file_path
+    file_path,
+    is_published
 )
 VALUES
 (
@@ -61,5 +62,6 @@ VALUES
     'TeachMeAnatomy',
     'Comprehensive anatomy reference covering muscles, bones, nerves, vessels and organs.',
     'link',
-    'https://teachmeanatomy.info/'
+    'https://teachmeanatomy.info/',
+    true
 );

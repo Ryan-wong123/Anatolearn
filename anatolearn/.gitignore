@@ -26,6 +26,7 @@ dist-ssr
 # 3D models
 public/models/
 public/thumbnails
+public/resources/
 
 # backend .env
 backend/.env

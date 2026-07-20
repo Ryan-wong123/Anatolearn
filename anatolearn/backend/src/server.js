@@ -803,8 +803,114 @@ app.put("/api/questions/:id", async (req, res) => {
 });
 
 app.get("/api/resources", async (req, res) => {
+  const { published } = req.query;
+
+  if (published === "true") {
+    const result = await pool.query(
+      "SELECT * FROM resources WHERE is_published = true ORDER BY id"
+    );
+    return res.json(result.rows);
+  }
+
   const result = await pool.query("SELECT * FROM resources ORDER BY id");
   res.json(result.rows);
+});
+
+const resourceStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const resourcesDir = path.join(
+      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      "resources"
+    );
+    fs.mkdir(resourcesDir, { recursive: true })
+      .then(() => cb(null, resourcesDir))
+      .catch((err) => cb(err, resourcesDir));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const safeName = `resource-${Date.now()}${ext}`;
+    cb(null, safeName);
+  },
+});
+
+const uploadResource = multer({
+  storage: resourceStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  fileFilter: (req, file, cb) => {
+    const allowed = [".pdf", ".doc", ".docx"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .pdf, .doc, and .docx files are allowed"));
+    }
+  },
+});
+
+app.post("/api/resources/upload", uploadResource.single("file"), async (req, res) => {
+  try {
+    const { title, description, resource_type, url, program_id } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ message: "title is required" });
+    }
+    if (!resource_type || !["pdf", "document", "link"].includes(resource_type)) {
+      return res.status(400).json({ message: "resource_type must be pdf, document, or link" });
+    }
+
+    let filePath;
+    if (resource_type === "link") {
+      if (!url) {
+        return res.status(400).json({ message: "url is required for link resources" });
+      }
+      filePath = url;
+    } else {
+      if (!req.file) {
+        return res.status(400).json({ message: "file is required for pdf/document resources" });
+      }
+      filePath = `/resources/${req.file.filename}`;
+    }
+
+    const result = await pool.query(
+      `INSERT INTO resources (title, description, resource_type, file_path, program_id, is_published)
+   VALUES ($1, $2, $3, $4, $5, false)
+   RETURNING *`,
+      [title, description || null, resource_type, filePath, program_id || null]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to upload resource:", err);
+    res.status(500).json({ message: err.message || "Failed to upload resource" });
+  }
+});
+
+app.delete("/api/resources/:id", async (req, res) => {
+  const result = await pool.query(
+    "DELETE FROM resources WHERE id = $1 RETURNING *",
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Resource not found" });
+  }
+
+  res.json({ message: "Resource deleted" });
+});
+
+app.patch("/api/resources/:id/publish", async (req, res) => {
+  const { is_published } = req.body;
+
+  const result = await pool.query(
+    `UPDATE resources SET is_published = $1 WHERE id = $2 RETURNING *`,
+    [is_published, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Resource not found" });
+  }
+
+  res.json(result.rows[0]);
 });
 
 const PORT = process.env.PORT || 5000;
