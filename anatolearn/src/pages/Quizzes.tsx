@@ -55,6 +55,15 @@ interface SubmitResult {
   feedback: SubmitFeedbackItem[];
 }
 
+interface QuizAttemptSummary {
+  id: number;
+  quiz_id: number;
+  quiz_title: string;
+  score: number | null;
+  status: 'graded' | 'pending_review';
+  attempted_at: string;
+}
+
 const optionLetters = ['A', 'B', 'C', 'D'] as const;
 
 const quizTypeBadgeClasses: Record<Quiz['type'], string> = {
@@ -117,10 +126,21 @@ export default function Quizzes() {
   const [editQuizCategory, setEditQuizCategory] = useState('');
   const [editQuizError, setEditQuizError] = useState<string | null>(null);
 
+  // Task 8.8 — real quiz attempt history, keyed to the logged-in student's
+  // account rather than the old same-browser sessionStorage stopgap.
+  const [attemptHistory, setAttemptHistory] = useState<QuizAttemptSummary[]>([]);
+
   useEffect(() => {
     api.getQuizzes(role === 'student')
       .then(setQuizzes)
       .catch((err) => console.error('Failed to load quizzes:', err));
+  }, [role]);
+
+  useEffect(() => {
+    if (role !== 'student') return;
+    api.getMyAttempts()
+      .then(setAttemptHistory)
+      .catch((err) => console.error('Failed to load attempt history:', err));
   }, [role]);
 
   const handleStartQuiz = async (quiz: Quiz) => {
@@ -207,6 +227,10 @@ export default function Quizzes() {
       const result = await api.submitQuiz(activeQuiz.id, answers);
       setSubmitResult(result);
       sessionStorage.setItem(`quiz-attempt-${activeQuiz.id}`, String(result.attempt.id));
+
+      // Task 8.8: refresh real history right away so the new attempt shows
+      // up without needing a full page reload.
+      api.getMyAttempts().then(setAttemptHistory).catch(() => {});
 
       const openEnded = questions
         .filter((q) => q.format === 'open_ended')
@@ -635,6 +659,48 @@ export default function Quizzes() {
           </div>
         )}
       </div>
+
+      {role === 'student' && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-slate-900 font-display mb-3">
+            My Quiz History
+          </h2>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {attemptHistory.length === 0 ? (
+              <div className="py-8 text-center text-sm text-slate-400">
+                No quiz attempts yet.
+              </div>
+            ) : (
+              attemptHistory.map((attempt) => (
+                <div
+                  key={attempt.id}
+                  className="px-5 py-3 flex items-center justify-between border-b border-slate-100 last:border-b-0"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{attempt.quiz_title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {new Date(attempt.attempted_at).toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                  {attempt.status === 'graded' ? (
+                    <span className="text-sm font-semibold text-slate-900">
+                      {attempt.score}%
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                      Pending Review
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {activeQuiz && !submitResult && current && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">

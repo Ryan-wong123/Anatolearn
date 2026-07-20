@@ -4,6 +4,8 @@ const fs = require("fs/promises");
 const path = require("path");
 const pool = require("./db");
 const multer = require("multer");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 
@@ -69,7 +71,13 @@ const uploadModel = multer({
   },
 });
 
-app.use(cors());
+// exposedHeaders is required for the browser's fetch() to see
+// Content-Disposition across origins (frontend:5173 -> backend:5000) —
+// without it, the real filename from res.download()/annotation export is
+// invisible to client-side JS and downloads silently fall back to a
+// generic name. Not caught by curl-based testing since CORS is a
+// browser-only enforcement, only surfaced once tested in a real browser.
+app.use(cors({ exposedHeaders: ["Content-Disposition"] }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static(process.env.PUBLIC_DIR || path.join(__dirname, "../../public")));
 
@@ -87,21 +95,176 @@ app.get("/api/programs", async (req, res) => {
   res.json(result.rows);
 });
 
-app.get("/api/models", async (req, res) => {
-  const { published } = req.query;
+const VALID_ROLES = ["student", "teacher"];
 
-  if (published === "true") {
-    const result = await pool.query(
-      "SELECT * FROM models WHERE is_published = true ORDER BY id"
-    );
-    return res.json(result.rows);
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.warn(
+    "WARNING: JWT_SECRET is not set. /api/auth/login will fail until it's provided " +
+      "(see docker-compose.yml's backend.environment block)."
+  );
+}
+
+function authenticate(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Authentication required" });
   }
 
-  const result = await pool.query("SELECT * FROM models ORDER BY id");
+  const token = authHeader.slice("Bearer ".length);
+
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+}
+
+function requireTeacher(req, res, next) {
+  if (!req.user || req.user.role !== "teacher") {
+    return res.status(403).json({ message: "Teacher access required" });
+  }
+  next();
+}
+
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { name, email, password, role, program_id } = req.body;
+
+    if (!name || !email || !password || !role) {
+      return res
+        .status(400)
+        .json({ message: "name, email, password, and role are required" });
+    }
+
+    if (!VALID_ROLES.includes(role)) {
+      return res
+        .status(400)
+        .json({ message: `role must be one of: ${VALID_ROLES.join(", ")}` });
+    }
+
+    if (password.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "password must be at least 8 characters" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [
+      normalizedEmail,
+    ]);
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ message: "An account with this email already exists" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const result = await pool.query(
+      `INSERT INTO users (name, email, password_hash, role, program_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, email, role, program_id, created_at`,
+      [name, normalizedEmail, passwordHash, role, program_id || null]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to register user:", err);
+    res.status(500).json({ message: err.message || "Failed to register user" });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    if (!JWT_SECRET) {
+      return res.status(500).json({ message: "Server is missing JWT_SECRET configuration" });
+    }
+
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "email and password are required" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const result = await pool.query(
+      "SELECT id, name, email, password_hash, role, program_id FROM users WHERE email = $1",
+      [normalizedEmail]
+    );
+
+    // Same generic message whether the email doesn't exist or the password is wrong —
+    // don't reveal which one it was, that would let someone enumerate registered emails.
+    const invalidCredentials = () =>
+      res.status(401).json({ message: "Invalid email or password" });
+
+    if (result.rows.length === 0) {
+      return invalidCredentials();
+    }
+
+    const user = result.rows[0];
+    const passwordMatches = await bcrypt.compare(password, user.password_hash);
+
+    if (!passwordMatches) {
+      return invalidCredentials();
+    }
+
+    const token = jwt.sign(
+      { id: user.id, name: user.name, role: user.role, program_id: user.program_id },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        program_id: user.program_id,
+      },
+    });
+  } catch (err) {
+    console.error("Failed to log in:", err);
+    res.status(500).json({ message: err.message || "Failed to log in" });
+  }
+});
+
+app.get("/api/models", authenticate, async (req, res) => {
+  const { published, system, part, q } = req.query;
+
+  const conditions = [];
+  const values = [];
+
+  if (published === "true") {
+    conditions.push("is_published = true");
+  }
+  if (system) {
+    values.push(system);
+    conditions.push(`body_system = $${values.length}`);
+  }
+  if (part) {
+    values.push(part);
+    conditions.push(`body_part = $${values.length}`);
+  }
+  if (q) {
+    values.push(`%${q}%`);
+    conditions.push(`(title ILIKE $${values.length} OR description ILIKE $${values.length})`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const result = await pool.query(
+    `SELECT * FROM models ${whereClause} ORDER BY id`,
+    values
+  );
   res.json(result.rows);
 });
 
-app.get("/api/models/:id", async (req, res) => {
+app.get("/api/models/:id", authenticate, async (req, res) => {
   const result = await pool.query("SELECT * FROM models WHERE id = $1", [
     req.params.id,
   ]);
@@ -113,13 +276,13 @@ app.get("/api/models/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.post("/api/models/upload", uploadModel.single("model"), async (req, res) => {
+app.post("/api/models/upload", authenticate, requireTeacher, uploadModel.single("model"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No model file uploaded" });
     }
 
-    const { title, description, program_id } = req.body;
+    const { title, description, program_id, body_system, body_part } = req.body;
 
     if (!title) {
       return res.status(400).json({ message: "title is required" });
@@ -128,10 +291,10 @@ app.post("/api/models/upload", uploadModel.single("model"), async (req, res) => 
     const filePath = `/models/anatomy/${req.file.filename}`;
 
     const result = await pool.query(
-      `INSERT INTO models (title, description, file_path, program_id, is_published)
-       VALUES ($1, $2, $3, $4, false)
+      `INSERT INTO models (title, description, file_path, program_id, body_system, body_part, is_published)
+       VALUES ($1, $2, $3, $4, $5, $6, false)
        RETURNING *`,
-      [title, description || null, filePath, program_id || null]
+      [title, description || null, filePath, program_id || null, body_system || null, body_part || null]
     );
 
     res.status(201).json(result.rows[0]);
@@ -141,7 +304,7 @@ app.post("/api/models/upload", uploadModel.single("model"), async (req, res) => 
   }
 });
 
-app.delete("/api/models/:id", async (req, res) => {
+app.delete("/api/models/:id", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     "DELETE FROM models WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -154,7 +317,7 @@ app.delete("/api/models/:id", async (req, res) => {
   res.json({ message: "Model deleted" });
 });
 
-app.patch("/api/models/:id/publish", async (req, res) => {
+app.patch("/api/models/:id/publish", authenticate, requireTeacher, async (req, res) => {
   const { is_published } = req.body;
 
   const result = await pool.query(
@@ -169,16 +332,16 @@ app.patch("/api/models/:id/publish", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.put("/api/models/:id", async (req, res) => {
-  const { title, description } = req.body;
+app.put("/api/models/:id", authenticate, requireTeacher, async (req, res) => {
+  const { title, description, body_system, body_part } = req.body;
 
   if (!title) {
     return res.status(400).json({ message: "title is required" });
   }
 
   const result = await pool.query(
-    `UPDATE models SET title = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *`,
-    [title, description || null, req.params.id]
+    `UPDATE models SET title = $1, description = $2, body_system = $3, body_part = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *`,
+    [title, description || null, body_system || null, body_part || null, req.params.id]
   );
 
   if (result.rows.length === 0) {
@@ -188,7 +351,48 @@ app.put("/api/models/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.patch("/api/models/:id/thumbnail", async (req, res) => {
+app.get("/api/models/:id/download", authenticate, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM models WHERE id = $1", [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Model not found" });
+    }
+    const model = result.rows[0];
+
+    // Teachers can download any model; students only published ones.
+    if (req.user.role !== "teacher" && !model.is_published) {
+      return res.status(403).json({ message: "This model is not available for download" });
+    }
+
+    const publicDir = process.env.PUBLIC_DIR || path.join(__dirname, "../../public");
+    const absolutePath = path.join(publicDir, model.file_path);
+    const ext = path.extname(model.file_path);
+    const safeTitle = model.title.replace(/[^a-z0-9_-]+/gi, "_");
+    const downloadName = `${safeTitle}${ext}`;
+
+    // Best-effort logging — a failed insert shouldn't block the actual download.
+    try {
+      await pool.query(
+        "INSERT INTO downloads (model_id, downloaded_by) VALUES ($1, $2)",
+        [model.id, req.user.id]
+      );
+    } catch (logErr) {
+      console.error("Failed to log download (continuing anyway):", logErr);
+    }
+
+    res.download(absolutePath, downloadName, (err) => {
+      if (err && !res.headersSent) {
+        console.error("Failed to send model file:", err);
+        res.status(500).json({ message: "Failed to download model file" });
+      }
+    });
+  } catch (err) {
+    console.error("Failed to process download:", err);
+    res.status(500).json({ message: err.message || "Failed to download model" });
+  }
+});
+
+app.patch("/api/models/:id/thumbnail", authenticate, async (req, res) => {
   try {
     const { thumbnailDataUrl } = req.body;
 
@@ -231,7 +435,7 @@ app.patch("/api/models/:id/thumbnail", async (req, res) => {
   }
 });
 
-app.get("/api/models/:id/annotations", async (req, res) => {
+app.get("/api/models/:id/annotations", authenticate, async (req, res) => {
   const result = await pool.query(
     "SELECT * FROM annotations WHERE model_id = $1 ORDER BY id",
     [req.params.id]
@@ -240,7 +444,59 @@ app.get("/api/models/:id/annotations", async (req, res) => {
   res.json(result.rows);
 });
 
-app.post("/api/models/:id/annotations", async (req, res) => {
+// Task 10.2 — exports from `annotations`, not a `labels` table (see
+// docs/database_schema.md for why). Route path uses /annotations/export
+// rather than the originally-specified /labels/export to match the real
+// data model.
+app.get("/api/models/:id/annotations/export", authenticate, requireTeacher, async (req, res) => {
+  try {
+    const format = req.query.format === "csv" ? "csv" : "json";
+
+    const result = await pool.query(
+      `SELECT id, annotation_type, label, description, color, annotation_data, created_at
+       FROM annotations WHERE model_id = $1 ORDER BY id`,
+      [req.params.id]
+    );
+
+    if (format === "json") {
+      res.setHeader("Content-Disposition", `attachment; filename="model-${req.params.id}-annotations.json"`);
+      res.setHeader("Content-Type", "application/json");
+      return res.send(JSON.stringify(result.rows, null, 2));
+    }
+
+    // CSV: common fields are flattened into columns; annotation_data (which
+    // varies by annotation_type — point/highlight/region) is stringified
+    // into its own column rather than split out, since a single flat
+    // schema doesn't fit all three annotation shapes cleanly.
+    const escapeCsv = (value) => {
+      if (value === null || value === undefined) return "";
+      const str =
+        value instanceof Date
+          ? value.toISOString()
+          : typeof value === "object"
+          ? JSON.stringify(value)
+          : String(value);
+      return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+
+    const header = "id,annotation_type,label,description,color,annotation_data,created_at";
+    const rows = result.rows.map((r) =>
+      [r.id, r.annotation_type, r.label, r.description, r.color, r.annotation_data, r.created_at]
+        .map(escapeCsv)
+        .join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+
+    res.setHeader("Content-Disposition", `attachment; filename="model-${req.params.id}-annotations.csv"`);
+    res.setHeader("Content-Type", "text/csv");
+    res.send(csv);
+  } catch (err) {
+    console.error("Failed to export annotations:", err);
+    res.status(500).json({ message: err.message || "Failed to export annotations" });
+  }
+});
+
+app.post("/api/models/:id/annotations", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
 
   const result = await pool.query(
@@ -261,7 +517,7 @@ app.post("/api/models/:id/annotations", async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
-app.delete("/api/annotations/:id", async (req, res) => {
+app.delete("/api/annotations/:id", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     "DELETE FROM annotations WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -274,7 +530,7 @@ app.delete("/api/annotations/:id", async (req, res) => {
   res.json({ message: "Annotation deleted" });
 });
 
-app.put("/api/annotations/:id", async (req, res) => {
+app.put("/api/annotations/:id", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
 
   const result = await pool.query(
@@ -297,7 +553,7 @@ app.put("/api/annotations/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.get("/api/videos", async (req, res) => {
+app.get("/api/videos", authenticate, async (req, res) => {
   const { published } = req.query;
 
   if (published === "true") {
@@ -311,7 +567,7 @@ app.get("/api/videos", async (req, res) => {
   res.json(result.rows);
 });
 
-app.get("/api/videos/:id", async (req, res) => {
+app.get("/api/videos/:id", authenticate, async (req, res) => {
   const result = await pool.query("SELECT * FROM videos WHERE id = $1", [
     req.params.id,
   ]);
@@ -323,7 +579,7 @@ app.get("/api/videos/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.post("/api/videos/upload", uploadVideo.single("video"), async (req, res) => {
+app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideo.single("video"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No video file uploaded" });
@@ -351,7 +607,7 @@ app.post("/api/videos/upload", uploadVideo.single("video"), async (req, res) => 
   }
 });
 
-app.delete("/api/videos/:id", async (req, res) => {
+app.delete("/api/videos/:id", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     "DELETE FROM videos WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -364,7 +620,7 @@ app.delete("/api/videos/:id", async (req, res) => {
   res.json({ message: "Video deleted" });
 });
 
-app.patch("/api/videos/:id/publish", async (req, res) => {
+app.patch("/api/videos/:id/publish", authenticate, requireTeacher, async (req, res) => {
   const { is_published } = req.body;
 
   const result = await pool.query(
@@ -379,7 +635,7 @@ app.patch("/api/videos/:id/publish", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.put("/api/videos/:id", async (req, res) => {
+app.put("/api/videos/:id", authenticate, requireTeacher, async (req, res) => {
   const { title, description } = req.body;
 
   if (!title) {
@@ -398,7 +654,7 @@ app.put("/api/videos/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.get("/api/quizzes", async (req, res) => {
+app.get("/api/quizzes", authenticate, async (req, res) => {
   const { published } = req.query;
 
   if (published === "true") {
@@ -412,7 +668,7 @@ app.get("/api/quizzes", async (req, res) => {
   res.json(result.rows);
 });
 
-app.get("/api/quizzes/:id/questions", async (req, res) => {
+app.get("/api/quizzes/:id/questions", authenticate, async (req, res) => {
   const result = await pool.query(
     "SELECT id, quiz_id, question, format, option_a, option_b, option_c, option_d FROM quiz_questions WHERE quiz_id = $1 ORDER BY id",
     [req.params.id]
@@ -421,7 +677,7 @@ app.get("/api/quizzes/:id/questions", async (req, res) => {
   res.json(result.rows);
 });
 
-app.post("/api/quizzes/:id/submit", async (req, res) => {
+app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
   const { answers } = req.body;
 
   if (!Array.isArray(answers)) {
@@ -466,10 +722,10 @@ app.post("/api/quizzes/:id/submit", async (req, res) => {
     const score = status === "graded" && total > 0 ? Math.round((correctCount / total) * 100) : null;
 
     const attemptResult = await pool.query(
-      `INSERT INTO quiz_attempts (quiz_id, score, total_questions, correct_count, status)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO quiz_attempts (quiz_id, student_id, score, total_questions, correct_count, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [req.params.id, score, total, status === "graded" ? correctCount : null, status]
+      [req.params.id, req.user.id, score, total, status === "graded" ? correctCount : null, status]
     );
 
     const attempt = attemptResult.rows[0];
@@ -508,7 +764,7 @@ app.post("/api/quizzes/:id/submit", async (req, res) => {
   }
 });
 
-app.post("/api/quizzes", async (req, res) => {
+app.post("/api/quizzes", authenticate, requireTeacher, async (req, res) => {
   const { title, description, type, category, program_id } = req.body;
 
   if (!title || !type) {
@@ -530,7 +786,7 @@ app.post("/api/quizzes", async (req, res) => {
   }
 });
 
-app.post("/api/quizzes/:id/questions", async (req, res) => {
+app.post("/api/quizzes/:id/questions", authenticate, requireTeacher, async (req, res) => {
   const { question, format, option_a, option_b, option_c, option_d, correct_option, model_answer } = req.body;
 
   if (!question) {
@@ -578,7 +834,7 @@ app.post("/api/quizzes/:id/questions", async (req, res) => {
   }
 });
 
-app.put("/api/quizzes/:id", async (req, res) => {
+app.put("/api/quizzes/:id", authenticate, requireTeacher, async (req, res) => {
   const { title, description, category } = req.body;
 
   if (!title) {
@@ -597,7 +853,7 @@ app.put("/api/quizzes/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.delete("/api/quizzes/:id", async (req, res) => {
+app.delete("/api/quizzes/:id", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     "DELETE FROM quizzes WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -610,7 +866,7 @@ app.delete("/api/quizzes/:id", async (req, res) => {
   res.json({ message: "Quiz deleted" });
 });
 
-app.patch("/api/quizzes/:id/type", async (req, res) => {
+app.patch("/api/quizzes/:id/type", authenticate, requireTeacher, async (req, res) => {
   const { type } = req.body;
 
   if (!["MCQ", "Practical", "Mixed"].includes(type)) {
@@ -629,7 +885,7 @@ app.patch("/api/quizzes/:id/type", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.patch("/api/quizzes/:id/publish", async (req, res) => {
+app.patch("/api/quizzes/:id/publish", authenticate, requireTeacher, async (req, res) => {
   const { is_published } = req.body;
 
   const result = await pool.query(
@@ -644,7 +900,7 @@ app.patch("/api/quizzes/:id/publish", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.get("/api/quizzes/:id/attempts/pending", async (req, res) => {
+app.get("/api/quizzes/:id/attempts/pending", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     `SELECT * FROM quiz_attempts WHERE quiz_id = $1 AND status = 'pending_review' ORDER BY attempted_at`,
     [req.params.id]
@@ -652,7 +908,22 @@ app.get("/api/quizzes/:id/attempts/pending", async (req, res) => {
   res.json(result.rows);
 });
 
-app.get("/api/attempts/:id/answers", async (req, res) => {
+// Task 8.8 — real student attempt history, now possible since auth exists.
+// Scoped to req.user.id, not a :studentId param, so a student can only ever
+// see their own attempts — there's no way to pass someone else's id here.
+app.get("/api/students/me/attempts", authenticate, async (req, res) => {
+  const result = await pool.query(
+    `SELECT qa.id, qa.quiz_id, q.title AS quiz_title, qa.score, qa.status, qa.attempted_at
+     FROM quiz_attempts qa
+     JOIN quizzes q ON q.id = qa.quiz_id
+     WHERE qa.student_id = $1
+     ORDER BY qa.attempted_at DESC`,
+    [req.user.id]
+  );
+  res.json(result.rows);
+});
+
+app.get("/api/attempts/:id/answers", authenticate, async (req, res) => {
   const result = await pool.query(
     `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
      FROM quiz_attempt_answers qaa
@@ -664,7 +935,7 @@ app.get("/api/attempts/:id/answers", async (req, res) => {
   res.json(result.rows);
 });
 
-app.get("/api/attempts/:id", async (req, res) => {
+app.get("/api/attempts/:id", authenticate, async (req, res) => {
   const result = await pool.query(
     "SELECT * FROM quiz_attempts WHERE id = $1",
     [req.params.id]
@@ -677,7 +948,7 @@ app.get("/api/attempts/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.patch("/api/attempt-answers/:id/grade", async (req, res) => {
+app.patch("/api/attempt-answers/:id/grade", authenticate, requireTeacher, async (req, res) => {
   const { teacher_score } = req.body;
 
   if (typeof teacher_score !== "number" || teacher_score < 0 || teacher_score > 100) {
@@ -737,7 +1008,7 @@ app.patch("/api/attempt-answers/:id/grade", async (req, res) => {
   }
 });
 
-app.delete("/api/questions/:id", async (req, res) => {
+app.delete("/api/questions/:id", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     "DELETE FROM quiz_questions WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -750,7 +1021,7 @@ app.delete("/api/questions/:id", async (req, res) => {
   res.json({ message: "Question deleted" });
 });
 
-app.put("/api/questions/:id", async (req, res) => {
+app.put("/api/questions/:id", authenticate, requireTeacher, async (req, res) => {
   const { question, format, option_a, option_b, option_c, option_d, correct_option, model_answer } = req.body;
 
   if (!question) {
@@ -802,7 +1073,7 @@ app.put("/api/questions/:id", async (req, res) => {
   }
 });
 
-app.get("/api/resources", async (req, res) => {
+app.get("/api/resources", authenticate, async (req, res) => {
   const { published } = req.query;
 
   if (published === "true") {
@@ -847,7 +1118,7 @@ const uploadResource = multer({
   },
 });
 
-app.post("/api/resources/upload", uploadResource.single("file"), async (req, res) => {
+app.post("/api/resources/upload", authenticate, requireTeacher, uploadResource.single("file"), async (req, res) => {
   try {
     const { title, description, resource_type, url, program_id } = req.body;
 
@@ -885,7 +1156,7 @@ app.post("/api/resources/upload", uploadResource.single("file"), async (req, res
   }
 });
 
-app.delete("/api/resources/:id", async (req, res) => {
+app.delete("/api/resources/:id", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     "DELETE FROM resources WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -898,7 +1169,7 @@ app.delete("/api/resources/:id", async (req, res) => {
   res.json({ message: "Resource deleted" });
 });
 
-app.patch("/api/resources/:id/publish", async (req, res) => {
+app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req, res) => {
   const { is_published } = req.body;
 
   const result = await pool.query(

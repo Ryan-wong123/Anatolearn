@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
+import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
-  GraduationCap, Box, Video, BookOpen, Library, UserCircle2,
+  GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut,
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../api/api';
@@ -22,7 +22,8 @@ type Program = {
 
 export default function Layout() {
   const location = useLocation();
-  const { role, setRole, program, setProgram } = useAppContext();
+  const navigate = useNavigate();
+  const { role, setRole, program, setProgram, user, logout, isDevMode } = useAppContext();
 
   const [programs, setPrograms] = useState<Program[]>([]);
 
@@ -31,6 +32,20 @@ export default function Layout() {
       .then(setPrograms)
       .catch((err) => console.error('Failed to load programs:', err));
   }, []);
+
+  // Once we know both the logged-in user's program_id and the full programs
+  // list, sync the nav dropdown to match their actual account — it starts on
+  // a hardcoded default otherwise.
+  useEffect(() => {
+    if (!user?.program_id || programs.length === 0) return;
+    const match = programs.find((p) => p.id === user.program_id);
+    if (match) setProgram(match.name);
+  }, [user, programs, setProgram]);
+
+  function handleLogout() {
+    logout();
+    navigate('/login');
+  }
 
   return (
     <div className="bg-slate-50 min-h-screen flex flex-col">
@@ -84,29 +99,51 @@ export default function Layout() {
               ))}
             </select>
 
+            {/* Dev-only: lets you preview both role views without logging in
+                and out. Gated on Vite's built-in DEV flag, so this cannot
+                render (or do anything) in a production build — role there
+                comes only from the logged-in account. */}
+            {isDevMode && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRole('student')}
+                  className={`text-sm transition-colors ${
+                    role === 'student' ? 'font-semibold text-slate-900' : 'text-slate-400'
+                  }`}
+                  title="Dev mode only — real role comes from your account"
+                >
+                  Student
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  onClick={() => setRole('teacher')}
+                  className={`text-sm transition-colors ${
+                    role === 'teacher' ? 'font-semibold text-slate-900' : 'text-slate-400'
+                  }`}
+                  title="Dev mode only — real role comes from your account"
+                >
+                  Teacher
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setRole('student')}
-                className={`text-sm transition-colors ${
-                  role === 'student' ? 'font-semibold text-slate-900' : 'text-slate-400'
-                }`}
-              >
-                Student
+              {user && (
+                <span className="hidden sm:block text-sm text-slate-600 max-w-[140px] truncate">
+                  {user.name}
+                </span>
+              )}
+              <button className="p-1">
+                <UserCircle2 className="w-8 h-8 text-slate-400" />
               </button>
-              <span className="text-slate-300">|</span>
               <button
-                onClick={() => setRole('teacher')}
-                className={`text-sm transition-colors ${
-                  role === 'teacher' ? 'font-semibold text-slate-900' : 'text-slate-400'
-                }`}
+                onClick={handleLogout}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                title="Log out"
               >
-                Teacher
+                <LogOut className="w-5 h-5" />
               </button>
             </div>
-
-            <button className="p-1">
-              <UserCircle2 className="w-8 h-8 text-slate-400" />
-            </button>
           </div>
         </div>
       </nav>

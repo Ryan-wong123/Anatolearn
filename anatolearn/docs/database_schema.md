@@ -6,25 +6,34 @@ The local Docker Compose PostgreSQL service mounts `backend/sql` to `/docker-ent
 
 1. `001_schema.sql`
 2. `002_seed.sql`
+3. `003_add_users.sql` (added 20 Jul 2026 — Task 9.1)
+4. `004_add_model_fields_and_downloads.sql` (added 20 Jul 2026 — Tasks 4.1, 10.1)
+5. `005_add_quiz_attempt_student_id.sql` (added 20 Jul 2026 — Task 8.8)
 
-This creates the local `anatolearn` database schema and seed data automatically for new project setups. The init scripts do not rerun when an existing database volume is present.
+This creates the local `anatolearn` database schema and seed data automatically for new project setups. The init scripts do not rerun when an existing database volume is present — `003`, `004`, and `005` are all written to be additive-only (no `DROP TABLE`s) so they're also safe to run manually against an existing dev database. See each file's header comment for the exact command.
 
 > Status: **Draft — database not yet built.** Based on Task 1.2's original table list, updated with confirmed requirements from 'Project Details Reference' tab under ITP Google Doc, and gaps found while reviewing the actual frontend (`Quizzes.tsx`, `Videos.tsx`). For Member B's review before creating tables — not a final, locked spec.
 
 ---
 
 ## `users`
-No changes from original Task 1.2 spec. **Status: Not built** — no `users` table exists yet, no auth (Task 9 not built).
+**Status: Built 20 Jul 2026.** Registration (9.1), login/JWT (9.2), and auth middleware (9.3) all done. Added via `003_add_users.sql`, not `001_schema.sql`.
+
+Differs from the original Task 1.2 proposal in one way: `program` is `program_id` (an FK to `programs.id`, matching the pattern used by `models`/`videos`/`quizzes`/`resources`), not a free-text column.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | uuid / int | primary key |
-| name | text | |
-| email | text | unique |
-| password_hash | text | |
-| role | text | 'student' or 'teacher' |
-| program | text | Physiotherapy / Occupational Therapy / Radiography / Nursing |
-| created_at | timestamp | |
+| id | SERIAL | primary key |
+| program_id | INTEGER | FK → `programs.id`, `ON DELETE SET NULL`, nullable |
+| name | VARCHAR(255) | NOT NULL |
+| email | VARCHAR(255) | NOT NULL, UNIQUE. Stored lowercased/trimmed |
+| password_hash | TEXT | NOT NULL. bcrypt via `bcryptjs`, 10 rounds |
+| role | user_role (enum) | `'student'` \| `'teacher'`, NOT NULL, default `'student'` |
+| created_at | TIMESTAMP | default `CURRENT_TIMESTAMP` |
+
+Tested end-to-end against a real Postgres instance: valid registration (201, password_hash correctly excluded from response, confirmed 60-char bcrypt hash in db), duplicate email (409), missing required fields (400), invalid `role` value (400), password under 8 characters (400). See `docs/testing_log.md`.
+
+**Status: fully built and confirmed 20 Jul 2026.** Every piece of Week 9 is now in place and confirmed working end-to-end in Natalie's real Docker/browser environment: registration, login, route/role middleware, real Login and Register pages, token attached to every request, protected routes, and logout. The `role`/`program` toggle that used to be in `Layout.tsx`'s nav bar is gated behind Vite's `import.meta.env.DEV` flag, confirmed (via inspecting the actual `npm run build` output) to compile to a hardcoded `false` in production, so it cannot appear or function outside local development.
 
 ---
 
@@ -44,7 +53,11 @@ No changes from original Task 1.2 spec.
 | created_at | timestamp | |
 | is_published | boolean | needed for Task 6.2, missing from original Task 1.2 list |
 
-**Status: Built as `models` (renamed from `anatomy_models`), diverges from this proposal.** No `file_format`, `body_system`, `body_part`, `is_published`, or `uploaded_by` columns exist. Actual columns: `id`, `program_id` (references `programs.id`), `title`, `description`, `file_path`, `thumbnail_path`, `created_at`, `updated_at`. Uses `program_id` rather than free-text `body_system`/`body_part`. **Still no publish gating for models** — only `videos` and `quizzes` have `is_published` so far (see below). Models are viewed via a `ModelGallery.tsx` page (browsing) and `Viewer.tsx` (individual model + annotations), both confirmed working — see the `annotations` section below for how the 3D viewer actually works.
+**Status: Built as `models` (renamed from `anatomy_models`), diverges from this proposal in a few ways, but is now feature-complete relative to what the project actually needs.** No `file_format` or `uploaded_by` columns exist — format is inferred from `file_path`'s extension when needed (e.g. for download `Content-Type`), and there's no per-model uploader tracking. Uses `program_id` (FK to `programs.id`) rather than being programme-agnostic. Actual columns as of 20 Jul 2026: `id`, `program_id`, `title`, `description`, `file_path`, `thumbnail_path`, `is_published`, `body_system`, `body_part`, `created_at`, `updated_at`.
+
+`is_published` was added 15 Jul 2026 (Task 6.2) — models do have publish gating, same as videos and quizzes; the earlier note in this file claiming otherwise was stale. `body_system`/`body_part` were added 20 Jul 2026 via `004_add_model_fields_and_downloads.sql` (Tasks 4.1/4.4) — free-text columns, not constrained to a fixed enum, so their possible values are whatever teachers actually type in the upload/edit form.
+
+Full CRUD, publish toggle, search (`?q=`), and system/part filtering are all built and tested against `GET`/`POST`/`PUT`/`DELETE /api/models...` — see `docs/api_endpoints.md`. Models are viewed via a `ModelGallery.tsx` page (browsing, now with search/filter and a download button) and `Viewer.tsx` (individual model + annotations), both confirmed working — see the `annotations` section below for how the 3D viewer actually works.
 
 ---
 
@@ -166,12 +179,13 @@ Uploaded video files (and previously, model thumbnails) were being correctly sav
 ---
 
 ## `quiz_attempts`
-**Status: Built, diverges from original proposal in two ways.** No `student_id` (blocked on Task 9, auth). Also adds a `status` field not in the original proposal, to support the manual-review flow this section originally asked about.
+**Status: Built.** Diverges from the original proposal by adding a `status` field not in the original proposal, to support the manual-review flow this section originally asked about. `student_id` — originally missing, added 20 Jul 2026 (Task 8.8) via `005_add_quiz_attempt_student_id.sql`.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | SERIAL | primary key |
 | quiz_id | integer | references quizzes.id, ON DELETE CASCADE |
+| student_id | integer, nullable | references users.id, ON DELETE SET NULL — added 20 Jul 2026; NULL on any attempt created before this migration |
 | score | integer, nullable | percentage 0-100; **null while status = 'pending_review'** |
 | total_questions | integer | not null |
 | correct_count | integer, nullable | MCQ correct count; null while pending review |
@@ -180,7 +194,7 @@ Uploaded video files (and previously, model thumbnails) were being correctly sav
 
 An attempt becomes `pending_review` if it contains **any** open-ended answers. MCQ portions are still auto-graded and stored immediately (per-answer, in `quiz_attempt_answers`), but the attempt's overall `score` stays null until every open-ended answer in it has been manually scored by a teacher.
 
-**Divergence from original plan:** `student_id` is missing — this is a real gap, not a deliberate design choice. Every attempt is currently anonymous. Task 8.8 (quiz history) cannot be built until Task 9 (auth) exists and `student_id` is added as a follow-up migration.
+**Resolved 20 Jul 2026.** `student_id` added, nullable (`ON DELETE SET NULL` so a deleted account doesn't cascade-delete their quiz history). `POST /api/quizzes/:id/submit` now populates it from `req.user.id`. Powers `GET /api/students/me/attempts` (Task 8.8) — see `docs/api_endpoints.md`. Attempts submitted before this migration keep `student_id: NULL` and can't be retroactively attributed; they were genuinely anonymous when created.
 
 ---
 
@@ -205,14 +219,16 @@ Stores each individual answer within an attempt, so a teacher can review and gra
 ---
 
 ## `downloads`
-No changes from original Task 1.2 spec. **Status: Not built** — no download endpoints exist yet (Task 10.1).
+No changes from original Task 1.2 spec. **Status: Built 20 Jul 2026** (Task 10.1), via `004_add_model_fields_and_downloads.sql`.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | uuid / int | primary key |
-| model_id | uuid / int | references anatomy_models.id |
-| downloaded_by | uuid / int | references users.id |
-| downloaded_at | timestamp | |
+| id | SERIAL | primary key |
+| model_id | INTEGER | FK → `models.id`, `ON DELETE CASCADE`, NOT NULL |
+| downloaded_by | INTEGER | FK → `users.id`, `ON DELETE SET NULL`, nullable |
+| downloaded_at | TIMESTAMP | default `CURRENT_TIMESTAMP` |
+
+Matches the original proposal almost exactly — `anatomy_models`/`users` references point at the actual table names (`models`/`users`). `downloaded_by` is nullable (`ON DELETE SET NULL`) so a download record survives even if the user account is later deleted, rather than cascading the delete. Populated by `GET /api/models/:id/download` on a best-effort basis (a failed insert here doesn't block the download itself). Nothing currently reads this table back out — no "download history" or reporting view exists, since no task calls for one.
 
 ---
 
@@ -276,6 +292,6 @@ No `position_x`/`position_y`/`position_z` or `created_by` columns — position d
 - Manual review is simpler and more accurate than trying to auto-grade it.
 - **Resolved.** Teacher manually reviews and assigns a 0-100 score per open-ended answer via `PATCH /api/attempt-answers/:id/grade`, through a dedicated "View Results" grading UI. Matches the original suggestion above. See `quiz_attempt_answers` for the implementation. Once every open-ended answer in an attempt is scored, the final blended score is computed automatically and `status` flips from `pending_review` to `graded`.
 
-2. **Student attribution on `quiz_attempts`:** blocked on Task 9 (auth/`users` table). Once auth exists, `quiz_attempts` needs a `student_id` column added via migration, and `POST /api/quizzes/:id/submit` needs to accept/derive the authenticated student's ID. **Interim workaround (15 Jul 2026):** the frontend stores the attempt id in `sessionStorage` keyed by quiz id after submission, so a student can see their graded result if they revisit the same quiz in the same browser. This is not real student attribution — it doesn't survive a different device, a cleared cache, or a different student using the same browser. See `docs/api_endpoints.md` for the full caveat.
+2. **Student attribution on `quiz_attempts`:** **Resolved 20 Jul 2026.** `student_id` added via `005_add_quiz_attempt_student_id.sql`, populated from `req.user.id` on every new submission. `GET /api/students/me/attempts` (Task 8.8) now returns real per-student history. The old **interim workaround** (sessionStorage-based single-quiz result checking, 15 Jul 2026) still exists in the frontend and wasn't removed — it's redundant now but harmless, since real history covers everything it was working around.
 
-3. **Video-to-annotation linking (new, 15 Jul 2026):** `tasks.md` Tasks 7.5/7.6 describe linking a video to a "label," but the actual 3D viewer implementation uses `annotations`, not `labels` — there is no video field anywhere in the annotation data model. Needs a decision from the team on whether to (a) add a nullable `video_id` to `annotations` and build a teacher UI to attach a video when creating/editing an annotation, or (b) treat this as out of scope given the architecture divergence. Not yet decided.
+3. **Video-to-annotation linking:** `tasks.md` Tasks 7.5/7.6 describe linking a video to a "label," but the actual 3D viewer implementation uses `annotations`, not `labels` — there is no video field anywhere in the annotation data model. Needs a decision on whether to (a) add a nullable `video_id` to `annotations` and build a teacher UI to attach a video when creating/editing an annotation, or (b) treat this as out of scope given the architecture divergence. **Confirmed 20 Jul 2026: out of scope for Natalie** — this lives in `Viewer.tsx`, which Tim owns, and Natalie confirmed it isn't hers to build. Still genuinely undecided as a schema/architecture question, though — this only settles who *wouldn't* be building it, not which of (a)/(b) is right. If Tim wants to pursue (a), the schema addition itself would be a small, additive migration (same pattern as `003_add_users.sql`/`004_add_model_fields_and_downloads.sql`), not a structural rework.

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Upload, X } from 'lucide-react';
+import { Box, Upload, X, Search, Download, FileJson, FileText } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../api/api';
 
@@ -11,6 +11,8 @@ interface ModelRecord {
   file_path: string;
   thumbnail_path: string | null;
   is_published: boolean;
+  body_system: string | null;
+  body_part: string | null;
 }
 
 export default function ModelGallery() {
@@ -18,9 +20,17 @@ export default function ModelGallery() {
   const navigate = useNavigate();
   const [models, setModels] = useState<ModelRecord[]>([]);
 
+  // Search/filter — Tasks 4.1/4.3/4.4
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [systemFilter, setSystemFilter] = useState('');
+  const [partFilter, setPartFilter] = useState('');
+
   const [showUpload, setShowUpload] = useState(false);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
+  const [uploadBodySystem, setUploadBodySystem] = useState('');
+  const [uploadBodyPart, setUploadBodyPart] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -28,17 +38,49 @@ export default function ModelGallery() {
   const [editingModel, setEditingModel] = useState<ModelRecord | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editBodySystem, setEditBodySystem] = useState('');
+  const [editBodyPart, setEditBodyPart] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [exportingId, setExportingId] = useState<number | null>(null);
+  const [openExportMenuId, setOpenExportMenuId] = useState<number | null>(null);
+
+  // Debounce the free-text search — Task 4.3 explicitly calls for 300ms,
+  // no API call on every keystroke.
   useEffect(() => {
-    loadModels();
-  }, [role]);
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const loadModels = () => {
-    api.getModels(role === 'student')
+    api
+      .getModels(role === 'student', {
+        q: debouncedSearch || undefined,
+        system: systemFilter || undefined,
+        part: partFilter || undefined,
+      })
       .then(setModels)
       .catch((err) => console.error('Failed to load models:', err));
   };
+
+  useEffect(() => {
+    loadModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, debouncedSearch, systemFilter, partFilter]);
+
+  // Task 4.4: system/part dropdowns are populated from unique values
+  // actually present in the current model list, not a fixed hardcoded set.
+  const availableSystems = useMemo(
+    () => Array.from(new Set(models.map((m) => m.body_system).filter((v): v is string => !!v))).sort(),
+    [models]
+  );
+  // Body part options narrow to whatever's available within the currently
+  // selected system, per Task 4.4's acceptance criteria.
+  const availableParts = useMemo(() => {
+    const relevant = systemFilter ? models.filter((m) => m.body_system === systemFilter) : models;
+    return Array.from(new Set(relevant.map((m) => m.body_part).filter((v): v is string => !!v))).sort();
+  }, [models, systemFilter]);
 
   const handleUpload = async () => {
     if (!uploadTitle.trim()) {
@@ -56,6 +98,8 @@ export default function ModelGallery() {
       await api.uploadModel({
         title: uploadTitle,
         description: uploadDescription || undefined,
+        body_system: uploadBodySystem || undefined,
+        body_part: uploadBodyPart || undefined,
         file: uploadFile,
       });
       loadModels();
@@ -72,6 +116,8 @@ export default function ModelGallery() {
     setShowUpload(false);
     setUploadTitle('');
     setUploadDescription('');
+    setUploadBodySystem('');
+    setUploadBodyPart('');
     setUploadFile(null);
     setUploadError(null);
   };
@@ -103,6 +149,8 @@ export default function ModelGallery() {
     setEditingModel(model);
     setEditTitle(model.title);
     setEditDescription(model.description || '');
+    setEditBodySystem(model.body_system || '');
+    setEditBodyPart(model.body_part || '');
     setEditError(null);
   };
 
@@ -110,6 +158,8 @@ export default function ModelGallery() {
     setEditingModel(null);
     setEditTitle('');
     setEditDescription('');
+    setEditBodySystem('');
+    setEditBodyPart('');
     setEditError(null);
   };
 
@@ -125,12 +175,41 @@ export default function ModelGallery() {
       await api.updateModel(editingModel.id, {
         title: editTitle,
         description: editDescription || undefined,
+        body_system: editBodySystem || undefined,
+        body_part: editBodyPart || undefined,
       });
       loadModels();
       closeEdit();
     } catch (err) {
       console.error('Failed to update model:', err);
       setEditError('Failed to save changes. Please try again.');
+    }
+  };
+
+  const handleDownload = async (model: ModelRecord, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      setDownloadingId(model.id);
+      await api.downloadModel(model.id);
+    } catch (err) {
+      console.error('Failed to download model:', err);
+      alert('Failed to download this model. Please try again.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleExport = async (model: ModelRecord, format: 'json' | 'csv', e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenExportMenuId(null);
+    try {
+      setExportingId(model.id);
+      await api.exportAnnotations(model.id, format);
+    } catch (err) {
+      console.error('Failed to export annotations:', err);
+      alert('Failed to export annotations. Please try again.');
+    } finally {
+      setExportingId(null);
     }
   };
 
@@ -157,9 +236,53 @@ export default function ModelGallery() {
         )}
       </div>
 
+      <div className="mb-6 flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search models..."
+            className="pl-9 pr-3 py-2 w-full border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+          />
+        </div>
+
+        <select
+          value={systemFilter}
+          onChange={(e) => {
+            const newSystem = e.target.value;
+            setSystemFilter(newSystem);
+            // Reset the part filter if it no longer applies under the newly
+            // selected system, rather than leaving a stale/invalid combo.
+            const stillValid = models.some(
+              (m) => (!newSystem || m.body_system === newSystem) && m.body_part === partFilter
+            );
+            if (!stillValid) setPartFilter('');
+          }}
+          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none"
+        >
+          <option value="">All Systems</option>
+          {availableSystems.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
+        <select
+          value={partFilter}
+          onChange={(e) => setPartFilter(e.target.value)}
+          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none"
+        >
+          <option value="">All Body Parts</option>
+          {availableParts.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+      </div>
+
       {models.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
-          <p className="text-sm text-slate-500">No models available.</p>
+          <p className="text-sm text-slate-500">No models match your search.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -193,16 +316,33 @@ export default function ModelGallery() {
                 {model.title}
               </h2>
 
+              {(model.body_system || model.body_part) && (
+                <p className="mt-1 text-xs text-slate-400">
+                  {[model.body_system, model.body_part].filter(Boolean).join(' · ')}
+                </p>
+              )}
+
               <p className="mt-2 text-sm text-slate-500 line-clamp-3">
                 {model.description || 'No description provided.'}
               </p>
 
-              <p className="mt-4 text-sm font-medium text-blue-600">
-                Open Viewer →
-              </p>
+              <div className="mt-4 flex items-center justify-between">
+                <p className="text-sm font-medium text-blue-600">
+                  Open Viewer →
+                </p>
+
+                <button
+                  onClick={(e) => handleDownload(model, e)}
+                  disabled={downloadingId === model.id}
+                  title="Download model file"
+                  className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              </div>
 
               {role === 'teacher' && (
-                <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100">
+                <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100 relative">
                   <button
                     onClick={(e) => openEdit(model, e)}
                     className="text-xs text-slate-500 hover:text-blue-600 transition-colors"
@@ -221,6 +361,36 @@ export default function ModelGallery() {
                   >
                     Delete
                   </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenExportMenuId(openExportMenuId === model.id ? null : model.id);
+                    }}
+                    disabled={exportingId === model.id}
+                    className="text-xs text-slate-500 hover:text-blue-600 transition-colors ml-auto"
+                  >
+                    Export Annotations
+                  </button>
+
+                  {openExportMenuId === model.id && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-md z-10 py-1 w-40"
+                    >
+                      <button
+                        onClick={(e) => handleExport(model, 'json', e)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        <FileJson className="w-3.5 h-3.5" /> JSON
+                      </button>
+                      <button
+                        onClick={(e) => handleExport(model, 'csv', e)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        <FileText className="w-3.5 h-3.5" /> CSV
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -268,6 +438,33 @@ export default function ModelGallery() {
                   className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
                   placeholder="Optional"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Body System
+                  </label>
+                  <input
+                    type="text"
+                    value={uploadBodySystem}
+                    onChange={(e) => setUploadBodySystem(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="e.g. Cardiovascular"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Body Part
+                  </label>
+                  <input
+                    type="text"
+                    value={uploadBodyPart}
+                    onChange={(e) => setUploadBodyPart(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="e.g. Chest"
+                  />
+                </div>
               </div>
 
               <div>
@@ -348,6 +545,31 @@ export default function ModelGallery() {
                   rows={3}
                   className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Body System
+                  </label>
+                  <input
+                    type="text"
+                    value={editBodySystem}
+                    onChange={(e) => setEditBodySystem(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Body Part
+                  </label>
+                  <input
+                    type="text"
+                    value={editBodyPart}
+                    onChange={(e) => setEditBodyPart(e.target.value)}
+                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  />
+                </div>
               </div>
             </div>
 
