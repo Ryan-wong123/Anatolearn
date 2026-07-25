@@ -187,11 +187,15 @@ export const api = {
             body: JSON.stringify({ is_published: isPublished }),
         }),
 
-    updateVideo: (id: number, data: { title: string; description?: string }) =>
+    updateVideo: (id: number, data: { title: string; description?: string; annotation_id?: number | null }) =>
         apiFetch(`/videos/${id}`, {
             method: 'PUT',
             body: JSON.stringify(data),
         }),
+
+    // Task 7.6 — every annotation across every model, with its model's
+    // title joined in, for the video-linking dropdown.
+    getAllAnnotations: () => request(`/annotations`),
 
     downloadModel: (id: number) => downloadFile(`/models/${id}/download`),
 

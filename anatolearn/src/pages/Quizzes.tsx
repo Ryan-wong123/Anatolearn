@@ -321,8 +321,7 @@ export default function Quizzes() {
       try {
         const derivedType = deriveQuizType(createdQuestions);
         await api.updateQuizType(createdQuiz.id, derivedType);
-        const publishedQuiz = await api.publishQuiz(createdQuiz.id, true);
-        setQuizzes((prev) => [...prev, { ...publishedQuiz, type: derivedType }]);
+        setQuizzes((prev) => [...prev, { ...createdQuiz, type: derivedType }]);
       } catch (err) {
         console.error('Failed to finalize quiz:', err);
       }

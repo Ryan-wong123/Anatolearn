@@ -1,70 +1,66 @@
 import { useEffect, useState } from 'react';
-import { Clock, Trophy, Activity, Box, Video, BookOpen } from 'lucide-react';
+import { Trophy, Activity, Box, Video, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../api/api';
 
-const studentStats = [
-  { label: 'Study Time', value: '12.5h', icon: Clock, iconColor: 'text-blue-500' },
-  { label: 'Quiz Average', value: '85%', icon: Trophy, iconColor: 'text-yellow-500' },
-  { label: 'Models Explored', value: '24', icon: Activity, iconColor: 'text-green-500' },
-];
-
-const learningCards = [
-  {
-    title: 'Muscular System',
-    subtitle: 'Resume 3D exploration',
-    path: '/3dviewer',
-    gradient: 'from-blue-50 to-indigo-100',
-    icon: Box,
-    iconColor: 'text-blue-500',
-  },
-  {
-    title: 'Cardiovascular Basics',
-    subtitle: 'Next video in playlist',
-    path: '/videos',
-    gradient: 'from-purple-50 to-pink-100',
-    icon: Video,
-    iconColor: 'text-purple-500',
-  },
-  {
-    title: 'Respiratory Quiz',
-    subtitle: 'Due in 2 days',
-    path: '/quizzes',
-    gradient: 'from-green-50 to-emerald-100',
-    icon: BookOpen,
-    iconColor: 'text-green-500',
-  },
-];
-
 const quickActions = [
-  { label: 'Upload New Model', path: '/library' },
-  { label: 'Manage Labels', path: '/3dviewer' },
+  { label: 'Upload New Model', path: '/3dviewer' },
+  { label: 'Manage Annotations', path: '/3dviewer' },
   { label: 'Add Educational Video', path: '/videos' },
   { label: 'Create Quiz', path: '/quizzes' },
 ];
 
+interface AttemptSummary {
+  id: number;
+  quiz_id: number;
+  quiz_title: string;
+  score: number | null;
+  status: string;
+  attempted_at: string;
+}
+
 export default function Dashboard() {
-  const { role, program } = useAppContext();
+  const { role, program, user } = useAppContext();
 
   const [modelCount, setModelCount] = useState<number | null>(null);
   const [videoCount, setVideoCount] = useState<number | null>(null);
   const [quizCount, setQuizCount] = useState<number | null>(null);
 
+  // Student stats
+  const [quizzesTaken, setQuizzesTaken] = useState<number>(0);
+  const [avgScore, setAvgScore] = useState<number | null>(null);
+  const [recentAttempts, setRecentAttempts] = useState<AttemptSummary[]>([]);
+
   useEffect(() => {
-    if (role !== 'teacher') return;
+    if (role === 'teacher') {
+      api.getModels()
+        .then((models) => setModelCount(models.length))
+        .catch((err) => console.error('Failed to load model count:', err));
 
-    api.getModels()
-      .then((models) => setModelCount(models.length))
-      .catch((err) => console.error('Failed to load model count:', err));
+      api.getVideos()
+        .then((videos) => setVideoCount(videos.length))
+        .catch((err) => console.error('Failed to load video count:', err));
 
-    api.getVideos()
-      .then((videos) => setVideoCount(videos.length))
-      .catch((err) => console.error('Failed to load video count:', err));
+      api.getQuizzes()
+        .then((quizzes) => setQuizCount(quizzes.length))
+        .catch((err) => console.error('Failed to load quiz count:', err));
+    }
 
-    api.getQuizzes()
-      .then((quizzes) => setQuizCount(quizzes.length))
-      .catch((err) => console.error('Failed to load quiz count:', err));
+    if (role === 'student') {
+      api.getMyAttempts()
+        .then((attempts: AttemptSummary[]) => {
+          setQuizzesTaken(attempts.length);
+          setRecentAttempts(attempts.slice(0, 3));
+
+          const graded = attempts.filter((a) => a.status === 'graded' && a.score != null);
+          if (graded.length > 0) {
+            const total = graded.reduce((sum, a) => sum + (a.score ?? 0), 0);
+            setAvgScore(Math.round(total / graded.length));
+          }
+        })
+        .catch((err) => console.error('Failed to load attempts:', err));
+    }
   }, [role]);
 
   const teacherStats = [
@@ -73,20 +69,23 @@ export default function Dashboard() {
     { label: 'Quizzes Created', value: quizCount === null ? '—' : String(quizCount), icon: Activity, iconColor: 'text-green-500' },
   ];
 
+  const studentStats = [
+    { label: 'Quizzes Taken', value: String(quizzesTaken), icon: BookOpen, iconColor: 'text-blue-500' },
+    { label: 'Average Score', value: avgScore !== null ? `${avgScore}%` : '—', icon: Trophy, iconColor: 'text-yellow-500' },
+  ];
+
   const stats = role === 'teacher' ? teacherStats : studentStats;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
 
-      {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900 font-display">
-          {role === 'teacher' ? 'Welcome back, Instructor' : 'Welcome back, Student'}
+          Welcome back{user?.name ? `, ${user.name}` : ''}
         </h1>
         <p className="mt-1 text-slate-500 text-sm">{program} Program Overview</p>
       </div>
 
-      {/* Stat Cards */}
       <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
         {stats.map(({ label, value, icon: Icon, iconColor }) => (
           <div key={label} className="bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4">
@@ -99,33 +98,63 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Student: Continue Learning */}
       {role === 'student' && (
         <div className="mt-8">
           <h2 className="text-lg font-semibold text-slate-900 font-display mb-4">
-            Continue Learning
+            Recent Activity
           </h2>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {learningCards.map(({ title, subtitle, path, gradient, icon: Icon, iconColor }) => (
-              <Link
-                key={title}
-                to={path}
-                className="group block bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow"
-              >
-                <div className={`h-32 bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                  <Icon className={`w-12 h-12 ${iconColor} group-hover:scale-110 transition-transform`} />
-                </div>
-                <div className="p-4">
-                  <p className="text-base font-semibold text-slate-900 font-display">{title}</p>
-                  <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
-                </div>
+          {recentAttempts.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 text-center">
+              <p className="text-sm text-slate-400">No quiz attempts yet. Head to the Quizzes page to get started.</p>
+              <Link to="/quizzes" className="mt-3 inline-block text-sm text-blue-600 hover:text-blue-800 font-medium">
+                Browse Quizzes →
               </Link>
-            ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              {recentAttempts.map((attempt) => (
+                <div
+                  key={attempt.id}
+                  className="px-5 py-3 flex items-center justify-between border-b border-slate-100 last:border-b-0"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{attempt.quiz_title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {new Date(attempt.attempted_at).toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                  {attempt.status === 'graded' ? (
+                    <span className="text-sm font-semibold text-slate-900">
+                      {attempt.score}%
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                      Pending Review
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Link to="/3dviewer" className="flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors">
+              Explore 3D Models
+            </Link>
+            <Link to="/videos" className="flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors">
+              Watch Videos
+            </Link>
+            <Link to="/quizzes" className="flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors">
+              Take a Quiz
+            </Link>
           </div>
         </div>
       )}
 
-      {/* Teacher: Quick Actions */}
       {role === 'teacher' && (
         <div className="mt-8">
           <h2 className="text-lg font-semibold text-slate-900 font-display mb-4">

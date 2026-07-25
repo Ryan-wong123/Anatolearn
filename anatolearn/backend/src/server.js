@@ -567,6 +567,20 @@ app.get("/api/videos", authenticate, async (req, res) => {
   res.json(result.rows);
 });
 
+// Task 7.6 — list every annotation across every model, with its model's
+// title joined in, so the video edit form can offer a meaningful picker
+// ("Aortic Valve — Heart Cross Section") rather than a bare list of ids.
+// Teacher-only: this is only ever used from the video edit form.
+app.get("/api/annotations", authenticate, requireTeacher, async (req, res) => {
+  const result = await pool.query(
+    `SELECT a.id, a.label, a.annotation_type, m.title AS model_title
+     FROM annotations a
+     JOIN models m ON m.id = a.model_id
+     ORDER BY m.title, a.label`
+  );
+  res.json(result.rows);
+});
+
 app.get("/api/videos/:id", authenticate, async (req, res) => {
   const result = await pool.query("SELECT * FROM videos WHERE id = $1", [
     req.params.id,
@@ -636,15 +650,15 @@ app.patch("/api/videos/:id/publish", authenticate, requireTeacher, async (req, r
 });
 
 app.put("/api/videos/:id", authenticate, requireTeacher, async (req, res) => {
-  const { title, description } = req.body;
+  const { title, description, annotation_id } = req.body;
 
   if (!title) {
     return res.status(400).json({ message: "title is required" });
   }
 
   const result = await pool.query(
-    `UPDATE videos SET title = $1, description = $2 WHERE id = $3 RETURNING *`,
-    [title, description || null, req.params.id]
+    `UPDATE videos SET title = $1, description = $2, annotation_id = $3 WHERE id = $4 RETURNING *`,
+    [title, description || null, annotation_id || null, req.params.id]
   );
 
   if (result.rows.length === 0) {
@@ -678,6 +692,9 @@ app.get("/api/quizzes/:id/questions", authenticate, async (req, res) => {
 });
 
 app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
+  if (req.user.role !== "student") {
+    return res.status(403).json({ message: "Only students can submit quiz attempts" });
+  }
   const { answers } = req.body;
 
   if (!Array.isArray(answers)) {
@@ -1188,4 +1205,4 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`AnatoLearn backend running on port ${PORT}`);
-});
+}); 

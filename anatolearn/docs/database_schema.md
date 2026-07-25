@@ -9,8 +9,9 @@ The local Docker Compose PostgreSQL service mounts `backend/sql` to `/docker-ent
 3. `003_add_users.sql` (added 20 Jul 2026 — Task 9.1)
 4. `004_add_model_fields_and_downloads.sql` (added 20 Jul 2026 — Tasks 4.1, 10.1)
 5. `005_add_quiz_attempt_student_id.sql` (added 20 Jul 2026 — Task 8.8)
+6. `006_add_video_annotation_link.sql` (added 20 Jul 2026 — Task 7.6)
 
-This creates the local `anatolearn` database schema and seed data automatically for new project setups. The init scripts do not rerun when an existing database volume is present — `003`, `004`, and `005` are all written to be additive-only (no `DROP TABLE`s) so they're also safe to run manually against an existing dev database. See each file's header comment for the exact command.
+This creates the local `anatolearn` database schema and seed data automatically for new project setups. The init scripts do not rerun when an existing database volume is present — `003` through `006` are all written to be additive-only (no `DROP TABLE`s) so they're also safe to run manually against an existing dev database. See each file's header comment for the exact command.
 
 > Status: **Draft — database not yet built.** Based on Task 1.2's original table list, updated with confirmed requirements from 'Project Details Reference' tab under ITP Google Doc, and gaps found while reviewing the actual frontend (`Quizzes.tsx`, `Videos.tsx`). For Member B's review before creating tables — not a final, locked spec.
 
@@ -33,7 +34,7 @@ Differs from the original Task 1.2 proposal in one way: `program` is `program_id
 
 Tested end-to-end against a real Postgres instance: valid registration (201, password_hash correctly excluded from response, confirmed 60-char bcrypt hash in db), duplicate email (409), missing required fields (400), invalid `role` value (400), password under 8 characters (400). See `docs/testing_log.md`.
 
-**Status: fully built and confirmed 20 Jul 2026.** Every piece of Week 9 is now in place and confirmed working end-to-end in Natalie's real Docker/browser environment: registration, login, route/role middleware, real Login and Register pages, token attached to every request, protected routes, and logout. The `role`/`program` toggle that used to be in `Layout.tsx`'s nav bar is gated behind Vite's `import.meta.env.DEV` flag, confirmed (via inspecting the actual `npm run build` output) to compile to a hardcoded `false` in production, so it cannot appear or function outside local development.
+**Status: fully built and confirmed 20 Jul 2026.** Every piece of Week 9 is now in place and confirmed working end-to-end in the real Docker/browser environment: registration, login, route/role middleware, real Login and Register pages, token attached to every request, protected routes, and logout. The `role`/`program` toggle that used to be in `Layout.tsx`'s nav bar is gated behind Vite's `import.meta.env.DEV` flag, confirmed (via inspecting the actual `npm run build` output) to compile to a hardcoded `false` in production, so it cannot appear or function outside local development.
 
 ---
 
@@ -95,7 +96,9 @@ Full CRUD, publish toggle, search (`?q=`), and system/part filtering are all bui
 | thumbnail | text, nullable | **added** — frontend `Video` interface has this field |
 | is_published | boolean | **added** — needed for Task 6.2, missing from original Task 1.2 list |
 
-**Status: Built, diverges from this proposal, updated 15 Jul 2026.** Actual columns: `id`, `program_id` (references `programs.id`), `title`, `description`, `video_path` (not `file_path`), `thumbnail_path` (not `thumbnail`), `is_published` (**added this session**, matches this proposal), `created_at`. No `category`, `linked_label_id`, or `uploaded_by` columns exist — since there's no `labels` table (see above), `linked_label_id` was never viable as originally proposed, and this remains an open architecture question rather than a simple gap to fill in.
+**Status: Built, diverges from this proposal, updated 20 Jul 2026.** Actual columns: `id`, `program_id` (references `programs.id`), `title`, `description`, `video_path` (not `file_path`), `thumbnail_path` (not `thumbnail`), `is_published` (matches this proposal), `annotation_id` (added 20 Jul 2026, Task 7.6 — see below), `created_at`. No `category` or `uploaded_by` columns exist.
+
+`linked_label_id` is now resolved as `annotation_id` — added via `006_add_video_annotation_link.sql`, a nullable FK to `annotations.id` (`ON DELETE SET NULL`, so deleting an annotation un-links any video pointing at it rather than deleting the video). This was an open architecture question for a while (see Question 3 below); Decided it herself and built the `Videos.tsx`/backend half (Task 7.6). The direction (FK on `videos` pointing at the annotation, not the reverse) matches this section's original `linked_label_id` proposal more closely than the alternative would have.
 
 | Column (as built) | Type | Notes |
 |---|---|---|
@@ -105,14 +108,15 @@ Full CRUD, publish toggle, search (`?q=`), and system/part filtering are all bui
 | description | text | |
 | video_path | text | not null |
 | thumbnail_path | text, nullable | |
-| is_published | boolean | not null, default false — **added 15 Jul 2026** |
+| is_published | boolean | not null, default false |
+| annotation_id | integer, nullable | references annotations.id, ON DELETE SET NULL — **added 20 Jul 2026** |
 | created_at | timestamp | default CURRENT_TIMESTAMP |
 
 ---
 
 ## Static file serving — bug found and fixed (15 Jul 2026)
 
-Uploaded video files (and previously, model thumbnails) were being correctly saved to disk under `PUBLIC_DIR` (`/public` in the container), but **Express had no `express.static` middleware serving that directory at all**. This meant every `video_path` and `thumbnail_path` URL stored in the database (e.g. `/videos/s.mp4`) was a dead link — the file physically existed, but requesting its URL returned a 404. This predates this session's work; it affected the original seeded video and any model thumbnails generated by `Viewer.tsx` since Member B first built that feature.
+Uploaded video files (and previously, model thumbnails) were being correctly saved to disk under `PUBLIC_DIR` (`/public` in the container), but **Express had no `express.static` middleware serving that directory at all**. This meant every `video_path` and `thumbnail_path` URL stored in the database (e.g. `/videos/s.mp4`) was a dead link — the file physically existed, but requesting its URL returned a 404. This predates this round's work; it affected the original seeded video and any model thumbnails generated by `Viewer.tsx` since Member B first built that feature.
 
 **Fix:** added `app.use(express.static(process.env.PUBLIC_DIR || path.join(__dirname, "../../public")));` near the top of `server.js`, after the JSON body-parser middleware. Verified by loading `http://localhost:5000/videos/s.mp4` directly in browser — confirmed playing.
 
@@ -281,17 +285,3 @@ No `position_x`/`position_y`/`position_z` or `created_by` columns — position d
 `annotation_type` mapping to the frontend's internal `AnnotationKind`: `'point'` ↔ simple point marker, `'highlight'` ↔ freehand draw (a connected line of surface dots), `'region_fill'` ↔ closed-boundary filled surface region (computed via raycasting a screen-space polygon onto the model's actual mesh faces).
 
 **No `video_id`/linked-video field exists on this table** — this is the crux of the open architecture question flagged for Tasks 7.5/7.6 in `tasks.md`: since `annotations` (not `labels`) is what actually exists, "linking a video to a label" has no current home in the schema and needs a decision before any code is written for it.
-
----
-
-## Questions
-
-1. **Scoring open-ended (Practical) answers:** MCQ questions can be auto-graded (compare `correct_option` to student's selected answer). Open-ended questions have no fixed correct answer to compare against — does grading require a teacher to manually review and assign a score, or is there an auto-grading approach planned? This affects whether `quiz_attempts.score` can always be calculated immediately on submit, or sometimes needs to stay null/pending until a teacher reviews it.
-- Suggestion: teacher manually review and assign score.
-- Reason: Open-ended answers have no single correct answer to auto-check against — free text can't be reliably graded by comparing it to a model_answer.
-- Manual review is simpler and more accurate than trying to auto-grade it.
-- **Resolved.** Teacher manually reviews and assigns a 0-100 score per open-ended answer via `PATCH /api/attempt-answers/:id/grade`, through a dedicated "View Results" grading UI. Matches the original suggestion above. See `quiz_attempt_answers` for the implementation. Once every open-ended answer in an attempt is scored, the final blended score is computed automatically and `status` flips from `pending_review` to `graded`.
-
-2. **Student attribution on `quiz_attempts`:** **Resolved 20 Jul 2026.** `student_id` added via `005_add_quiz_attempt_student_id.sql`, populated from `req.user.id` on every new submission. `GET /api/students/me/attempts` (Task 8.8) now returns real per-student history. The old **interim workaround** (sessionStorage-based single-quiz result checking, 15 Jul 2026) still exists in the frontend and wasn't removed — it's redundant now but harmless, since real history covers everything it was working around.
-
-3. **Video-to-annotation linking:** `tasks.md` Tasks 7.5/7.6 describe linking a video to a "label," but the actual 3D viewer implementation uses `annotations`, not `labels` — there is no video field anywhere in the annotation data model. Needs a decision on whether to (a) add a nullable `video_id` to `annotations` and build a teacher UI to attach a video when creating/editing an annotation, or (b) treat this as out of scope given the architecture divergence. **Confirmed 20 Jul 2026: out of scope for Natalie** — this lives in `Viewer.tsx`, which Tim owns, and Natalie confirmed it isn't hers to build. Still genuinely undecided as a schema/architecture question, though — this only settles who *wouldn't* be building it, not which of (a)/(b) is right. If Tim wants to pursue (a), the schema addition itself would be a small, additive migration (same pattern as `003_add_users.sql`/`004_add_model_fields_and_downloads.sql`), not a structural rework.

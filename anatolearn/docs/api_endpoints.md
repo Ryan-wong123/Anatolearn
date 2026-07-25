@@ -97,13 +97,18 @@ Deletes a video's database row. 404 if not found. **Does not delete the underlyi
 Body: `{ is_published: boolean }`. Toggles publish state, same pattern as the quiz equivalent. 404 if not found.
 
 ### `PUT /api/videos/:id` (added 15 Jul 2026)
-Body: `{ title, description? }`. Updates a video's metadata. Does not support changing the video file itself or `program_id`. 400 if `title` missing, 404 if not found.
+Body: `{ title, description?, annotation_id? }`. Updates a video's metadata. Does not support changing the video file itself or `program_id`. `annotation_id` (added 20 Jul 2026, Task 7.6) links the video to an annotation — omit it (or send `null`) to leave it unlinked / clear an existing link. 400 if `title` missing, 404 if not found.
+
+### `GET /api/annotations` (teacher only, added 20 Jul 2026 — Task 7.6)
+Lists every annotation across every model, each with its model's title joined in: `[{ id, label, annotation_type, model_title }]`, ordered by model title then label. Powers the video-linking dropdown in `Videos.tsx`'s edit form — not used anywhere else, so it's teacher-gated even though the underlying data (annotations) is otherwise readable by any logged-in user via `GET /api/models/:id/annotations`.
 
 ---
 
 ## Quizzes
 
-**Known limitation — student result visibility:** since there's no auth (`student_id` doesn't exist on `quiz_attempts`), the frontend uses a same-browser `sessionStorage` workaround to let a student see their result after a teacher grades it: the attempt id is stored in `sessionStorage` keyed by quiz id after submission, and `handleStartQuiz` checks for it before starting a fresh attempt. This only works on the same browser/device the student originally submitted from — it is NOT real quiz history and does not survive a cleared cache, a different device, or a different user opening the app. Real fix is Task 9 (auth) + `student_id` column, still blocked.
+**Real student history now exists (Task 8.8, 20 Jul 2026)** — see `GET /api/students/me/attempts` further down. The `sessionStorage` workaround described below predates that and was not removed, since it still works as a same-browser fallback, but it's redundant now.
+
+**Known limitation — student result visibility (historical, kept for context):** before auth existed, the frontend used a same-browser `sessionStorage` workaround to let a student see their result after a teacher grades it: the attempt id is stored in `sessionStorage` keyed by quiz id after submission, and `handleStartQuiz` checks for it before starting a fresh attempt. This only works on the same browser/device the student originally submitted from — it was never real quiz history and doesn't survive a cleared cache, a different device, or a different user opening the app.
 
 ### `GET /api/quizzes`
 Returns quizzes. Optional query param `?published=true` filters to `is_published = true` only (used for the student view — there is no auth to enforce this server-side yet, it relies on the frontend passing the right param).
@@ -137,17 +142,17 @@ Body: `{ answers: [{ question_id, selected_option? , answer_text? }] }` — send
 
 ```json
 {
-  "attempt": { "id", "quiz_id", "score", "total_questions", "correct_count", "status", "attempted_at" },
-  "status": "graded" | "pending_review",
-  "score": "number | null",
-  "total": "number",
-  "correct": "number | null",
-  "incorrect": "number | null",
-  "mcq_count": "number",
-  "open_ended_count": "number",
-  "feedback": [
-    { "question_id": "number", "selected_option": "string", "correct_option": "string", "is_correct": "boolean" }
-  ]
+ "attempt": { "id", "quiz_id", "score", "total_questions", "correct_count", "status", "attempted_at" },
+ "status": "graded" | "pending_review",
+ "score": "number | null",
+ "total": "number",
+ "correct": "number | null",
+ "incorrect": "number | null",
+ "mcq_count": "number",
+ "open_ended_count": "number",
+ "feedback": [
+ { "question_id": "number", "selected_option": "string", "correct_option": "string", "is_correct": "boolean" }
+ ]
 }
 ```
 
@@ -182,15 +187,15 @@ Hashes the password with bcrypt (10 rounds, via `bcryptjs`) and stores it in the
 - 400 if `name`/`email`/`password`/`role` missing, if `role` isn't a valid value, or if `password` is under 8 characters
 - 409 if the email is already registered
 
-**Open registration, confirmed as a deliberate decision (20 Jul 2026):** anyone can self-register as `'teacher'` through the Register page with no invite code, approval step, or other gate — the `role` dropdown just lets them pick it. This matches `tasks.md`/`PRD.md` as written (neither specifies any restriction), so it wasn't a gap, it's what was built as specified. Explicitly confirmed with Natalie to leave as-is for now rather than add a gating mechanism. Revisit if teacher-account integrity becomes a concern later — options would include an invite/approval flow or an admin-only role-assignment step.
+**Open registration, confirmed as a deliberate decision (20 Jul 2026):** anyone can self-register as `'teacher'` through the Register page with no invite code, approval step, or other gate — the `role` dropdown just lets them pick it. This matches `tasks.md`/`PRD.md` as written (neither specifies any restriction), so it wasn't a gap, it's what was built as specified. Explicitly confirmed with to leave as-is for now rather than add a gating mechanism. Revisit if teacher-account integrity becomes a concern later — options would include an invite/approval flow or an admin-only role-assignment step.
 
 ### `POST /api/auth/login`
 Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, compares `password` against the stored bcrypt hash. On success, signs a JWT (`HS256`, 24h expiry) with payload `{ id, name, role, program_id }` and returns:
 
 ```json
 {
-  "token": "string",
-  "user": { "id", "name", "email", "role", "program_id" }
+ "token": "string",
+ "user": { "id", "name", "email", "role", "program_id" }
 }
 ```
 
@@ -228,5 +233,5 @@ Returns all resources (learning materials / links).
 ## Not yet built (referenced in `tasks.md` but missing)
 
 - `GET /api/quizzes/:id` — combined quiz + questions in one call (currently two separate requests: `GET /api/quizzes` + `GET /api/quizzes/:id/questions`)
-- `GET /api/labels/:id/video` — cannot be built as originally specified; there is no `labels` table, and whether/how to link video to annotations is an open architecture decision (Task 7.5/7.6) that isn't Natalie's to resolve (Tim owns `Viewer.tsx`, where this would live)
+- `GET /api/labels/:id/video` — cannot be built as originally specified; there is no `labels` table, and whether/how to link video to annotations is an open architecture decision (Task 7.5/7.6) that isn't the to resolve (Tim owns `Viewer.tsx`, where this would live)
 - A "downloads" viewing/reporting endpoint (e.g. "who downloaded what") — the `downloads` table (Task 10.1) logs this data, but nothing currently reads it back out; not referenced by any task as something to build

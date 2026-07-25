@@ -39,8 +39,8 @@ Tested using a standalone HTML file (outside the AnatoLearn codebase) with nativ
 
 | Format | Chrome | Firefox | Edge |
 |---|---|---|---|
-| .mp4   | Pass   | Pass    | Pass |
-| .webm  | Pass   | Pass    | Pass |
+| .mp4 | Pass | Pass | Pass |
+| .webm | Pass | Pass | Pass |
 
 ### Notes
 Both .mp4 and .webm formats loaded and played correctly across all three browsers using native HTML5 `<video>` controls (play, pause, seek, volume). No buffering issues or playback errors observed.
@@ -83,7 +83,7 @@ Manual testing through the running app (`http://localhost:5173`) as both Teacher
 
 ### Notes
 - Test data (13 throwaway quizzes created during development) was cleaned up via `DELETE /api/quizzes/:id` before final verification — only the 3 seeded quizzes plus genuinely created test quizzes remain.
-- Known gap identified in this session, resolved in the next: Practical/Mixed quiz types rendered identical MCQ question forms — no open-ended question format existed in the schema at this point. See the following entry.
+- Known gap identified in this round, resolved in the next: Practical/Mixed quiz types rendered identical MCQ question forms — no open-ended question format existed in the schema at this point. See the following entry.
 - Known gap: `quiz_attempts` has no `student_id`, so attempts are anonymous. Blocked on Task 9 (auth). Still unresolved as of the next entry below.
 
 ---
@@ -166,9 +166,9 @@ Before starting Task 7.1 (video upload), reviewed the group chat and a private c
 | File | Status found | Notes |
 |---|---|---|
 | `Viewer.tsx` | Substantially built | Full annotation system (point/draw/region), teacher add/edit/delete modes, persistent CRUD to backend, camera framing, thumbnail auto-generation. Diverges significantly from the `labels`-based design originally in `Architecture.md`/`design.md` — see `docs/database_schema.md` open question #3. |
-| `ModelGallery.tsx` | Exists | Not reviewed in detail this session — referenced by `App.tsx` routing (`/3dviewer`) but file contents not pulled. |
-| `Videos.tsx` | Real, working (pre-session) | Fetched from `GET /api/videos`, working search, links to detail page. Upload was an explicit stub ("Upload flow not wired yet") before this session's work. |
-| `VideoPlayer.tsx` | Real, working (pre-session) | Full HTML5 `<video>` player with controls, autoplay, poster thumbnail, back navigation. Confirms Task 7.3 and 7.4 were already functionally complete before this session touched anything. |
+| `ModelGallery.tsx` | Exists | Not reviewed in detail this round — referenced by `App.tsx` routing (`/3dviewer`) but file contents not pulled. |
+| `Videos.tsx` | Real, working (pre-session) | Fetched from `GET /api/videos`, working search, links to detail page. Upload was an explicit stub ("Upload flow not wired yet") before this round's work. |
+| `VideoPlayer.tsx` | Real, working (pre-session) | Full HTML5 `<video>` player with controls, autoplay, poster thumbnail, back navigation. Confirms Task 7.3 and 7.4 were already functionally complete before this round touched anything. |
 | `App.tsx` | Confirmed routing | `/3dviewer` → `ModelGallery`, `/3dviewer/:modelId` → `Viewer`, `/videos` → `Videos`, `/videos/:videoId` → `VideoPlayer`. |
 
 ### Conclusion
@@ -188,7 +188,7 @@ Manual testing through the running app as Teacher and Student roles, plus direct
 - Chrome (app testing), PowerShell 7.6.3 (API testing)
 
 ### Bug Found and Fixed
-`express.static` was never configured — see `docs/database_schema.md` "Static file serving" section for the full writeup. This was a pre-existing bug (predates this session), not something introduced by the upload work, but it was blocking video playback entirely and had to be fixed before upload testing could be considered meaningful.
+`express.static` was never configured — see `docs/database_schema.md` "Static file serving" section for the full writeup. This was a pre-existing bug (predates this round), not something introduced by the upload work, but it was blocking video playback entirely and had to be fixed before upload testing could be considered meaningful.
 
 ### Results
 
@@ -217,7 +217,7 @@ Manual testing through the running app as Teacher and Student roles, plus direct
 
 ## Task 9.1 — User Registration API
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
 Ran a real local Postgres instance (schema + seed + new `003_add_users.sql` migration applied), started `server.js` against it, and hit `POST /api/auth/register` directly with `curl` for 5 cases, then verified the database row directly with `psql`.
@@ -247,7 +247,7 @@ Ran a real local Postgres instance (schema + seed + new `003_add_users.sql` migr
 
 ## Task 9.2 — Login + JWT API
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
 Reused the same local Postgres + backend setup from the Task 9.1 test session (existing `jane@example.com` / teacher account from that session), hit `POST /api/auth/login` with `curl` for 5 cases, and manually verified the JWT payload and expiry.
@@ -268,7 +268,7 @@ Reused the same local Postgres + backend setup from the Task 9.1 test session (e
 | JWT expiry | `exp - iat` = 86400 seconds (24h) | Pass — decoded and checked manually |
 
 ### Notes
-- Confirmed separately, in Natalie's actual Docker Compose environment, that Task 9.1 (registration) works end-to-end — see the Task 9.1 entry above. Task 9.2 was tested in the sandboxed environment only so far; recommend the same real-environment confirmation pass before considering it fully closed, same caveat as 9.1.
+- Confirmed separately, in the actual Docker Compose environment, that Task 9.1 (registration) works end-to-end — see the Task 9.1 entry above. Task 9.2 was tested in the sandboxed environment only so far; recommend the same real-environment confirmation pass before considering it fully closed, same caveat as 9.1.
 - The JWT is signed but nothing currently validates it on any other route — Task 9.3 (auth middleware) is what makes this actually protect anything. Right now, anyone with a valid *or* invalid token (or no token at all) can still hit every existing endpoint.
 - Discovered and fixed a real deployment gotcha during the 9.1 rollout, worth keeping in mind for any future dependency changes: adding a package to `backend/package.json` is not enough on its own. Docker Compose's anonymous `node_modules` volume (`- /app/node_modules` in `docker-compose.yml`) persists across plain rebuilds, so `docker compose up --build` alone kept using stale `node_modules` without the new packages. Fix was `docker compose up --build --renew-anon-volumes backend`. Documented here so the next dependency change doesn't hit the same wall.
 
@@ -276,7 +276,7 @@ Reused the same local Postgres + backend setup from the Task 9.1 test session (e
 
 ## Task 9.3 — Auth Middleware (authenticate + requireTeacher)
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
 Reused the same local Postgres + backend setup from the 9.1/9.2 test sessions. Registered a second test user (`sam@example.com`, student role) alongside the existing `jane@example.com` (teacher), logged in as both to get real JWTs, then ran a 9-case matrix with `curl` covering: no token, valid student token, valid teacher token, garbage token, and a malformed header, against both public and protected routes.
@@ -300,7 +300,7 @@ Reused the same local Postgres + backend setup from the 9.1/9.2 test sessions. R
 | `GET /api/models`, malformed header (missing `Bearer ` prefix) | 401 | Pass |
 
 ### Bug Found and Fixed (self-caught during implementation, before any real testing)
-The automated script used to add `authenticate`/`requireTeacher` to all 35 protected routes had a regex bug that dropped the trailing newline from each edited line, silently merging it with the next line's code (e.g. `app.get(...) => {  const { published } = req.query;` all on one line instead of two). Caught immediately via `node --check` output looking suspicious combined with a manual `view` of the file, before any test traffic was sent. Fixed by restoring the pre-patch file from the previous session's delivered zip and re-running the corrected script. Full `diff` against the pre-patch version afterward confirmed only the intended 36 lines changed and nothing else moved.
+The automated script used to add `authenticate`/`requireTeacher` to all 35 protected routes had a regex bug that dropped the trailing newline from each edited line, silently merging it with the next line's code (e.g. `app.get(...) => { const { published } = req.query;` all on one line instead of two). Caught immediately via `node --check` output looking suspicious combined with a manual `view` of the file, before any test traffic was sent. Fixed by restoring the pre-patch file from the previous session's delivered zip and re-running the corrected script. Full `diff` against the pre-patch version afterward confirmed only the intended 36 lines changed and nothing else moved.
 
 ### Notes
 - **Important, not yet resolved:** `src/api/api.ts` sends no `Authorization` header on any request, and there's no logged-in state yet (`Login.tsx` is a stub). This means the currently-running frontend (Dashboard, Videos, Quizzes, Library, 3D Viewer — everything) will start receiving 401s on every page the moment this backend change is deployed. This is expected given the task sequence (9.4-9.6 are the frontend wiring), but it's a real, visible breakage, not just a documentation gap — see `docs/api_endpoints.md`'s Auth section for the full note.
@@ -311,10 +311,10 @@ The automated script used to add `authenticate`/`requireTeacher` to all 35 prote
 
 ## Tasks 6.5, 6.6, 9.4, 9.6, 9.7 — Frontend Auth Wiring (Login, ProtectedRoute, Logout, Real Role Source)
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
-Static/build-level verification only this session — no running browser session against a live backend yet (that's the recommended next step, same pattern as the backend auth tasks before real-environment confirmation).
+Static/build-level verification only this round — no running browser session against a live backend yet (that's the recommended next step, same pattern as the backend auth tasks before real-environment confirmation).
 
 - `npx tsc --noEmit -p tsconfig.app.json` — full project type check
 - `npx eslint` on all 5 changed files
@@ -327,16 +327,16 @@ Static/build-level verification only this session — no running browser session
 | Check | Result |
 |---|---|
 | `tsc --noEmit` | Pass — 0 errors |
-| `eslint` on the 5 changed files | Pass — 0 errors (1 pre-existing warning in `AppContext.tsx`, confirmed present in the file *before* any of this session's changes too, not introduced by this work) |
+| `eslint` on the 5 changed files | Pass — 0 errors (1 pre-existing warning in `AppContext.tsx`, confirmed present in the file *before* any of this round's changes too, not introduced by this work) |
 | `npm run build` | Pass — builds cleanly, no new warnings beyond a pre-existing bundle-size notice unrelated to these changes |
 | All 35 original `api.ts` method names preserved after the `apiFetch` rewrite | Pass — confirmed via diff, only `login` and `register` added |
 | Production build's `isDevMode` value | Confirmed `false` (`isDevMode:!1`) in the actual built bundle — the Student/Teacher nav toggle cannot function outside `npm run dev` |
 
 ### Bug Found and Fixed
-None this session — the Task 9.3 route-merging bug (previous entry) was the one caught-and-fixed incident; this session's changes passed type-check, lint, and build cleanly on the first attempt.
+None this round — the Task 9.3 route-merging bug (previous entry) was the one caught-and-fixed incident; this round's changes passed type-check, lint, and build cleanly on the first attempt.
 
 ### Notes
-- **Not yet tested:** an actual login → dashboard → logout cycle in a real browser against the real running backend. Build-level checks confirm the code is well-formed and internally consistent, but not that the UX actually works end-to-end (e.g. whether the error message renders correctly, whether the program dropdown really syncs after login, etc.). Recommend testing this in the real Docker environment before considering these tasks fully closed, same pattern as every other task this session.
+- **Not yet tested:** an actual login → dashboard → logout cycle in a real browser against the real running backend. Build-level checks confirm the code is well-formed and internally consistent, but not that the UX actually works end-to-end (e.g. whether the error message renders correctly, whether the program dropdown really syncs after login, etc.). Recommend testing this in the real Docker environment before considering these tasks fully closed, same pattern as every other task this round.
 - `Register.tsx` is still a stub — the new Login page's "Register" link will currently land on a placeholder. Task 9.5 is the natural next piece of work.
 - Task 6.5 was marked done retroactively in `tasks.md` — it's the same middleware already built and tested under Task 9.3 in the previous session, just re-labeled to match the actual task numbering in the spec (Task 9.3 explicitly depends on 6.5 and describes the same work). No new code, just a checklist correction.
 
@@ -344,10 +344,10 @@ None this session — the Task 9.3 route-merging bug (previous entry) was the on
 
 ## Real-Environment Confirmation — Tasks 6.5, 6.6, 9.4, 9.6, 9.7
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
-Manual testing in Natalie's actual Docker Compose environment (not the sandboxed setup used to build/verify these tasks), via the real browser UI at `http://localhost:5173`.
+Manual testing in the actual Docker Compose environment (not the sandboxed setup used to build/verify these tasks), via the real browser UI at `http://localhost:5173`.
 
 ### Results
 
@@ -366,7 +366,7 @@ This closes the loop on the "not yet tested against a real browser session" cave
 
 ## Task 9.5 — Registration Page (Frontend)
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
 Same verification pattern as the Task 9.4 frontend round: `tsc --noEmit`, `eslint`, and a full `npm run build`, plus (going one step further than 9.4's initial round) a direct API-level test confirming the exact payload shape the form sends round-trips correctly.
@@ -386,17 +386,17 @@ Same verification pattern as the Task 9.4 frontend round: `tsc --noEmit`, `eslin
 | Immediately logging in with the newly registered account | Pass — 200, real token returned |
 
 ### Notes
-- Not yet clicked through in an actual browser — recommend the same real-environment confirmation Natalie already did for Login/Logout/ProtectedRoute (see the "Real-Environment Confirmation" entry above) before fully closing this out: fill the form, submit, confirm redirect to `/login`, then log in with the new account.
+- Not yet clicked through in an actual browser — recommend the same real-environment confirmation already did for Login/Logout/ProtectedRoute (see the "Real-Environment Confirmation" entry above) before fully closing this out: fill the form, submit, confirm redirect to `/login`, then log in with the new account.
 - Client-side password length validation (≥8 chars) was added ahead of the API call, matching the backend's own rule — means the error shows instantly instead of waiting on a round trip for something the frontend can already catch.
 
 ---
 
 ## Real-Environment Confirmation — Task 9.5 (Register)
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
-Manual testing in Natalie's actual Docker Compose environment via the real browser UI at `http://localhost:5173/register`.
+Manual testing in the actual Docker Compose environment via the real browser UI at `http://localhost:5173/register`.
 
 ### Results
 
@@ -406,13 +406,13 @@ Manual testing in Natalie's actual Docker Compose environment via the real brows
 | Submitting the form with a new test account | Pass |
 
 ### Notes
-This closes out the last remaining "not yet clicked through in a real browser" caveat for Week 9 — every task in the auth chain (6.5, 6.6, 9.1-9.7) is now confirmed working end-to-end in Natalie's real environment, not just at the build/sandbox level.
+This closes out the last remaining "not yet clicked through in a real browser" caveat for Week 9 — every task in the auth chain (6.5, 6.6, 9.1-9.7) is now confirmed working end-to-end in the real environment, not just at the build/sandbox level.
 
 ---
 
 ## Tasks 4.1/4.3/4.4 and 10.1/10.2/10.3 — Search/Filter and Download/Export
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
 Real Postgres + backend, tested via `curl` with real teacher and student JWTs, plus static verification (`tsc`, `eslint`, `npm run build`) for the frontend pieces. Migration applied fresh to a real Postgres instance and confirmed clean (`ALTER TABLE` × 2, `CREATE TABLE` × 1, no errors).
@@ -430,7 +430,7 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 | `?system=Cardiovascular` | Only matching model(s) returned | Pass |
 | `?q=A1` (keyword search) | Matches both `A1` and `A1 Copy` | Pass |
 | `?q=<nonsense>` (no matches) | `[]` with 200, not 404 | Pass |
-| No query params at all (regression) | All models, unchanged from before this session | Pass |
+| No query params at all (regression) | All models, unchanged from before this round | Pass |
 | `?published=true` alone (regression) | Same 3 published models as before | Pass |
 | `?system=&part=&q=` combined | Correctly narrows to the single matching model | Pass |
 
@@ -451,21 +451,21 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 
 ### Bugs Found and Fixed
 1. **CSV timestamp double-encoding.** First implementation ran every non-null value through `JSON.stringify()` if `typeof value === 'object'`, which also caught `Date` objects (`created_at`), producing an already-quoted JSON string that then got quote-escaped *again* by the CSV logic — resulting in triple-quoted timestamps (`"""2026-07-20T10:29:37.960Z"""`). Fixed by special-casing `Date` instances to use `.toISOString()` before the CSV-escaping step. Caught by manually inspecting the raw CSV output, not by an automated check — worth remembering that quiet formatting bugs like this don't surface in a 200-status/passes-schema-validation kind of test.
-2. **Pre-existing lint error in `ModelGallery.tsx`**, unrelated to this session's new work but found while touching the file: `loadModels` was referenced inside a `useEffect` before its own `const` declaration further down the file. Not a runtime bug (the effect doesn't execute until after the whole component function body runs, so `loadModels` is already defined in the closure by the time it's called) but flagged by the project's ESLint config. Fixed by moving the function declaration above the effect that uses it.
+2. **Pre-existing lint error in `ModelGallery.tsx`**, unrelated to this round's new work but found while touching the file: `loadModels` was referenced inside a `useEffect` before its own `const` declaration further down the file. Not a runtime bug (the effect doesn't execute until after the whole component function body runs, so `loadModels` is already defined in the closure by the time it's called) but flagged by the project's ESLint config. Fixed by moving the function declaration above the effect that uses it.
 3. **Design decision course-correction:** an initial version of the system/part filter interaction reset the part filter using a second `useEffect` that called `setState` inside its body — this trips the project's `react-hooks/set-state-in-effect` rule (a newer React Compiler–oriented lint rule, not present when most of the existing codebase was written, so this is the first time it's come up). Reworked to do the reset directly inside the system dropdown's `onChange` handler instead, which avoids the anti-pattern entirely rather than suppressing the lint rule.
 
 ### Notes
-- All of this is confirmed working against a real backend in a sandboxed test environment, but **not yet confirmed in Natalie's actual Docker Compose environment or a real browser** — same "next step" pattern as every other task this session. The migration (`004_add_model_fields_and_downloads.sql`) needs to be applied there before any of this will work.
+- All of this is confirmed working against a real backend in a sandboxed test environment, but **not yet confirmed in the actual Docker Compose environment or a real browser** — same "next step" pattern as every other task this round. The migration (`004_add_model_fields_and_downloads.sql`) needs to be applied there before any of this will work.
 - Download UI shows a per-model disabled/loading state (`downloadingId`/`exportingId`) rather than a generic global spinner, so downloading one model doesn't visually disable buttons on unrelated model cards.
 
 ---
 
 ## Real-Browser Bug — Download Filename (CORS header exposure)
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### What happened
-After confirming search/filter worked in a real browser, Natalie tested the download button on a model card. The file downloaded successfully and contained genuinely correct model data (confirmed by inspecting it — real glTF JSON structure, `accessors`/`bufferView`/vertex data), but saved with the generic filename `download` instead of the expected `A1.glb`.
+After confirming search/filter worked in a real browser, Tested the download button on a model card. The file downloaded successfully and contained genuinely correct model data (confirmed by inspecting it — real glTF JSON structure, `accessors`/`bufferView`/vertex data), but saved with the generic filename `download` instead of the expected `A1.glb`.
 
 ### Root Cause
 `Content-Disposition` (which carries the real filename) is not in the browser's default cross-origin-readable response header allowlist. The frontend (`localhost:5173`) and backend (`localhost:5000`) are different origins, so this is a real cross-origin request subject to CORS rules. The header was genuinely present in every server response (confirmed via `curl -i` with an `Origin` header to simulate the browser's request — `Content-Disposition: attachment; filename="A1.glb"` was right there), but browser JavaScript (`fetch()` in `api.ts`) couldn't see it without the server explicitly exposing it via `Access-Control-Expose-Headers`.
@@ -481,22 +481,22 @@ Added `exposedHeaders: ['Content-Disposition']` to the backend's global `cors()`
 |---|---|
 | Downloaded file contains real model data | Pass (confirmed even before the fix — the bug was cosmetic/filename-only, not data corruption) |
 | `Access-Control-Expose-Headers: Content-Disposition` present in response | Pass (confirmed via `curl -i` with `Origin` header, post-fix) |
-| Actual browser re-test after the fix | Not yet re-tested — recommend Natalie re-download a model to confirm the filename now shows correctly |
+| Actual browser re-test after the fix | Not yet re-tested — recommend re-download a model to confirm the filename now shows correctly |
 
 ### Notes
-This is a good example of a bug class that's invisible without an actual browser: everything about the request/response was correct at the HTTP level, and every automated check available in this session's sandboxed environment (no browser access) would have called this "done." It only surfaced because Natalie actually clicked the button. Worth keeping in mind for any future feature that relies on a custom response header being readable by frontend JS — it needs `exposedHeaders` even if `curl` says everything's fine.
+This is a good example of a bug class that's invisible without an actual browser: everything about the request/response was correct at the HTTP level, and every automated check available in this round's sandboxed environment (no browser access) would have called this "done." It only surfaced because actually clicked the button. Worth keeping in mind for any future feature that relies on a custom response header being readable by frontend JS — it needs `exposedHeaders` even if `curl` says everything's fine.
 
 ---
 
 ## Task 8.8 — Real Student Attribution on Quiz Attempts
 Date: 20 Jul 2026
-Tester: Natalie
+Tester: 
 
 ### Test Method
 Real Postgres + backend, tested via `curl` with real teacher and student JWTs (two separate student accounts, to confirm no cross-contamination), plus static verification (`tsc`, `eslint`, `npm run build`) for the frontend piece.
 
 ### Test Environment
-- Local Postgres 16 + Node backend, outside Docker (same sandboxed setup as all other backend tests this session)
+- Local Postgres 16 + Node backend, outside Docker (same sandboxed setup as all other backend tests this round)
 - `curl` for API calls
 - `tsc --noEmit`, `eslint`, `npm run build` for frontend verification
 
@@ -516,6 +516,61 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs (t
 | `npm run build` | Clean | Pass |
 
 ### Notes
-- The 8 pre-existing ESLint `no-explicit-any` errors in `Quizzes.tsx` (on `pendingAttempts`, `attemptAnswers`, `openEndedResults` state, from the earlier teacher-grading feature) were confirmed present before this session's changes too — not fixed, out of scope for Task 8.8, same judgment call as leaving `AppContext.tsx`'s pre-existing lint warning alone in an earlier session.
-- Not yet confirmed in Natalie's real Docker environment or an actual browser — same "next step" pattern as everything else this session.
+- The 8 pre-existing ESLint `no-explicit-any` errors in `Quizzes.tsx` (on `pendingAttempts`, `attemptAnswers`, `openEndedResults` state, from the earlier teacher-grading feature) were confirmed present before this round's changes too — not fixed, out of scope for Task 8.8, same judgment call as leaving `AppContext.tsx`'s pre-existing lint warning alone in an earlier session.
+- Not yet confirmed in the real Docker environment or an actual browser — same "next step" pattern as everything else this round.
 - The frontend adds a new "My Quiz History" section below the main quiz list (student view only), showing all attempts newest-first with quiz title, date, and either a score or a "Pending Review" badge — refreshes automatically right after a new submission, no page reload needed.
+
+---
+
+## Known Issues Found — 20 Jul 2026 (logged, not yet fixed)
+Date: 20 Jul 2026
+Tester: 
+
+### Issue 1: Teachers can submit and grade their own quiz
+`POST /api/quizzes/:id/submit` requires `authenticate` only — no check that the caller is a student. Found this by logging in as a teacher, using the dev-mode role toggle to display the Student view of a quiz she created, and successfully submitting an attempt. Confirmed at the code level: the route has no `requireStudent`-style guard (only `requireTeacher` exists as a role-check middleware; there's no equivalent for restricting *to* students). Per `PRD.md`'s role table (FR-15/section 6), only students should be able to take quizzes — teachers are explicitly excluded. This is a real RBAC gap, not just a dev-toggle quirk: even without the dev toggle, nothing stops a teacher's real JWT from calling this endpoint directly.
+
+**Not yet fixed.** Options to consider: add a `requireStudent` middleware (mirroring `requireTeacher`) and apply it to `POST /api/quizzes/:id/submit`, or decide this is acceptable (e.g. if teachers previewing/testing their own quiz is considered a feature, not a bug) — worth a deliberate decision either way rather than defaulting to "fix it," since PRD doesn't explain *why* teachers are excluded.
+
+### Issue 2: Quizzes auto-publish immediately on creation
+ noticed a newly created quiz already shows "Unpublish" (i.e. is published) right after finishing creation, with no separate manual publish step. **This is not a new bug** — it's documented, intentional behavior from 15 Jul 2026 (see Task 8.3's note in `tasks.md`): quizzes are created unpublished, but auto-publish once the teacher clicks "Done" after adding questions. Flagging here because Found it surprising when encountering it fresh — worth a deliberate decision on whether this is the desired UX (matches how a teacher might expect to "finish creating" to mean "ready for students") or whether quiz creation should leave quizzes unpublished by default, matching how model/video upload work (both start unpublished, requiring an explicit separate publish action).
+
+**Not yet changed** — no action taken tonight, pending the decision on which behavior is actually wanted.
+
+---
+
+## Task 7.6 — Video-to-Annotation Linking UI (Teacher)
+Date: 20 Jul 2026
+Tester: 
+
+### Context
+This was previously blocked on an architecture decision (add a video link field, or drop it as out of scope), and had been treated as not the task since it touches `Viewer.tsx`. Decided to resolve the decision herself and build her half — the video-linking UI lives in `Videos.tsx`, not `Viewer.tsx`, so this was buildable without touching Tim's file. Task 7.5 (showing the linked video inside the 3D Viewer) remains open for Tim.
+
+### Test Method
+Real Postgres + backend, tested via `curl` with real teacher and student JWTs, plus static verification (`tsc`, `eslint`, `npm run build`) for the frontend.
+
+### Test Environment
+- Local Postgres 16 + Node backend, outside Docker (same sandboxed setup as every other backend test this round)
+- `curl` for API calls
+- `tsc --noEmit`, `eslint`, `npm run build` for frontend verification
+
+### Results
+
+| Case | Expected | Result |
+|---|---|---|
+| Migration applies cleanly | `ALTER TABLE` | Pass |
+| `GET /api/annotations` (teacher) | Lists all annotations across all models, with model title joined | Pass |
+| `GET /api/annotations` (student) | 403 (teacher-only) | Pass |
+| Link a video to an annotation via `PUT /api/videos/:id` | 200, `annotation_id` set correctly | Pass |
+| Re-fetch the video | `annotation_id` persisted | Pass |
+| Un-link (omit `annotation_id` on a subsequent edit) | `annotation_id` correctly reset to `null` | Pass |
+| Regression: old-style edit call with no `annotation_id` field at all | Still works, defaults to `null`, no error | Pass |
+| Regression: `GET /api/videos` list still returns correctly | Pass | Pass |
+| `tsc --noEmit` | 0 errors | Pass |
+| `eslint` on changed files | 0 errors (after fixing one pre-existing issue — see notes) | Pass |
+| `npm run build` | Clean | Pass |
+
+### Notes
+- Design decision made during this task: the FK lives on `videos.annotation_id` (pointing at the annotation), not on `annotations.video_id` (pointing at the video). This matches the original `tasks.md` spec's intent more closely (it proposed `videos.linked_label_id`) and keeps the entire feature buildable within `Videos.tsx` and the video routes in `server.js`, without touching anything in the annotations routes or `Viewer.tsx`.
+- Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
+- Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
+- The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.

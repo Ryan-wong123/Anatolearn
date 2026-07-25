@@ -11,7 +11,15 @@ interface Video {
   video_path: string;
   thumbnail_path: string | null;
   is_published: boolean;
+  annotation_id: number | null;
   created_at: string;
+}
+
+interface AnnotationOption {
+  id: number;
+  label: string;
+  annotation_type: string;
+  model_title: string;
 }
 
 export default function Videos() {
@@ -31,10 +39,19 @@ export default function Videos() {
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editAnnotationId, setEditAnnotationId] = useState<string>('');
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Task 7.6 — populated once, teacher-only (the endpoint itself is
+  // teacher-gated too, so this just avoids firing a request that would 403
+  // for a student viewing this page).
+  const [annotationOptions, setAnnotationOptions] = useState<AnnotationOption[]>([]);
+
   useEffect(() => {
-    loadVideos();
+    if (role !== 'teacher') return;
+    api.getAllAnnotations()
+      .then(setAnnotationOptions)
+      .catch((err) => console.error('Failed to load annotations for linking:', err));
   }, [role]);
 
   const loadVideos = () => {
@@ -42,6 +59,11 @@ export default function Videos() {
       .then(setVideos)
       .catch((err) => console.error('Failed to load videos:', err));
   };
+
+  useEffect(() => {
+    loadVideos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
 
   const filtered = videos.filter((v) =>
     v.title.toLowerCase().includes(search.toLowerCase())
@@ -110,6 +132,7 @@ export default function Videos() {
     setEditingVideo(video);
     setEditTitle(video.title);
     setEditDescription(video.description || '');
+    setEditAnnotationId(video.annotation_id ? String(video.annotation_id) : '');
     setEditError(null);
   };
 
@@ -117,6 +140,7 @@ export default function Videos() {
     setEditingVideo(null);
     setEditTitle('');
     setEditDescription('');
+    setEditAnnotationId('');
     setEditError(null);
   };
 
@@ -132,6 +156,7 @@ export default function Videos() {
       await api.updateVideo(editingVideo.id, {
         title: editTitle,
         description: editDescription || undefined,
+        annotation_id: editAnnotationId ? Number(editAnnotationId) : null,
       });
       loadVideos();
       closeEdit();
@@ -370,6 +395,27 @@ export default function Videos() {
                   rows={3}
                   className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Linked Annotation
+                </label>
+                <select
+                  value={editAnnotationId}
+                  onChange={(e) => setEditAnnotationId(e.target.value)}
+                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                >
+                  <option value="">No linked annotation</option>
+                  {annotationOptions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.model_title} — {a.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  When linked, this video is available to play from that annotation in the 3D Viewer.
+                </p>
               </div>
             </div>
 
