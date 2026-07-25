@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { ToastProvider } from './context/ToastContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
@@ -15,6 +17,8 @@ import VideoPlayer from './pages/VideoPlayer';
 export default function App() {
   return (
     <AppProvider>
+      <ToastProvider>
+      <ConfirmProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -33,6 +37,8 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ConfirmProvider>
+      </ToastProvider>
     </AppProvider>
   );
 }

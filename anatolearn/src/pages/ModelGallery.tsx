@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Upload, X, Search, Download, FileJson, FileText } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { api } from '../api/api';
 
 interface ModelRecord {
@@ -17,6 +19,8 @@ interface ModelRecord {
 
 export default function ModelGallery() {
   const { role } = useAppContext();
+  const { toast } = useToast();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const [models, setModels] = useState<ModelRecord[]>([]);
 
@@ -104,6 +108,7 @@ export default function ModelGallery() {
       });
       loadModels();
       closeUploadModal();
+      toast('Model uploaded successfully');
     } catch (err) {
       console.error('Failed to upload model:', err);
       setUploadError('Failed to upload model. Please try again.');
@@ -127,6 +132,7 @@ export default function ModelGallery() {
     try {
       await api.publishModel(model.id, !model.is_published);
       loadModels();
+      toast(model.is_published ? 'Model unpublished' : 'Model published');
     } catch (err) {
       console.error('Failed to update publish state:', err);
     }
@@ -134,11 +140,18 @@ export default function ModelGallery() {
 
   const handleDelete = async (model: ModelRecord, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete "${model.title}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: 'Delete Model',
+      message: `Are you sure you want to delete "${model.title}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       await api.deleteModel(model.id);
       loadModels();
+      toast('Model deleted');
     } catch (err) {
       console.error('Failed to delete model:', err);
     }
@@ -180,6 +193,7 @@ export default function ModelGallery() {
       });
       loadModels();
       closeEdit();
+      toast('Model updated');
     } catch (err) {
       console.error('Failed to update model:', err);
       setEditError('Failed to save changes. Please try again.');

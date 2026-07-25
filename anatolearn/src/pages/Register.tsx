@@ -19,6 +19,7 @@ export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<Role>('student');
   const [programId, setProgramId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,16 @@ export default function Register() {
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters');
+      return;
+    }
+
+    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Password must contain at least one uppercase letter and one number');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
 
@@ -119,6 +130,24 @@ export default function Register() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               placeholder="At least 8 characters"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              Must contain at least one uppercase letter and one number
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-1">
+              Confirm password
+            </label>
+            <input
+              id="confirmPassword"
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              placeholder="Re-enter your password"
             />
           </div>
 

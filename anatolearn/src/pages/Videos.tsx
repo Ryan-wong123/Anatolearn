@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Search, Play, Upload, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { api } from '../api/api';
 
 interface Video {
@@ -24,6 +26,8 @@ interface AnnotationOption {
 
 export default function Videos() {
   const { role } = useAppContext();
+  const { toast } = useToast();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
 
   const [videos, setVideos] = useState<Video[]>([]);
@@ -89,6 +93,7 @@ export default function Videos() {
       });
       loadVideos();
       closeUploadModal();
+      toast('Video uploaded successfully');
     } catch (err) {
       console.error('Failed to upload video:', err);
       setUploadError('Failed to upload video. Please try again.');
@@ -110,6 +115,7 @@ export default function Videos() {
     try {
       await api.publishVideo(video.id, !video.is_published);
       loadVideos();
+      toast(video.is_published ? 'Video unpublished' : 'Video published');
     } catch (err) {
       console.error('Failed to update publish state:', err);
     }
@@ -117,11 +123,18 @@ export default function Videos() {
 
   const handleDelete = async (video: Video, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete "${video.title}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: 'Delete Video',
+      message: `Are you sure you want to delete "${video.title}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       await api.deleteVideo(video.id);
       loadVideos();
+      toast('Video deleted');
     } catch (err) {
       console.error('Failed to delete video:', err);
     }
@@ -160,6 +173,7 @@ export default function Videos() {
       });
       loadVideos();
       closeEdit();
+      toast('Video updated');
     } catch (err) {
       console.error('Failed to update video:', err);
       setEditError('Failed to save changes. Please try again.');

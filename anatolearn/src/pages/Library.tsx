@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { FileText, ExternalLink, Upload, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { api } from '../api/api';
 
 type ResourceType = 'pdf' | 'document' | 'link';
@@ -22,6 +24,8 @@ function ResourceIcon({ type }: { type: ResourceType }) {
 
 export default function Library() {
   const { role } = useAppContext();
+  const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [resources, setResources] = useState<Resource[]>([]);
 
   const [showUpload, setShowUpload] = useState(false);
@@ -74,6 +78,7 @@ export default function Library() {
       });
       loadResources();
       closeUploadModal();
+      toast('Resource uploaded successfully');
     } catch (err) {
       console.error('Failed to upload resource:', err);
       setUploadError('Failed to upload resource. Please try again.');
@@ -97,17 +102,25 @@ export default function Library() {
     try {
       await api.publishResource(resource.id, !resource.is_published);
       loadResources();
+      toast(resource.is_published ? 'Resource unpublished' : 'Resource published');
     } catch (err) {
       console.error('Failed to update publish state:', err);
     }
   };
 
   const handleDelete = async (resource: Resource) => {
-    if (!confirm(`Delete "${resource.title}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: 'Delete Resource',
+      message: `Are you sure you want to delete "${resource.title}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
 
     try {
       await api.deleteResource(resource.id);
       loadResources();
+      toast('Resource deleted');
     } catch (err) {
       console.error('Failed to delete resource:', err);
     }
