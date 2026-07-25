@@ -2,8 +2,11 @@ interface AnnotationFormModalProps {
   title: string;
   label: string;
   description: string;
+  color: string;
+  showColorPicker: boolean;
   onLabelChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
+  onColorChange: (value: string) => void;
   onCancel: () => void;
   onSave: () => void;
 }
@@ -12,8 +15,11 @@ export default function AnnotationFormModal({
   title,
   label,
   description,
+  color,
+  showColorPicker,
   onLabelChange,
   onDescriptionChange,
+  onColorChange,
   onCancel,
   onSave,
 }: AnnotationFormModalProps) {
@@ -43,6 +49,26 @@ export default function AnnotationFormModal({
             className="h-28 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
+        {showColorPicker && (
+          <div className="mt-4">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Fill colour
+            </label>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={color}
+                onChange={(event) => onColorChange(event.target.value)}
+                className="h-10 w-14 cursor-pointer rounded border border-slate-200 bg-white p-1"
+              />
+
+              <span className="text-sm text-slate-600">
+                {color.toUpperCase()}
+              </span>
+            </div>
+          </div>
+        )}
         <div className="mt-6 flex items-center justify-between">
           <button onClick={onCancel} className="text-sm text-slate-500 hover:text-slate-700">
             Cancel

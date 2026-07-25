@@ -285,7 +285,27 @@ export const api = {
             method: 'PUT',
             body: JSON.stringify(data),
         }),
-
+    
+    saveNeutralView: (
+        id: number,
+        neutralView: {
+            cameraPosition: {
+            x: number;
+            y: number;
+            z: number;
+            };
+            target: {
+            x: number;
+            y: number;
+            z: number;
+            };
+        }
+    ) =>
+        apiFetch(`/models/${id}/neutral-view`, {
+            method: 'PATCH',
+            body: JSON.stringify(neutralView),
+        }),
+        
     createQuiz: (data: {
         title: string;
         description?: string;

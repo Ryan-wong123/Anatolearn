@@ -635,9 +635,10 @@ export function createProjectedMaskMesh(
   const material =
     new THREE.MeshBasicMaterial({
       color:
-        data.mode === 'fill'
-          ? 0x22d3ee
-          : 0xfacc15,
+        annotation.color ??
+        (data.mode === 'fill'
+          ? '#22d3ee'
+          : '#facc15'),
 
       alphaMap,
 

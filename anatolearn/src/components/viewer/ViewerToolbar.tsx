@@ -4,10 +4,15 @@ interface ViewerToolbarProps {
   drawMode: boolean;
   regionMode: boolean;
   annotationsVisible: boolean;
+  hasNeutralView: boolean;
+  darkBackground: boolean;
+  onToggleBackground: () => void;
   onToggleAdd: () => void;
   onToggleDraw: () => void;
   onToggleRegion: () => void;
   onToggleAnnotations: () => void;
+  onSaveNeutralView: () => void;
+  onReturnToNeutralView: () => void;
 }
 
 export default function ViewerToolbar({
@@ -16,10 +21,15 @@ export default function ViewerToolbar({
   drawMode,
   regionMode,
   annotationsVisible,
+  hasNeutralView,
+  darkBackground,
+  onToggleBackground,
   onToggleAdd,
   onToggleDraw,
   onToggleRegion,
   onToggleAnnotations,
+  onSaveNeutralView,
+  onReturnToNeutralView,
 }: ViewerToolbarProps) {
   return (
     <div
@@ -61,14 +71,38 @@ export default function ViewerToolbar({
           >
             {regionMode ? 'Cancel Region' : 'Region Fill'}
           </button>
+          <button
+            onClick={onSaveNeutralView}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+          >
+            {hasNeutralView
+              ? 'Update Neutral View'
+              : 'Set Neutral View'}
+          </button>
         </>
       )}
-
+      <button
+        onClick={onReturnToNeutralView}
+        disabled={!hasNeutralView}
+        className={`rounded-lg border px-4 py-2 text-sm font-medium shadow-sm ${
+          hasNeutralView
+            ? 'border-slate-200 bg-white hover:bg-slate-50'
+            : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+        }`}
+      >
+        Return to Neutral View
+      </button>
       <button
         onClick={onToggleAnnotations}
         className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
       >
         {annotationsVisible ? 'Hide Annotations' : 'Show Annotations'}
+      </button>
+      <button
+        onClick={onToggleBackground}
+        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+      >
+        {darkBackground ? 'Light Background' : 'Dark Background'}
       </button>
     </div>
   );

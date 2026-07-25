@@ -88,6 +88,7 @@ export interface Annotation {
   description: string;
   kind: AnnotationKind;
   position: DrawPoint;
+  color?: string;
 
   /**
    * Legacy annotation properties.
@@ -112,10 +113,16 @@ export interface Annotation {
   };
 }
 
+export interface NeutralView {
+  cameraPosition: DrawPoint;
+  target: DrawPoint;
+}
+
 export interface ModelRecord {
   id: number;
   title: string;
   description: string | null;
   file_path: string;
   thumbnail_path: string | null;
+  neutral_view: NeutralView | null;
 }

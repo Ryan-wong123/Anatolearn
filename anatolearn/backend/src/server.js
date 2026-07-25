@@ -332,6 +332,69 @@ app.patch("/api/models/:id/publish", authenticate, requireTeacher, async (req, r
   res.json(result.rows[0]);
 });
 
+app.patch(
+  "/api/models/:id/neutral-view",
+  authenticate,
+  requireTeacher,
+  async (req, res) => {
+    try {
+      const { cameraPosition, target } = req.body;
+
+      const isValidPoint = (point) =>
+        point &&
+        Number.isFinite(point.x) &&
+        Number.isFinite(point.y) &&
+        Number.isFinite(point.z);
+
+      if (
+        !isValidPoint(cameraPosition) ||
+        !isValidPoint(target)
+      ) {
+        return res.status(400).json({
+          message:
+            "cameraPosition and target must contain valid x, y, and z values",
+        });
+      }
+
+      const neutralView = {
+        cameraPosition,
+        target,
+      };
+
+      const result = await pool.query(
+        `UPDATE models
+         SET neutral_view = $1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2
+         RETURNING *`,
+        [
+          JSON.stringify(neutralView),
+          req.params.id,
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          message: "Model not found",
+        });
+      }
+
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error(
+        "Failed to save neutral view:",
+        err
+      );
+
+      res.status(500).json({
+        message:
+          err.message ||
+          "Failed to save neutral view",
+      });
+    }
+  }
+);
+
 app.put("/api/models/:id", authenticate, requireTeacher, async (req, res) => {
   const { title, description, body_system, body_part } = req.body;
 
