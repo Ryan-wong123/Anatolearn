@@ -309,7 +309,7 @@ export default function ModelGallery() {
               <div className="relative">
                 {model.thumbnail_path ? (
                   <img
-                    src={model.thumbnail_path}
+                    src={`http://localhost:5000${model.thumbnail_path}`}
                     alt={model.title}
                     className="w-full h-44 object-cover rounded-lg mb-4"
                   />
