@@ -49,9 +49,9 @@ export default function VideoPlayer() {
           controls
           autoPlay
           className="w-full bg-black"
-          poster={video.thumbnail_path || undefined}
+          poster={video.thumbnail_path ? `http://localhost:5000${video.thumbnail_path}` : undefined}
         >
-          <source src={video.video_path} type="video/mp4" />
+          <source src={`http://localhost:5000${video.video_path}`} type="video/mp4" />
           Your browser does not support the video tag.
         </video>
 
