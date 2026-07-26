@@ -26,6 +26,13 @@ import {
   simplifyScreenPoints,
 } from '../components/viewer/projectedMask';
 
+interface LinkedVideo {
+  id: number;
+  title: string;
+  video_path: string;
+  annotation_id: number | null;
+}
+
 function toDbAnnotationType(
   kind: AnnotationKind,
 ): 'point' | 'highlight' | 'region_fill' {
@@ -105,6 +112,8 @@ export default function Viewer() {
   const [regionMode, setRegionMode] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [popupAnnotation, setPopupAnnotation] = useState<Annotation | null>(null);
+  const [modelVideos, setModelVideos] = useState<LinkedVideo[]>([]);
+  const [playingVideo, setPlayingVideo] = useState<LinkedVideo | null>(null);
   const [label, setLabel] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#22d3ee');
@@ -175,7 +184,7 @@ export default function Viewer() {
 
     const loader = new GLTFLoader();
     loader.load(
-      selectedModel.file_path,
+      `http://localhost:5000${selectedModel.file_path}`,
       (gltf) => {
         const model = gltf.scene;
         modelRef.current = model;
@@ -280,6 +289,10 @@ export default function Viewer() {
               error,
             ),
           );
+
+        api.getVideos()
+          .then((vids: LinkedVideo[]) => setModelVideos(vids.filter((v) => v.annotation_id != null)))
+          .catch((err) => console.error('Failed to load videos:', err));
 
         if (!selectedModel.thumbnail_path) {
           requestAnimationFrame(() => {
@@ -1177,6 +1190,8 @@ export default function Viewer() {
           controlsRef={controlsRef}
           annotation={popupAnnotation}
           role={role}
+          linkedVideo={modelVideos.find((v) => v.annotation_id === popupAnnotation.id) || null}
+          onPlayVideo={(video) => setPlayingVideo(video)}
           onEdit={editSelectedAnnotation}
           onDelete={deleteSelectedAnnotation}
           onClose={() => {
@@ -1184,6 +1199,28 @@ export default function Viewer() {
             setIsolateSelected(false);
           }}
         />
+      )}
+
+      {playingVideo && (
+        <div className="fixed inset-0 bg-slate-900/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+              <h2 className="font-semibold text-slate-900 text-sm">{playingVideo.title}</h2>
+              <button
+                onClick={() => setPlayingVideo(null)}
+                className="text-slate-400 hover:text-slate-600 text-sm"
+              >
+                Close
+              </button>
+            </div>
+            <video
+              src={`http://localhost:5000${playingVideo.video_path}`}
+              controls
+              autoPlay
+              className="w-full"
+            />
+          </div>
+        </div>
       )}
 
       {isGeneratingRegion && <RegionGeneratingOverlay />}

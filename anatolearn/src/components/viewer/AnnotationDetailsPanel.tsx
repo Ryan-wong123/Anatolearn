@@ -3,11 +3,20 @@ import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import DraggablePanel from './DraggablePanel';
 import type { Annotation } from './types';
 
+interface LinkedVideo {
+  id: number;
+  title: string;
+  video_path: string;
+  annotation_id: number | null;
+}
+
 interface AnnotationDetailsPanelProps {
   boundaryRef: RefObject<HTMLDivElement | null>;
   controlsRef: RefObject<OrbitControls | null>;
   annotation: Annotation;
   role: string;
+  linkedVideo?: LinkedVideo | null;
+  onPlayVideo?: (video: LinkedVideo) => void;
   onEdit: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -26,6 +35,8 @@ export default function AnnotationDetailsPanel({
   controlsRef,
   annotation,
   role,
+  linkedVideo,
+  onPlayVideo,
   onEdit,
   onDelete,
   onClose,
@@ -51,6 +62,18 @@ export default function AnnotationDetailsPanel({
         <p className="max-h-40 overflow-y-auto text-sm text-slate-600">
           {annotation.description || 'No description.'}
         </p>
+
+        {linkedVideo && onPlayVideo && (
+          <button
+            onClick={() => onPlayVideo(linkedVideo)}
+            className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700 hover:bg-blue-100 transition-colors"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M6.3 2.8A1.5 1.5 0 004 4.12v11.76a1.5 1.5 0 002.3 1.32l9.6-5.88a1.5 1.5 0 000-2.64L6.3 2.8z" />
+            </svg>
+            Watch: {linkedVideo.title}
+          </button>
+        )}
 
         <div className="mt-4 flex gap-2">
           {role === 'teacher' && (

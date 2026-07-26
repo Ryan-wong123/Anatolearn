@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = `${import.meta.env.VITE_API_URL}/api`;
 
 // Single source of truth for where the JWT lives in sessionStorage.
 // AppContext.tsx imports this too, so both stay in sync automatically.
