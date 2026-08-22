@@ -562,6 +562,16 @@ app.get("/api/models/:id/annotations/export", authenticate, requireTeacher, asyn
 app.post("/api/models/:id/annotations", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
 
+  if (!["point", "highlight", "region_fill"].includes(annotation_type)) {
+    return res.status(400).json({ message: "annotation_type must be point, highlight, or region_fill" });
+  }
+  if (typeof label !== "string" || !label.trim()) {
+    return res.status(400).json({ message: "label is required" });
+  }
+  if (annotation_data === null || typeof annotation_data !== "object" || Array.isArray(annotation_data)) {
+    return res.status(400).json({ message: "annotation_data must be an object" });
+  }
+
   const result = await pool.query(
     `INSERT INTO annotations 
       (model_id, annotation_type, label, description, color, annotation_data)
@@ -595,6 +605,16 @@ app.delete("/api/annotations/:id", authenticate, requireTeacher, async (req, res
 
 app.put("/api/annotations/:id", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
+
+  if (!["point", "highlight", "region_fill"].includes(annotation_type)) {
+    return res.status(400).json({ message: "annotation_type must be point, highlight, or region_fill" });
+  }
+  if (typeof label !== "string" || !label.trim()) {
+    return res.status(400).json({ message: "label is required" });
+  }
+  if (annotation_data === null || typeof annotation_data !== "object" || Array.isArray(annotation_data)) {
+    return res.status(400).json({ message: "annotation_data must be an object" });
+  }
 
   const result = await pool.query(
     `UPDATE annotations
@@ -764,6 +784,15 @@ app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
     return res.status(400).json({ message: "answers must be an array" });
   }
 
+  if (answers.some((answer) => !answer || !Number.isInteger(answer.question_id))) {
+    return res.status(400).json({ message: "each answer must include an integer question_id" });
+  }
+
+  const submittedIds = answers.map((answer) => answer.question_id);
+  if (new Set(submittedIds).size !== submittedIds.length) {
+    return res.status(400).json({ message: "each question may only be answered once" });
+  }
+
   try {
     const questionsResult = await pool.query(
       "SELECT id, format, correct_option FROM quiz_questions WHERE quiz_id = $1",
@@ -774,6 +803,24 @@ app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
     questionsResult.rows.forEach((q) => {
       questionMap[q.id] = q;
     });
+
+    if (questionsResult.rows.length === 0) {
+      return res.status(404).json({ message: "Quiz not found or has no questions" });
+    }
+
+    if (answers.length !== questionsResult.rows.length || answers.some((answer) => !questionMap[answer.question_id])) {
+      return res.status(400).json({ message: "answers must contain exactly one answer for every quiz question" });
+    }
+
+    const invalidAnswer = answers.some((answer) => {
+      const question = questionMap[answer.question_id];
+      return question.format === "mcq"
+        ? !["A", "B", "C", "D"].includes(answer.selected_option)
+        : typeof answer.answer_text !== "string" || !answer.answer_text.trim();
+    });
+    if (invalidAnswer) {
+      return res.status(400).json({ message: "every answer must match its question format" });
+    }
 
     const total = questionsResult.rows.length;
     let correctCount = 0;
@@ -1004,8 +1051,23 @@ app.get("/api/students/me/attempts", authenticate, async (req, res) => {
 });
 
 app.get("/api/attempts/:id/answers", authenticate, async (req, res) => {
+  const ownerResult = await pool.query(
+    "SELECT student_id FROM quiz_attempts WHERE id = $1",
+    [req.params.id]
+  );
+  if (ownerResult.rows.length === 0) {
+    return res.status(404).json({ message: "Attempt not found" });
+  }
+  if (req.user.role !== "teacher" && ownerResult.rows[0].student_id !== req.user.id) {
+    return res.status(403).json({ message: "You can only view your own attempts" });
+  }
+
+  const confidentialColumns = req.user.role === "teacher"
+    ? ", qq.model_answer, qq.correct_option"
+    : "";
   const result = await pool.query(
-    `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
+    `SELECT qaa.id, qaa.attempt_id, qaa.question_id, qaa.selected_option,
+            qaa.answer_text, qaa.is_correct, qaa.teacher_score, qq.question, qq.format${confidentialColumns}
      FROM quiz_attempt_answers qaa
      JOIN quiz_questions qq ON qq.id = qaa.question_id
      WHERE qaa.attempt_id = $1
@@ -1023,6 +1085,10 @@ app.get("/api/attempts/:id", authenticate, async (req, res) => {
 
   if (result.rows.length === 0) {
     return res.status(404).json({ message: "Attempt not found" });
+  }
+
+  if (req.user.role !== "teacher" && result.rows[0].student_id !== req.user.id) {
+    return res.status(403).json({ message: "You can only view your own attempts" });
   }
 
   res.json(result.rows[0]);
@@ -1264,8 +1330,26 @@ app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req
   res.json(result.rows[0]);
 });
 
-const PORT = process.env.PORT || 5000;
+// Multer errors are client input failures, not internal server errors. Keeping
+// this JSON-shaped also gives the frontend and integration tests one contract.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const status = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    return res.status(status).json({ message: err.message });
+  }
+  if (err && /files are allowed/.test(err.message || "")) {
+    return res.status(400).json({ message: err.message });
+  }
+  return next(err);
+});
 
-app.listen(PORT, () => {
-  console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+// Keep the Express application importable by Supertest without opening a
+// network listener. `node src/server.js` remains the production entry point.
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`AnatoLearn backend running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

@@ -574,3 +574,23 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+# Automated Test Infrastructure — Issue #3
+Date: 22 Aug 2026
+
+## Scope and method
+
+Vitest and React Testing Library were configured for frontend components and browser-bound utility code. Jest and Supertest were configured for API integration testing against a guarded PostgreSQL test database. Playwright was configured for deterministic critical workflow checks. Both coverage configurations enforce a 70 percent threshold.
+
+The API harness accepts only a local `TEST_DATABASE_URL` whose database name contains `test`, rejects accidental reuse of `DATABASE_URL`, applies migrations 001–006, and removes database records and temporary upload files during teardown. Fixtures use fixed users and content rather than development data.
+
+## Automated workflows
+
+The frontend suite covers protected-route redirection and access, projected-mask sample/cache/context edge cases, and video loading, completed, empty-description, and API-error states. The API suite covers registration normalization and duplicates; login failures; missing, invalid, and expired tokens; role restrictions; answer confidentiality; valid scoring; malformed submissions; authenticated attempt attribution and cross-user rejection; model/video empty and missing states; annotation validation and authorized CRUD; and unsupported upload rejection. Playwright covers authentication and protected access, quiz completion, model browsing, and video navigation.
+
+## Commands
+
+Use `npm test`, `npm run test:coverage`, `npm run test:backend`, `npm --prefix backend run test:coverage`, and `npm run test:e2e`. Database and browser prerequisites are documented in the project README.
+
+## Verification result
+
+On 22 Aug 2026, all eight Vitest tests passed, the configured frontend coverage gate passed (94.44% lines, 89.47% statements, 80% functions, and 78.57% branches for the initial guarded component surface), the production TypeScript/Vite build passed, and all three Chromium Playwright workflows passed. JavaScript syntax checks and the database refusal guard passed. The API integration suite was not executed in this workspace because no local PostgreSQL service or client was available; it must be run with the documented `TEST_DATABASE_URL` before release. The repository-wide lint command continues to report pre-existing violations in viewer/context/library/quiz files outside the test-infrastructure changes.

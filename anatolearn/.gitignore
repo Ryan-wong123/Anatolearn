@@ -31,3 +31,8 @@ public/resources/
 # backend .env
 backend/.env
 .env
+
+# Automated test output
+coverage/
+playwright-report/
+test-results/

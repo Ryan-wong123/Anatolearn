@@ -230,3 +230,11 @@ A task is done only when:
   - Mark started work `[~]`
   - Mark completed work `[x]` only after implementation, verification, and documentation are complete
   - Mark blocked work `[!]` with a short blocker note
+
+## 11. Automated Quality Gates
+
+- Frontend behavior is verified with Vitest and React Testing Library.
+- API security and persistence behavior is verified with Supertest against a separately configured PostgreSQL test database.
+- Critical browser workflows are verified with Playwright.
+- Tests use deterministic records, clear their state, and must not use development or production databases.
+- Frontend and backend coverage commands enforce a minimum 70% threshold.

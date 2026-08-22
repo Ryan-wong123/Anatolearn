@@ -273,7 +273,11 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 | NFR-25 | The system shall preserve consistency between models, labels, linked videos, and quizzes. | 
 | NFR-26 | The system shall reliably retrieve associated labels and metadata when loading 3D models. | 
 | NFR-27 | The system shall maintain uploaded teaching content without unintended data loss during normal operation. | 
-| NFR-28 | The system shall support backup or recovery of uploaded teaching content where technically feasible. | 
+| NFR-28 | The system shall support backup or recovery of uploaded teaching content where technically feasible. |
+
+### 8.7 Verification
+
+AnatoLearn shall maintain automated component, API integration, and browser workflow tests. The automated suites shall verify authentication, role and ownership enforcement, quiz confidentiality and scoring, annotation management, model/video access, and protected navigation. Frontend and backend coverage shall be enforced at an initial 70 percent threshold, using isolated and deterministic test data.
 
 ---
 

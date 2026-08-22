@@ -239,6 +239,10 @@ In the full MVP, anatomy parts and labels are fetched from the backend. Temporar
 
 ## 10. Viewer Import Note
 
+## 11. Test Architecture
+
+Component tests run in jsdom with browser media, canvas, and resize boundaries mocked. API integration tests import the Express application without opening a listener and apply migrations `001_schema.sql` through `006_add_video_annotation_link.sql` to a guarded PostgreSQL test database. Playwright exercises critical routing and user workflows through public network contracts. Test fixtures are deterministic and are removed after each backend run.
+
 OrbitControls must be imported from the addons path:
 
 ```tsx

@@ -1,73 +1,30 @@
-# React + TypeScript + Vite
+# AnatoLearn
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AnatoLearn is a React/Vite anatomy-learning frontend with an Express and PostgreSQL API. The automated verification stack uses Vitest, React Testing Library, Supertest/Jest, and Playwright.
 
-Currently, two official plugins are available:
+## Test installation and commands
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Install both dependency sets before testing:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+npm --prefix backend install
+npx playwright install chromium
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Run the standard frontend suite with `npm test`, watch mode with `npm run test:watch`, and enforced frontend coverage with `npm run test:coverage`. Run API integration tests with `npm run test:backend`; backend coverage is available from `npm --prefix backend run test:coverage`. Run critical browser workflows with `npm run test:e2e`. Production validation also includes `npm run lint` and `npm run build`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Isolated PostgreSQL test database
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+API tests require an empty, local database whose name contains `test`. The harness refuses a non-local URL, a database without the test marker, or a URL equal to `DATABASE_URL` unless the explicit `ALLOW_TEST_DATABASE_RESET=true` override is supplied.
+
+```sh
+createdb anatolearn_test
+TEST_DATABASE_URL=postgresql://localhost/anatolearn_test npm run test:backend
 ```
+
+The harness applies migrations `001_schema.sql` through `006_add_video_annotation_link.sql` in filename order, loads the deterministic migration seed, inserts per-suite fixtures, truncates test records, and removes its temporary upload directory after execution. It never reads development fixtures.
+
+## Coverage and browser policy
+
+Frontend and backend coverage configurations enforce 70 percent minimum line, statement, function, and branch coverage. Playwright uses Chromium by default; install its managed browser before the first E2E run. The browser suite verifies protected access and login, quiz completion, model browsing, and video navigation. API coverage additionally verifies registration/login failures, token and role enforcement, quiz scoring and attempt ownership, answer confidentiality, annotation validation and CRUD authorization, missing records, listings, and invalid media rejection.
