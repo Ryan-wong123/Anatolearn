@@ -305,3 +305,9 @@ No global state is needed for video play state.
   "autoprefixer": "latest"
 }
 ```
+
+---
+
+## 15. Automated Test Architecture
+
+The frontend uses Vitest with React Testing Library and browser API mocks. The Express application is exported independently from its conditional HTTP listener so Supertest can exercise the same middleware and routes used in production. Backend integration tests run only against an explicitly named test PostgreSQL database, rebuild it from migrations `001` through `006`, and clean mutable records and uploaded fixture files. Playwright covers critical authenticated browser workflows. Frontend and backend coverage commands enforce an initial 70 percent threshold for their declared scopes.

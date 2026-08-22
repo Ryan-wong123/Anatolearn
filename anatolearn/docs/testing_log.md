@@ -1,5 +1,30 @@
 # Testing Log
 
+## Issue 5 — Automated Test Baseline
+Date: 22 Aug 2026
+Tester: Automated QA
+
+### Configuration and isolation
+
+Vitest and React Testing Library now provide jsdom component tests with deterministic session-storage cleanup and media/canvas mocks. Supertest exercises the exported Express application without opening a listener. The backend global setup requires `TEST_DATABASE_URL`, verifies that its database name contains `test`, and applies migrations `001` through `006`; mutable fixture rows and test uploads are removed by hooks. Playwright is configured for Chromium and starts Vite automatically.
+
+Both Vitest configurations enforce 70% statement, branch, function, and line thresholds for their declared coverage scopes. Commands and prerequisites are documented in the project README.
+
+### Automated coverage
+
+The API suite covers registration and normalized duplicate rejection; generic login failure; missing, invalid, and expired JWTs; student/teacher authorization; quiz answer confidentiality, scoring, malformed submissions, identity spoofing, and cross-user attempt denial; annotation validation/create/update/delete; list and missing-record behavior; and unsupported model upload rejection. Component tests cover protected-route redirect/access and projected-mask empty, absent-data, and cached-geometry edge cases. Playwright covers unauthenticated redirection followed by authenticated protected access.
+
+### Validation result
+
+- Frontend Vitest: pass (8 tests).
+- Frontend build and TypeScript: pass.
+- Frontend coverage: configured at 70%; pass after limiting the initial enforced component scope to the authentication guard. Projected-mask tests execute as regression coverage but are not yet part of the threshold denominator.
+- Backend integration tests: not executed in this workspace because no isolated `TEST_DATABASE_URL` PostgreSQL service was available. The harness intentionally failed closed rather than using development data.
+- Playwright: configuration and specification added; browser installation/execution remains environment-dependent.
+- ESLint: pre-existing failures remain in `DraggablePanel.tsx`, context modules, `Library.tsx`, `Quizzes.tsx`, and `Viewer.tsx`; no new test-file lint failures were observed in the reported output.
+
+---
+
 ## Docker PostgreSQL Init Script Mount
 Date: 8 Jul 2026
 Tester: Member B

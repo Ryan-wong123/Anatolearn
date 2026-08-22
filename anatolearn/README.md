@@ -1,4 +1,35 @@
-# React + TypeScript + Vite
+# AnatoLearn
+
+AnatoLearn is a React/Vite anatomy learning application backed by an Express and PostgreSQL API.
+
+## Automated testing
+
+Install frontend and backend dependencies with `npm ci` and `npm --prefix backend ci`. The test stack uses Vitest, React Testing Library, Supertest, and Playwright. Browser tests require Chromium, installed once with `npx playwright install chromium`.
+
+The backend suite will only run when `TEST_DATABASE_URL` names a separate PostgreSQL database whose database name contains `test`. It refuses an ordinary development or production database. For example:
+
+```bash
+createdb anatolearn_test
+export TEST_DATABASE_URL=postgresql://anatolearn:password@localhost:5432/anatolearn_test
+export JWT_SECRET=anatolearn-test-only-secret
+npm run test:backend
+```
+
+The backend harness applies `001_schema.sql` through `006_add_video_annotation_link.sql` in filename order before the suite. Each test creates deterministic users and truncates mutable fixture tables before running; uploaded files are directed to a test-only directory and removed at suite completion.
+
+Available commands are:
+
+- `npm test` — frontend component and utility tests once
+- `npm run test:watch` — frontend watch mode
+- `npm run test:coverage` — frontend coverage with a 70% enforced threshold
+- `npm run test:backend` — isolated PostgreSQL/Supertest integration tests
+- `npm --prefix backend run test:coverage` — backend coverage with a 70% enforced threshold
+- `npm run test:e2e` — Playwright critical browser workflows
+- `npm run lint` and `npm run build` — static validation and TypeScript/build checks
+
+The automated workflows cover protected access, registration and authentication failures, JWT rejection, role enforcement, quiz confidentiality/scoring/ownership, annotation validation and mutation, listing/missing records, upload rejection, and browser navigation. See `docs/testing_log.md` for scope, fixture, cleanup, and execution records.
+
+## Vite reference
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

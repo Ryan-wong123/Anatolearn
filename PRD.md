@@ -217,6 +217,10 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 
 ## 8. Non-Functional Requirements
 
+### Automated verification
+
+Critical authentication, quiz, annotation, viewer, model, video, and navigation workflows shall be covered at component, API integration, and browser end-to-end layers. Test data shall be deterministic and isolated from development and production data, and coverage checks shall enforce an initial 70 percent threshold for the configured frontend and backend scopes.
+
 ### 8.1 Usability
 
 | ID | Requirement | 

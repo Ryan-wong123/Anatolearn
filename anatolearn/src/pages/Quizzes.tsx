@@ -85,6 +85,8 @@ export default function Quizzes() {
   const { role } = useAppContext();
 
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loadingQuizzes, setLoadingQuizzes] = useState(true);
+  const [quizLoadError, setQuizLoadError] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -131,9 +133,15 @@ export default function Quizzes() {
   const [attemptHistory, setAttemptHistory] = useState<QuizAttemptSummary[]>([]);
 
   useEffect(() => {
+    setLoadingQuizzes(true);
+    setQuizLoadError(false);
     api.getQuizzes(role === 'student')
       .then(setQuizzes)
-      .catch((err) => console.error('Failed to load quizzes:', err));
+      .catch((err) => {
+        console.error('Failed to load quizzes:', err);
+        setQuizLoadError(true);
+      })
+      .finally(() => setLoadingQuizzes(false));
   }, [role]);
 
   useEffect(() => {
@@ -599,7 +607,15 @@ export default function Quizzes() {
       </div>
 
       <div className="mt-6 bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {quizzes.map((quiz) => (
+        {loadingQuizzes && (
+          <div className="py-12 text-center text-sm text-slate-400">Loading quizzes...</div>
+        )}
+
+        {!loadingQuizzes && quizLoadError && (
+          <div role="alert" className="py-12 text-center text-sm text-red-600">Failed to load quizzes. Please try again.</div>
+        )}
+
+        {!loadingQuizzes && !quizLoadError && quizzes.map((quiz) => (
           <div
             key={quiz.id}
             className="px-5 py-4 flex items-center gap-3 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors"
@@ -652,7 +668,7 @@ export default function Quizzes() {
           </div>
         ))}
 
-        {quizzes.length === 0 && (
+        {!loadingQuizzes && !quizLoadError && quizzes.length === 0 && (
           <div className="py-12 text-center text-sm text-slate-400">
             No quizzes found.
           </div>
