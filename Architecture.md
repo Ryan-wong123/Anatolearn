@@ -218,6 +218,10 @@ Role checks for shared pages belong in JSX conditionals. Auth checks belong in `
 {role === 'student' ? <StudentSummary /> : <TeacherSummary />}
 ```
 
+## 9. Automated Verification Architecture
+
+The frontend uses Vitest and React Testing Library with browser APIs isolated in `src/test/setup.ts`. API integration tests import the Express application without opening a listener and run against a separately named PostgreSQL test database. Playwright exercises critical browser journeys with deterministic network fixtures. Each layer is independently runnable, and frontend coverage is enforced at 70 percent for the targeted critical modules.
+
 ---
 
 ## 9. Anatomy Parts Data Model

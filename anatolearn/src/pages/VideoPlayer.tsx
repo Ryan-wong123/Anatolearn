@@ -17,14 +17,19 @@ export default function VideoPlayer() {
   const navigate = useNavigate();
 
   const [video, setVideo] = useState<Video | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!videoId) return;
 
     api.getVideo(Number(videoId))
       .then(setVideo)
-      .catch((err) => console.error('Failed to load video:', err));
+      .catch(() => setError('Unable to load this video. Please try again.'));
   }, [videoId]);
+
+  if (error) {
+    return <div role="alert" className="max-w-5xl mx-auto p-8 text-red-700">{error}</div>;
+  }
 
   if (!video) {
     return (

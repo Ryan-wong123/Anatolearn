@@ -213,6 +213,8 @@ Before marking the Viewer task done, verify:
 
 A task is done only when:
 - TypeScript compiles with no errors
+- Relevant Vitest, backend integration, and Playwright suites pass; tests use deterministic fixtures and an isolated test database
+- Frontend coverage remains at or above the configured 70 percent threshold
 - All role-gated UI is controlled only through `role` from context
 - Three.js scene is fully cleaned up on route change (Viewer task)
 - UI matches `design.md` visual specification

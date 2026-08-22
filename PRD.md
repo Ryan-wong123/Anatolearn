@@ -217,6 +217,10 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 
 ## 8. Non-Functional Requirements
 
+### 8.0 Automated quality gates
+
+Critical authentication, authorization, quiz, annotation, video, and model workflows shall be covered at component, API integration, and browser levels. Fixtures must be deterministic, test data must be isolated from development data, and the initial frontend coverage threshold is 70 percent.
+
 ### 8.1 Usability
 
 | ID | Requirement | 

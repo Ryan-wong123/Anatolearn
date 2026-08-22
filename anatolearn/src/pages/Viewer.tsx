@@ -405,7 +405,7 @@ export default function Viewer() {
       animationId = requestAnimationFrame(animate);
       
       controls.update();
-      //clampCameraOutsideModel();
+      clampCameraOutsideModel();
       renderer.render(scene, camera);
     };
     animate();

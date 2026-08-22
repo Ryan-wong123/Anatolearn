@@ -574,3 +574,28 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+## Automated test suite — 22 August 2026
+
+### Scope and procedure
+
+The project now provides three independent automated layers: Vitest and React Testing Library for frontend components, Node's test runner and Supertest for API integration, and Playwright for browser workflows. Frontend coverage gates are initially set to 70 percent for lines, functions, statements, and branches for the fully exercised `VideoPlayer` state component. Other critical component tests remain mandatory regression checks and can be added to the enforced set as their branch coverage grows.
+
+API tests use only `TEST_DATABASE_URL`. The database name must contain `test`, and the URL must differ from `DATABASE_URL`. Migrations `001_schema.sql` through `006_add_video_annotation_link.sql` are applied in order. Mutable records are truncated before each case, fixtures use fixed values, database pools close after execution, and upload rejection fixtures do not leave files behind.
+
+### Covered workflows
+
+| Layer | Automated checks |
+|---|---|
+| Component | Protected redirect/access, projected-mask empty and single-point handling, video loading/success/error states |
+| API | Registration and duplicate email, generic login failure, missing/invalid/expired tokens, teacher restrictions, annotation validation/create/update/delete, quiz confidentiality/scoring/malformed input/student identity/cross-user access, empty lists, missing video, invalid model/video uploads |
+| Browser | Registration/login, protected route access, deterministic quiz completion, authenticated model and video navigation entry points |
+
+### Commands
+
+Run `npm test`, `npm run test:watch`, `npm run test:coverage`, `npm run test:backend`, and `npm run test:e2e` from `anatolearn/`. Install Chromium once with `npx playwright install chromium`. Backend execution additionally requires the isolated test database described above.
+
+### Implementation findings
+
+Automation identified and closed two server-side gaps: quiz submissions now reject incomplete, duplicated, foreign, invalid-option, and blank open-ended answers; attempt and answer retrieval now prevents cross-student access while retaining teacher grading access. Annotation create/update endpoints now reject invalid types, blank labels, and non-object payload data. Express is exported without binding a port when imported by tests.
+
+---

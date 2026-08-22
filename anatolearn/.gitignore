@@ -31,3 +31,7 @@ public/resources/
 # backend .env
 backend/.env
 .env
+
+coverage/
+playwright-report/
+test-results/
