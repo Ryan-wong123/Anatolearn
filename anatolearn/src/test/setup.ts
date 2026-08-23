@@ -1,0 +1,14 @@
+import '@testing-library/jest-dom/vitest';
+import { afterEach, vi } from 'vitest';
+import { cleanup } from '@testing-library/react';
+
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+  vi.restoreAllMocks();
+});
+
+Object.defineProperty(HTMLMediaElement.prototype, 'play', { configurable: true, value: vi.fn().mockResolvedValue(undefined) });
+Object.defineProperty(HTMLMediaElement.prototype, 'pause', { configurable: true, value: vi.fn() });
+Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:test') });
+Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });

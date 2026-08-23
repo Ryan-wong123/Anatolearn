@@ -562,6 +562,16 @@ app.get("/api/models/:id/annotations/export", authenticate, requireTeacher, asyn
 app.post("/api/models/:id/annotations", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
 
+  if (!["point", "highlight", "region_fill"].includes(annotation_type)) {
+    return res.status(400).json({ message: "annotation_type must be point, highlight, or region_fill" });
+  }
+  if (typeof label !== "string" || !label.trim()) {
+    return res.status(400).json({ message: "label is required" });
+  }
+  if (!annotation_data || typeof annotation_data !== "object" || Array.isArray(annotation_data)) {
+    return res.status(400).json({ message: "annotation_data must be an object" });
+  }
+
   const result = await pool.query(
     `INSERT INTO annotations 
       (model_id, annotation_type, label, description, color, annotation_data)
@@ -595,6 +605,16 @@ app.delete("/api/annotations/:id", authenticate, requireTeacher, async (req, res
 
 app.put("/api/annotations/:id", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
+
+  if (!["point", "highlight", "region_fill"].includes(annotation_type)) {
+    return res.status(400).json({ message: "annotation_type must be point, highlight, or region_fill" });
+  }
+  if (typeof label !== "string" || !label.trim()) {
+    return res.status(400).json({ message: "label is required" });
+  }
+  if (!annotation_data || typeof annotation_data !== "object" || Array.isArray(annotation_data)) {
+    return res.status(400).json({ message: "annotation_data must be an object" });
+  }
 
   const result = await pool.query(
     `UPDATE annotations
@@ -774,6 +794,25 @@ app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
     questionsResult.rows.forEach((q) => {
       questionMap[q.id] = q;
     });
+
+    const submittedIds = answers.map((answer) => Number(answer?.question_id));
+    const expectedIds = questionsResult.rows.map((question) => question.id);
+    if (
+      answers.length !== expectedIds.length ||
+      new Set(submittedIds).size !== submittedIds.length ||
+      submittedIds.some((id) => !expectedIds.includes(id))
+    ) {
+      return res.status(400).json({ message: "answers must contain each quiz question exactly once" });
+    }
+    for (const answer of answers) {
+      const question = questionMap[answer.question_id];
+      if (question.format === "mcq" && !["A", "B", "C", "D"].includes(answer.selected_option)) {
+        return res.status(400).json({ message: "MCQ answers must select A, B, C, or D" });
+      }
+      if (question.format === "open_ended" && typeof answer.answer_text !== "string") {
+        return res.status(400).json({ message: "Open-ended answers must include answer_text" });
+      }
+    }
 
     const total = questionsResult.rows.length;
     let correctCount = 0;
@@ -1004,8 +1043,16 @@ app.get("/api/students/me/attempts", authenticate, async (req, res) => {
 });
 
 app.get("/api/attempts/:id/answers", authenticate, async (req, res) => {
+  const attempt = await pool.query("SELECT student_id FROM quiz_attempts WHERE id = $1", [req.params.id]);
+  if (attempt.rows.length === 0) return res.status(404).json({ message: "Attempt not found" });
+  if (req.user.role !== "teacher" && attempt.rows[0].student_id !== req.user.id) {
+    return res.status(403).json({ message: "You cannot access this attempt" });
+  }
+  const answerFields = req.user.role === "teacher"
+    ? "qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option"
+    : "qaa.id, qaa.attempt_id, qaa.question_id, qaa.selected_option, qaa.answer_text, qaa.is_correct, qaa.teacher_score, qq.question, qq.format";
   const result = await pool.query(
-    `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
+    `SELECT ${answerFields}
      FROM quiz_attempt_answers qaa
      JOIN quiz_questions qq ON qq.id = qaa.question_id
      WHERE qaa.attempt_id = $1
@@ -1023,6 +1070,10 @@ app.get("/api/attempts/:id", authenticate, async (req, res) => {
 
   if (result.rows.length === 0) {
     return res.status(404).json({ message: "Attempt not found" });
+  }
+
+  if (req.user.role !== "teacher" && result.rows[0].student_id !== req.user.id) {
+    return res.status(403).json({ message: "You cannot access this attempt" });
   }
 
   res.json(result.rows[0]);
@@ -1264,8 +1315,9 @@ app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req
   res.json(result.rows[0]);
 });
 
-const PORT = process.env.PORT || 5000;
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`AnatoLearn backend running on port ${PORT}`));
+}
 
-app.listen(PORT, () => {
-  console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+module.exports = app;

@@ -574,3 +574,17 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+
+## Automated Test Foundation — 23 August 2026
+
+### Scope and method
+
+Vitest, React Testing Library, Supertest, and Playwright were configured as independent test layers. Frontend tests use deterministic network mocks and browser API shims. API tests require a separately named test database, execute migrations 001–006 in order, create fixed fixtures, and clean records after execution. Both Vitest coverage configurations enforce a 70 percent threshold.
+
+### Security regression coverage
+
+The API matrix covers registration and duplicate email handling; generic login failures; missing, malformed, expired, and role-forbidden tokens; quiz answer-key confidentiality; exact-question submission validation; server-derived attempt identity; cross-student attempt denial; teacher-only annotation mutations; missing records; and invalid media rejection. During implementation, attempt endpoints were corrected to enforce student ownership, and student attempt-answer responses were changed to omit `correct_option` and `model_answer`.
+
+### Commands and result
+
+`npm test` completed with seven frontend tests passing; coverage passed at 90 percent statements, 83.33 percent branches, 80 percent functions, and 94.73 percent lines. The production build passed, and the Chromium Playwright authentication flow passed. The full repository lint command remains blocked by pre-existing errors in `DraggablePanel.tsx`, context export files, `Library.tsx`, `Quizzes.tsx`, and `Viewer.tsx`; no new test file lint errors were reported. The database integration suite requires `TEST_DATABASE_URL` and was not pointed at the available development configuration by design; its reproducible invocation is documented in the project README.

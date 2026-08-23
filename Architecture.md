@@ -2,6 +2,8 @@
 
 ## 1. Architecture Goals
 
+Automated verification is split into three independent layers: colocated Vitest component tests, Supertest integration tests against an importable Express application and dedicated PostgreSQL test database, and Playwright workflows under `anatolearn/e2e`. Test data must never depend on the development database or execution order.
+
 The AnatoLearn codebase must be:
 - Maintainable and easy to extend
 - Cleanly separated between data, state, logic, and UI

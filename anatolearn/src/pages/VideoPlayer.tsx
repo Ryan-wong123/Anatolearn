@@ -17,14 +17,22 @@ export default function VideoPlayer() {
   const navigate = useNavigate();
 
   const [video, setVideo] = useState<Video | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!videoId) return;
 
     api.getVideo(Number(videoId))
       .then(setVideo)
-      .catch((err) => console.error('Failed to load video:', err));
+      .catch((err) => {
+        console.error('Failed to load video:', err);
+        setError('Unable to load this video. Please try again later.');
+      });
   }, [videoId]);
+
+  if (error) {
+    return <div role="alert" className="max-w-5xl mx-auto px-4 py-8 text-sm text-red-700">{error}</div>;
+  }
 
   if (!video) {
     return (

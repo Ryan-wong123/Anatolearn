@@ -67,6 +67,8 @@ Responsible for:
 
 ### QA Agent
 Responsible for:
+- Running the frontend, isolated-database API, coverage, and Playwright suites documented in `anatolearn/README.md`
+- Never running integration fixtures against development or production data
 - Testing JWT-derived role rendering on every page for both student and teacher accounts
 - Testing program selector updates visible text
 - Testing Viewer navigation in and out (cleanup verification)

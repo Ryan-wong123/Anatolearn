@@ -2,6 +2,8 @@
 
 ## 1. Product Overview
 
+Critical authentication, quiz, annotation, model, and video workflows require automated regression coverage. Frontend and backend coverage gates are initially 70 percent, with server-side authorization and ownership checks treated as product requirements rather than UI-only behavior.
+
 ### Working Title
 **AnatoLearn**
 
