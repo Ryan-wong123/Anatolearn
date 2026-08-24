@@ -305,3 +305,6 @@ No global state is needed for video play state.
   "autoprefixer": "latest"
 }
 ```
+# Automated verification
+
+The React layer is verified with Vitest and React Testing Library, the Express boundary with Supertest, and browser workflows with Playwright. Express exports the application and starts its listener only when executed directly. Database-backed tests use an isolated PostgreSQL database initialized by migrations 001 through 006.

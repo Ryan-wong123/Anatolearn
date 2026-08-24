@@ -645,7 +645,11 @@ app.get("/api/annotations", authenticate, requireTeacher, async (req, res) => {
 });
 
 app.get("/api/videos/:id", authenticate, async (req, res) => {
-  const result = await pool.query("SELECT * FROM videos WHERE id = $1", [
+  const result = await pool.query(
+    `SELECT v.*, a.model_id AS annotation_model_id
+     FROM videos v
+     LEFT JOIN annotations a ON a.id = v.annotation_id
+     WHERE v.id = $1`, [
     req.params.id,
   ]);
 
@@ -769,6 +773,35 @@ app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
       "SELECT id, format, correct_option FROM quiz_questions WHERE quiz_id = $1",
       [req.params.id]
     );
+
+    if (questionsResult.rows.length === 0) {
+      return res.status(404).json({ message: "Quiz has no questions" });
+    }
+
+    const submittedIds = answers.map((answer) => Number(answer.question_id));
+    const expectedIds = questionsResult.rows.map((question) => Number(question.id));
+    if (
+      submittedIds.length !== expectedIds.length ||
+      new Set(submittedIds).size !== submittedIds.length ||
+      submittedIds.some((id) => !expectedIds.includes(id))
+    ) {
+      return res.status(400).json({
+        message: "answers must contain exactly one answer for every quiz question",
+      });
+    }
+
+    const invalidAnswer = answers.some((answer) => {
+      const question = questionsResult.rows.find(
+        (candidate) => Number(candidate.id) === Number(answer.question_id)
+      );
+      if (question.format === "mcq") {
+        return !["A", "B", "C", "D"].includes(answer.selected_option);
+      }
+      return typeof answer.answer_text !== "string" || !answer.answer_text.trim();
+    });
+    if (invalidAnswer) {
+      return res.status(400).json({ message: "Every question requires a valid answer" });
+    }
 
     const questionMap = {};
     questionsResult.rows.forEach((q) => {
@@ -1004,6 +1037,16 @@ app.get("/api/students/me/attempts", authenticate, async (req, res) => {
 });
 
 app.get("/api/attempts/:id/answers", authenticate, async (req, res) => {
+  const ownership = await pool.query(
+    "SELECT student_id FROM quiz_attempts WHERE id = $1",
+    [req.params.id]
+  );
+  if (ownership.rows.length === 0) {
+    return res.status(404).json({ message: "Attempt not found" });
+  }
+  if (req.user.role !== "teacher" && ownership.rows[0].student_id !== req.user.id) {
+    return res.status(403).json({ message: "You do not have access to this attempt" });
+  }
   const result = await pool.query(
     `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
      FROM quiz_attempt_answers qaa
@@ -1023,6 +1066,10 @@ app.get("/api/attempts/:id", authenticate, async (req, res) => {
 
   if (result.rows.length === 0) {
     return res.status(404).json({ message: "Attempt not found" });
+  }
+
+  if (req.user.role !== "teacher" && result.rows[0].student_id !== req.user.id) {
+    return res.status(403).json({ message: "You do not have access to this attempt" });
   }
 
   res.json(result.rows[0]);
@@ -1264,8 +1311,11 @@ app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req
   res.json(result.rows[0]);
 });
 
-const PORT = process.env.PORT || 5000;
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`AnatoLearn backend running on port ${PORT}`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+module.exports = app;

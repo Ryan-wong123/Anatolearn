@@ -1,5 +1,24 @@
 # Testing Log
 
+## Automated critical-workflow harness
+
+Date: 24 Aug 2026
+Tester: Codex
+
+Vitest and React Testing Library were configured for component and utility tests, Supertest for API middleware tests, and Playwright for protected browser navigation. Shared jsdom mocks cover media-query and object-URL browser APIs. Both coverage configurations enforce a 70 percent threshold.
+
+The Express application is exported without opening a listener when imported. The test migration utility requires `TEST_DATABASE_URL`, rejects database names without a standalone `test` segment, and applies migrations 001 through 006 in deterministic order.
+
+| Automated check | Result |
+|---|---|
+| Frontend component and utility suite | Pass: 6 tests |
+| Backend authentication middleware suite | Pass: 6 tests |
+| Production TypeScript build | See final verification record |
+
+Assertions cover protected redirects, authenticated outlet rendering, annotation-form interaction, projected-mask edge cases, missing/invalid/expired JWT rejection, and student rejection from teacher endpoints. Server-side quiz input validation and attempt ownership enforcement were added for database-backed integration coverage.
+
+---
+
 ## Docker PostgreSQL Init Script Mount
 Date: 8 Jul 2026
 Tester: Member B

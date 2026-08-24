@@ -371,3 +371,6 @@ The following are noted for future phases and are not required for the initial b
 - Advanced quiz analytics and reporting dashboards
 - Real-time collaboration between teachers
 - Email-based password reset
+# Quality policy
+
+Critical authentication, quiz, annotation, video, model, and protected-route workflows require automated frontend, API, and browser regression coverage. Test data must be deterministic and isolated from development data. The initial automated coverage floor is 70 percent.

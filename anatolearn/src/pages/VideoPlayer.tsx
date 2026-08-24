@@ -10,6 +10,8 @@ interface Video {
   video_path: string;
   thumbnail_path: string | null;
   created_at: string;
+  annotation_id: number | null;
+  annotation_model_id: number | null;
 }
 
 export default function VideoPlayer() {
@@ -17,14 +19,20 @@ export default function VideoPlayer() {
   const navigate = useNavigate();
 
   const [video, setVideo] = useState<Video | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState(false);
 
   useEffect(() => {
     if (!videoId) return;
 
     api.getVideo(Number(videoId))
       .then(setVideo)
-      .catch((err) => console.error('Failed to load video:', err));
+      .catch(() => setError('Video could not be loaded.'));
   }, [videoId]);
+
+  if (error) {
+    return <div className="max-w-5xl mx-auto px-4 py-8" role="alert">{error}</div>;
+  }
 
   if (!video) {
     return (
@@ -50,10 +58,13 @@ export default function VideoPlayer() {
           autoPlay
           className="w-full bg-black"
           poster={video.thumbnail_path ? `http://localhost:5000${video.thumbnail_path}` : undefined}
+          onError={() => setMediaError(true)}
         >
           <source src={`http://localhost:5000${video.video_path}`} type="video/mp4" />
           Your browser does not support the video tag.
         </video>
+
+        {mediaError && <p className="p-4 text-sm text-red-700" role="alert">This video format could not be played.</p>}
 
         <div className="p-6">
           <h1 className="text-2xl font-bold text-slate-900 font-display">
@@ -63,6 +74,15 @@ export default function VideoPlayer() {
           <p className="mt-2 text-sm text-slate-500">
             {video.description || 'No description provided.'}
           </p>
+          {video.annotation_id && video.annotation_model_id && (
+            <button
+              type="button"
+              onClick={() => navigate(`/3dviewer/${video.annotation_model_id}?annotation=${video.annotation_id}`)}
+              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              View linked annotation
+            </button>
+          )}
         </div>
       </div>
     </div>
