@@ -234,6 +234,72 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+// Learning-home summary. Quiz activity is always scoped to the authenticated
+// JWT user; clients cannot provide or override a student id. The current
+// schema does not track video views or model opens, so those values remain
+// null until a dedicated activity log is introduced.
+app.get("/api/dashboard/summary", authenticate, async (req, res) => {
+  try {
+    const [quizSummary, recentAttempts, featuredModel, featuredVideo] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*)::integer AS quizzes_completed,
+                ROUND(AVG(score))::integer AS average_quiz_score
+         FROM quiz_attempts
+         WHERE student_id = $1`,
+        [req.user.id]
+      ),
+      pool.query(
+        `SELECT qa.id, qa.quiz_id, q.title AS quiz_title, qa.score,
+                qa.status, qa.attempted_at
+         FROM quiz_attempts qa
+         JOIN quizzes q ON q.id = qa.quiz_id
+         WHERE qa.student_id = $1
+         ORDER BY qa.attempted_at DESC
+         LIMIT 5`,
+        [req.user.id]
+      ),
+      pool.query(
+        `SELECT id, title, description, thumbnail_path, created_at
+         FROM models
+         WHERE is_published = true
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1`
+      ),
+      pool.query(
+        `SELECT id, title, description, thumbnail_path, created_at
+         FROM videos
+         WHERE is_published = true
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1`
+      ),
+    ]);
+
+    const model = featuredModel.rows[0];
+    const video = featuredVideo.rows[0];
+    let featuredContent = null;
+
+    if (model && (!video || new Date(model.created_at) >= new Date(video.created_at))) {
+      featuredContent = { ...model, type: "model" };
+    } else if (video) {
+      featuredContent = { ...video, type: "video" };
+    }
+
+    res.json({
+      progress: {
+        quizzes_completed: quizSummary.rows[0].quizzes_completed,
+        average_quiz_score: quizSummary.rows[0].average_quiz_score,
+        videos_watched: null,
+        models_explored: null,
+      },
+      recent_attempts: recentAttempts.rows,
+      featured_content: featuredContent,
+    });
+  } catch (err) {
+    console.error("Failed to load dashboard summary:", err);
+    res.status(500).json({ message: "Failed to load dashboard summary" });
+  }
+});
+
 app.get("/api/models", authenticate, async (req, res) => {
   const { published, system, part, q } = req.query;
 
@@ -1268,4 +1334,4 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+});

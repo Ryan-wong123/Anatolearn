@@ -1,5 +1,13 @@
 # React + TypeScript + Vite
 
+## AnatoLearn learning dashboard
+
+The authenticated `/dashboard` route is the AnatoLearn learning home page. It displays the signed-in user's name and role, four progress summaries, a continue-learning prompt, direct navigation to models, videos, quizzes, and the annotation viewer, five recent quiz attempts, and one recently published model or video.
+
+The page loads `GET /api/dashboard/summary`. Quiz counts, average scores, and recent attempts are derived on the server from `quiz_attempts.student_id` and the identity in the JWT; the client cannot supply a student identifier. Because the current schema does not record video watches or model opens, those cards state that tracking is unavailable rather than presenting inferred values.
+
+Every data-driven section includes a loading placeholder, retryable failure message, actionable empty state, and populated state. Users without activity can start a quiz, explore a model, or browse other content.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

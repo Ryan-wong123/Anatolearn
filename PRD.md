@@ -64,6 +64,10 @@ The platform has five primary page sections accessible to all authenticated user
 | Self-Assessment | `/quizzes` | MCQ and practical quiz module with scoring and history |
 | Library | `/library` | Models, learning materials, downloadable files, and teacher-curated links |
 
+### Dashboard learning home
+
+The dashboard shall identify the authenticated user by name and role and provide a primary continuation action. It shall display quiz completion and average-score information derived from that user's linked attempts, while explicitly identifying progress measures unsupported by existing tracking data. It shall provide quick navigation to models, videos, quizzes, and the annotation viewer; show recent quiz attempts; and feature one published model or video. All data-driven areas shall provide understandable loading, failure, empty, and populated states.
+
 ---
 
 ## 5. Navigation Structure

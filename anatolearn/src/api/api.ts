@@ -4,6 +4,35 @@ const API_BASE = "http://localhost:5000/api";
 // AppContext.tsx imports this too, so both stay in sync automatically.
 export const TOKEN_STORAGE_KEY = "anatolearn_token";
 
+export interface DashboardAttempt {
+    id: number;
+    quiz_id: number;
+    quiz_title: string;
+    score: number | null;
+    status: 'graded' | 'pending_review';
+    attempted_at: string;
+}
+
+export interface DashboardFeaturedContent {
+    id: number;
+    type: 'model' | 'video';
+    title: string;
+    description: string | null;
+    thumbnail_path: string | null;
+    created_at: string;
+}
+
+export interface DashboardSummary {
+    progress: {
+        quizzes_completed: number;
+        average_quiz_score: number | null;
+        videos_watched: number | null;
+        models_explored: number | null;
+    };
+    recent_attempts: DashboardAttempt[];
+    featured_content: DashboardFeaturedContent | null;
+}
+
 function getAuthHeaders(): Record<string, string> {
     const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -101,6 +130,8 @@ export const api = {
         }),
 
     getPrograms: () => request("/programs"),
+
+    getDashboardSummary: (): Promise<DashboardSummary> => request("/dashboard/summary"),
 
     getModels: (publishedOnly?: boolean, filters?: { system?: string; part?: string; q?: string }) => {
         const params = new URLSearchParams();

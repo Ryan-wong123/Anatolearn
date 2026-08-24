@@ -1,5 +1,22 @@
 # Testing Log
 
+## Issue 26 — Expanded Learning Dashboard
+Date: 24 Aug 2026
+Tester: Codex
+
+### Validation performed
+
+| Check | Result |
+|---|---|
+| Backend JavaScript syntax (`node --check src/server.js`) | Pass |
+| Focused ESLint (`Dashboard.tsx`, `api.ts`) | Pass |
+| Vite production bundle (`npx vite build`) | Pass; existing bundle-size warning only |
+| Full TypeScript build (`npm run build`) | Blocked by pre-existing unused `clampCameraOutsideModel` in `Viewer.tsx` |
+| Repository-wide ESLint (`npm run lint`) | Blocked by pre-existing errors in viewer components, contexts, `Library.tsx`, `Quizzes.tsx`, and `Viewer.tsx` |
+
+The summary SQL was reviewed to confirm that quiz statistics and recent attempts use only `req.user.id`, with no request parameter capable of selecting another student. Loading, API error with retry, no-attempt, no-featured-content, and populated rendering paths are implemented. Runtime API/database testing was not performed because no configured PostgreSQL service or authenticated fixture was available in this workspace.
+
+
 ## Docker PostgreSQL Init Script Mount
 Date: 8 Jul 2026
 Tester: Member B

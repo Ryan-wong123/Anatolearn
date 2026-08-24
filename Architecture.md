@@ -139,6 +139,12 @@ interface AppContextType {
 - All app pages are children of `Layout`
 - Active nav link is determined by `useLocation().pathname`
 
+### Dashboard data flow
+
+`Dashboard.tsx` obtains its learning summary through `api.getDashboardSummary()`. The authenticated `GET /api/dashboard/summary` backend route derives quiz aggregates and recent attempts from the JWT user's identifier. The page does not accept, store, or send a student identifier. Published model and video records provide one featured-content destination through the existing detail routes.
+
+The dashboard owns request lifecycle state (loading, error, empty, and populated). Authentication identity remains in `AppContext`, routing remains in `App.tsx`, and database aggregation remains in the backend. Video-watch and model-exploration values are nullable because no activity tables currently support those measurements.
+
 ---
 
 ## 7. Three.js Architecture (Viewer Page)

@@ -1,5 +1,12 @@
 # tasks.md — AnatoLearn Implementation Task Breakdown
 
+## Issue 26 — Expanded Dashboard Home Page
+
+- [x] Add the authenticated dashboard summary endpoint and typed frontend API helper.
+- [x] Add the welcome and resume action, four progress cards, continue-learning state, four quick actions, recent attempts, and featured content.
+- [x] Add loading, retryable error, actionable empty, and populated states for dashboard data.
+- [x] Document dashboard data ownership, navigation, endpoint behavior, and validation results.
+
 ## Purpose
 This file is the implementation checklist for AnatoLearn.
 

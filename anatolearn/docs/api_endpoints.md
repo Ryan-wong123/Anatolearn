@@ -10,6 +10,22 @@ Every endpoint below requires a valid JWT (`Authorization: Bearer <token>`) exce
 
 ---
 
+## Dashboard
+
+### `GET /api/dashboard/summary`
+
+Returns the learning-home summary for the authenticated user. A valid bearer JWT is required. The endpoint accepts no user identifier; quiz aggregates and recent attempts are restricted with `quiz_attempts.student_id = req.user.id`.
+
+- `progress.quizzes_completed` is the number of attempts submitted by the authenticated user.
+- `progress.average_quiz_score` is the rounded average of that user's non-null scores, or `null` when no graded attempt exists.
+- `progress.videos_watched` and `progress.models_explored` are `null` because the current database does not track these activities.
+- `recent_attempts` contains up to five attempts in reverse chronological order.
+- `featured_content` is the newest published model or video, or `null` when neither exists.
+
+The route returns `401` for missing, invalid, or expired authentication and `500` when summary retrieval fails. It introduces neither a recommendation algorithm nor a new activity-tracking schema.
+
+---
+
 ## Health
 
 ### `GET /api/health`
