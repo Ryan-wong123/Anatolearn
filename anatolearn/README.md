@@ -1,4 +1,19 @@
-# React + TypeScript + Vite
+# AnatoLearn
+
+AnatoLearn is an authenticated anatomy-learning application for students and teachers. Its dashboard is a learning-focused home page that provides:
+
+- a personalised name, role, and programme welcome;
+- quiz completion and average-score summaries, together with clearly identified unavailable video/model activity metrics;
+- a continue-learning destination based on the user's most recent quiz attempt, falling back to published featured content;
+- quick links to the 3D model gallery, videos, quizzes, and annotation viewer;
+- the authenticated user's three most recent quiz attempts; and
+- one programme-relevant published model, or a published video when no model is available.
+
+The dashboard calls the authenticated `GET /api/dashboard/summary` endpoint. Quiz statistics and recent attempts are scoped on the server to the user ID in the verified JWT. Model exploration and video watch counts display `Not tracked` because the current schema has no trusted activity source for those events. Loading placeholders, retryable errors, and actionable empty states are provided for every data-driven dashboard section.
+
+Navigation uses the existing `/3dviewer`, `/3dviewer/:modelId`, `/videos`, `/videos/:videoId`, and `/quizzes` routes; no dashboard-only destination is introduced.
+
+## Development template notes
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

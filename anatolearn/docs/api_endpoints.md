@@ -24,6 +24,16 @@ Returns all programs.
 
 ---
 
+## Dashboard
+
+### `GET /api/dashboard/summary`
+
+Returns the authenticated user's learning-home summary. No user identifier is accepted in the path, query, or body. Quiz totals, average score, and up to three recent attempts are derived from `quiz_attempts.student_id = req.user.id`. The response also provides a continue-learning link and one published, programme-relevant featured model (or video fallback).
+
+Response fields are `progress`, `recent_attempts`, `continue_learning`, and `featured`. `progress.videos_watched` and `progress.models_explored` are currently `null` because no trusted activity tables exist for these interactions. The frontend presents these values as `Not tracked`. Returns 401 for a missing or invalid JWT and 500 with a stable message when summary retrieval fails.
+
+---
+
 ## Models
 
 ### `GET /api/models`

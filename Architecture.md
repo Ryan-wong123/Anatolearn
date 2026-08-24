@@ -43,6 +43,8 @@ Three.js Scene (Viewer only, isolated in useEffect)
 | Components | Reusable, typed UI building blocks; visual details follow `design.md` |
 | Three.js | 3D scene inside `Viewer.tsx`, isolated and cleaned up on unmount |
 
+The Dashboard page obtains its learning summary through `src/api/api.ts` from the authenticated `GET /api/dashboard/summary` backend route. The backend derives quiz progress and recent activity from the verified JWT user ID. Unsupported video-watch and model-exploration metrics remain nullable until trusted activity tracking is introduced.
+
 ---
 
 ## 3. Project Structure

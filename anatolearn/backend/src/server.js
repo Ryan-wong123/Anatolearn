@@ -129,6 +129,73 @@ function requireTeacher(req, res, next) {
   next();
 }
 
+// Learning-home summary. Identity always comes from the verified JWT; clients
+// cannot select another student's attempts. Video/model activity is returned as
+// null until those interactions have a trusted server-side tracking source.
+app.get("/api/dashboard/summary", authenticate, async (req, res) => {
+  try {
+    const [attemptsResult, statsResult, featuredModelResult, featuredVideoResult] = await Promise.all([
+      pool.query(
+        `SELECT qa.id, qa.quiz_id, q.title AS quiz_title, qa.score, qa.status, qa.attempted_at
+         FROM quiz_attempts qa JOIN quizzes q ON q.id = qa.quiz_id
+         WHERE qa.student_id = $1 ORDER BY qa.attempted_at DESC LIMIT 5`,
+        [req.user.id]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::integer AS quizzes_completed,
+                ROUND(AVG(score) FILTER (WHERE status = 'graded' AND score IS NOT NULL))::integer AS average_quiz_score
+         FROM quiz_attempts WHERE student_id = $1`,
+        [req.user.id]
+      ),
+      pool.query(
+        `SELECT id, title, description, thumbnail_path, created_at FROM models
+         WHERE is_published = true AND (program_id IS NULL OR program_id = $1)
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
+        [req.user.program_id]
+      ),
+      pool.query(
+        `SELECT id, title, description, thumbnail_path, created_at FROM videos
+         WHERE is_published = true AND (program_id IS NULL OR program_id = $1)
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
+        [req.user.program_id]
+      ),
+    ]);
+    const attempts = attemptsResult.rows;
+    const stats = statsResult.rows[0];
+    const model = featuredModelResult.rows[0];
+    const video = featuredVideoResult.rows[0];
+    const featured = model
+      ? { ...model, type: "model", path: `/3dviewer/${model.id}` }
+      : video ? { ...video, type: "video", path: `/videos/${video.id}` } : null;
+    const latestAttempt = attempts[0];
+
+    res.json({
+      progress: {
+        quizzes_completed: stats.quizzes_completed,
+        average_quiz_score: stats.average_quiz_score,
+        videos_watched: null,
+        models_explored: null,
+      },
+      recent_attempts: attempts.slice(0, 3),
+      continue_learning: latestAttempt ? {
+        title: latestAttempt.quiz_title,
+        description: "Review your latest quiz activity or start another assessment.",
+        path: "/quizzes",
+        type: "quiz",
+      } : featured ? {
+        title: featured.title,
+        description: `Start exploring this featured ${featured.type}.`,
+        path: featured.path,
+        type: featured.type,
+      } : null,
+      featured,
+    });
+  } catch (err) {
+    console.error("Failed to load dashboard summary:", err);
+    res.status(500).json({ message: "Failed to load dashboard summary" });
+  }
+});
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { name, email, password, role, program_id } = req.body;
@@ -1268,4 +1335,4 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+});

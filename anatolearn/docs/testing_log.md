@@ -574,3 +574,17 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+## Issue #24 — Expanded Learning Dashboard (24 Aug 2026)
+
+Implementation validation:
+
+| Check | Result |
+|---|---|
+| `node --check backend/src/server.js` | Pass |
+| `npx eslint src/pages/Dashboard.tsx` | Pass |
+| `npx tsc -p tsconfig.app.json --noEmit --noUnusedLocals false` | Pass; confirms the changed frontend type-checks while bypassing the unrelated Viewer unused-local gate |
+| `git diff --check` | Pass |
+| `npm run build` | Blocked by pre-existing unused `clampCameraOutsideModel` in `src/pages/Viewer.tsx:463` |
+| `npm run lint` | Blocked by pre-existing findings in Viewer, Quizzes, Library, context providers, and DraggablePanel; the changed Dashboard file passes independently |
+
+Code review confirmed that `GET /api/dashboard/summary` is protected by `authenticate`, accepts no client-supplied user ID, and filters attempts by the verified JWT's `req.user.id`. The endpoint returns nullable model/video activity metrics because the present database has no watch/exploration tracking. The dashboard implements loading placeholders, a retryable error state, actionable empty states, and populated states, and all links use routes already registered in `App.tsx`.

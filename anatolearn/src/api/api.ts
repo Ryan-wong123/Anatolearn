@@ -102,6 +102,8 @@ export const api = {
 
     getPrograms: () => request("/programs"),
 
+    getDashboardSummary: () => request("/dashboard/summary"),
+
     getModels: (publishedOnly?: boolean, filters?: { system?: string; part?: string; q?: string }) => {
         const params = new URLSearchParams();
         if (publishedOnly) params.set('published', 'true');
