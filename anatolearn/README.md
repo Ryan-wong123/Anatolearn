@@ -1,4 +1,14 @@
-# React + TypeScript + Vite
+# AnatoLearn
+
+AnatoLearn is an authenticated anatomy-learning platform built with React, TypeScript, Express, and PostgreSQL.
+
+## Learning dashboard
+
+The `/dashboard` route is the learning-focused home page. It displays the authenticated user's name and role, four progress cards, a continue-learning card, quick links to 3D models, videos, quizzes, and the model annotation viewer, up to five recent quiz attempts, and one featured published model or video. Cards and content sections provide loading, failure, empty, and populated states.
+
+Dashboard data is loaded from authenticated `GET /api/dashboard/summary`. Quiz completion, average score, and recent attempts are derived server-side from `quiz_attempts.student_id = req.user.id`. Featured content is limited to published models and videos relevant to the programme in the verified JWT (including programme-neutral content). The current schema has no video-watch or model-exploration events, so those cards explicitly display **Not tracked yet**; they do not treat missing tracking as zero activity.
+
+When a learner has quiz history, the primary action returns them to quizzes and references their latest attempt. Otherwise, it opens the featured resource when available. Empty states link to quizzes and the 3D model gallery, and featured cards use the existing `/3dviewer/:modelId` or `/videos/:videoId` destinations.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

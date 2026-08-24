@@ -1,5 +1,10 @@
 # Testing Log
 
+## Issue 28 — Expanded Learning Dashboard (24 Aug 2026)
+
+Implemented the responsive dashboard home, authenticated summary endpoint, personal quiz aggregation, recent-attempt list, continue-learning and featured-content fallbacks, quick-action navigation, and explicit unsupported-metric states. The changed dashboard passes its focused ESLint check, `git diff --check` passes, and Node syntax checking of `backend/src/server.js` passes. The full build remains blocked by a pre-existing unused `clampCameraOutsideModel` declaration in `Viewer.tsx`; the full lint run likewise reports pre-existing errors in viewer, context, library, and quiz files. No browser/database integration run was available in this workspace; populated endpoint behaviour still requires a running PostgreSQL environment.
+
+
 ## Docker PostgreSQL Init Script Mount
 Date: 8 Jul 2026
 Tester: Member B

@@ -82,6 +82,8 @@ async function downloadFile(endpoint: string) {
 }
 
 export const api = {
+    getDashboardSummary: () => request("/dashboard/summary"),
+
     login: (email: string, password: string) =>
         apiFetch("/auth/login", {
             method: "POST",

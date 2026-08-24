@@ -58,7 +58,7 @@ The platform has five primary page sections accessible to all authenticated user
 
 | Section | Path | Description |
 |---|---|---|
-| Dashboard | `/dashboard` | Overview and quick access to learning activity |
+| Dashboard | `/dashboard` | Personalised learning home with progress, recent quiz attempts, continue-learning, featured content, and quick actions |
 | 3D Viewer | `/3dviewer` | Interactive 3D anatomy viewer with labels and linked videos |
 | Animated Videos | `/videos` | Browsable library of bite-sized educational videos |
 | Self-Assessment | `/quizzes` | MCQ and practical quiz module with scoring and history |
@@ -163,6 +163,7 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 | FR-26 | The system shall allow users to log in using a username and password. | 
 | FR-27 | The system shall allow users to log out of the system. | 
 | FR-28 | The system shall restrict access to all platform content to authenticated users only. | 
+| FR-28a | The dashboard shall use the authenticated account to show the user's name and role, quiz progress, recent attempts, a continue-learning action, featured content, and direct links to models, videos, quizzes, and the annotation viewer. Unsupported activity metrics shall be identified as not tracked rather than reported as zero. |
 
 ### 7.3 Teacher Requirements
 

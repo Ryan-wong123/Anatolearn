@@ -139,6 +139,10 @@ interface AppContextType {
 - All app pages are children of `Layout`
 - Active nav link is determined by `useLocation().pathname`
 
+### Dashboard data flow
+
+`Dashboard.tsx` requests `GET /api/dashboard/summary` through the shared API client. The protected backend route derives identity and programme from the verified JWT, aggregates only that student's linked quiz attempts, and returns published programme-relevant featured content. Video-watch and model-exploration values remain `null` until durable activity-event data exists; the page renders this as an unavailable metric rather than a false zero. Dashboard links reuse `/3dviewer`, `/3dviewer/:modelId`, `/videos`, `/videos/:videoId`, and `/quizzes`.
+
 ---
 
 ## 7. Three.js Architecture (Viewer Page)

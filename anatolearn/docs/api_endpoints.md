@@ -24,6 +24,16 @@ Returns all programs.
 
 ---
 
+## Dashboard
+
+### `GET /api/dashboard/summary`
+
+Returns the authenticated user's learning-home data. No user identifier is accepted. Student quiz statistics and the five newest attempts are selected with `quiz_attempts.student_id = req.user.id`; teachers receive no student attempt data. The response includes `progress`, `recent_attempts`, `continue_learning`, and one `featured` published model or video. Featured content is restricted to the programme encoded in the verified JWT or programme-neutral content.
+
+`videos_watched` and `models_explored` are `null` because the current database has no watch/exploration event tracking. Clients must present these values as unavailable, not zero. `continue_learning` is the latest quiz activity when one exists, otherwise the featured resource, otherwise `null`. Requires a valid bearer token; failures return `500` with a stable message.
+
+---
+
 ## Models
 
 ### `GET /api/models`

@@ -129,6 +129,90 @@ function requireTeacher(req, res, next) {
   next();
 }
 
+// Learning-home summary. Identity and programme scope come exclusively from
+// the verified JWT; clients cannot request another student's activity.
+app.get("/api/dashboard/summary", authenticate, async (req, res) => {
+  try {
+    const isStudent = req.user.role === "student";
+    const attemptsPromise = isStudent
+      ? pool.query(
+          `SELECT qa.id, qa.quiz_id, q.title AS quiz_title, qa.score, qa.status, qa.attempted_at
+           FROM quiz_attempts qa
+           JOIN quizzes q ON q.id = qa.quiz_id
+           WHERE qa.student_id = $1
+           ORDER BY qa.attempted_at DESC
+           LIMIT 5`,
+          [req.user.id]
+        )
+      : Promise.resolve({ rows: [] });
+    const quizStatsPromise = isStudent
+      ? pool.query(
+          `SELECT COUNT(DISTINCT quiz_id)::int AS quizzes_completed,
+                  ROUND(AVG(score))::int AS average_quiz_score
+           FROM quiz_attempts WHERE student_id = $1`,
+          [req.user.id]
+        )
+      : Promise.resolve({ rows: [{ quizzes_completed: null, average_quiz_score: null }] });
+    const contentParams = req.user.program_id ? [req.user.program_id] : [];
+    const programmeClause = req.user.program_id
+      ? "AND (program_id = $1 OR program_id IS NULL)"
+      : "";
+    const featuredPromise = pool.query(
+      `SELECT id, title, description, content_type
+       FROM (
+         SELECT id, title, description, 'model' AS content_type, created_at
+         FROM models WHERE is_published = true ${programmeClause}
+         UNION ALL
+         SELECT id, title, description, 'video' AS content_type, created_at
+         FROM videos WHERE is_published = true ${programmeClause}
+       ) featured_content
+       ORDER BY created_at DESC LIMIT 1`,
+      contentParams
+    );
+    const [attemptsResult, quizStatsResult, featuredResult] = await Promise.all([
+      attemptsPromise, quizStatsPromise, featuredPromise,
+    ]);
+    const featured = featuredResult.rows[0] || null;
+    const latestAttempt = attemptsResult.rows[0] || null;
+    const quizStats = quizStatsResult.rows[0];
+
+    res.json({
+      progress: {
+        quizzes_completed: quizStats.quizzes_completed,
+        average_quiz_score: quizStats.average_quiz_score,
+        // No watch/exploration event tables exist. Null means unavailable,
+        // rather than misleadingly presenting zero activity.
+        videos_watched: null,
+        models_explored: null,
+      },
+      recent_attempts: attemptsResult.rows,
+      continue_learning: latestAttempt
+        ? {
+            title: latestAttempt.quiz_title,
+            description: latestAttempt.status === "pending_review"
+              ? "Your latest quiz is awaiting review. Browse another assessment while you wait."
+              : `Review your latest quiz result${latestAttempt.score == null ? "" : ` (${latestAttempt.score}%)`}.`,
+            path: "/quizzes",
+            action_label: "Continue with quizzes",
+          }
+        : featured
+          ? {
+              title: featured.title,
+              description: "Start with this featured learning resource.",
+              path: featured.content_type === "model" ? `/3dviewer/${featured.id}` : `/videos/${featured.id}`,
+              action_label: featured.content_type === "model" ? "Explore model" : "Watch video",
+            }
+          : null,
+      featured: featured
+        ? { ...featured, path: featured.content_type === "model" ? `/3dviewer/${featured.id}` : `/videos/${featured.id}` }
+        : null,
+    });
+  } catch (err) {
+    console.error("Failed to load dashboard summary:", err);
+    res.status(500).json({ message: "Failed to load dashboard summary" });
+  }
+});
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { name, email, password, role, program_id } = req.body;
@@ -1268,4 +1352,4 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+});

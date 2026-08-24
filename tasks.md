@@ -1403,3 +1403,11 @@ These tasks run continuously throughout the 10-week project:
 - [ ] Video thumbnail generation
 - [ ] Quiz timer
 - [ ] Student progress dashboard with charts
+
+### Issue 28 — Expanded Learning Dashboard
+
+- [x] Personalised authenticated welcome and resume action
+- [x] Four progress cards with explicit unsupported-metric states
+- [x] Continue-learning, featured content, quick actions, and recent quiz attempts
+- [x] JWT-scoped dashboard summary endpoint and documentation
+- [x] Focused lint and backend syntax validation recorded in `docs/testing_log.md` (full-project pre-existing failures noted)
