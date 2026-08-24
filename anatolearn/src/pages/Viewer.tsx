@@ -460,48 +460,6 @@ export default function Viewer() {
     controls.update();
   }
 
-  function clampCameraOutsideModel() {
-    const camera = cameraRef.current;
-    const controls = controlsRef.current;
-
-    if (!camera || !controls) return;
-
-    const center = modelCenterRef.current;
-    const radius = modelRadiusRef.current;
-
-    if (radius <= 0) return;
-
-    const offset = camera.position
-      .clone()
-      .sub(center);
-
-    const distance = offset.length();
-    const minimumDistance = radius * 1.08;
-
-    if (distance >= minimumDistance) return;
-
-    if (distance === 0) {
-      offset.set(0, 0, 1);
-    } else {
-      offset.normalize();
-    }
-
-    camera.position.copy(
-      center.clone().addScaledVector(
-        offset,
-        minimumDistance,
-      ),
-    );
-
-    /*
-    * Keep OrbitControls rotating around the actual model centre.
-    */
-    controls.target.copy(center);
-
-    camera.lookAt(center);
-    camera.updateMatrixWorld();
-  }
-
   function getMarkerSize() {
     if (!modelRef.current) return 0.1;
     const size = new THREE.Box3().setFromObject(modelRef.current).getSize(new THREE.Vector3());

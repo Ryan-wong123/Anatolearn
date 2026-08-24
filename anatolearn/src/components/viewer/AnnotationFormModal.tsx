@@ -28,10 +28,11 @@ export default function AnnotationFormModal({
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6">
         <h2 className="font-display text-lg font-semibold text-slate-900">{title}</h2>
         <div className="mt-4">
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <label htmlFor="annotation-label" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
             Label
           </label>
           <input
+            id="annotation-label"
             value={label}
             onChange={(event) => onLabelChange(event.target.value)}
             placeholder="e.g. Masseter muscle"
@@ -39,10 +40,11 @@ export default function AnnotationFormModal({
           />
         </div>
         <div className="mt-4">
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <label htmlFor="annotation-description" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
             Description
           </label>
           <textarea
+            id="annotation-description"
             value={description}
             onChange={(event) => onDescriptionChange(event.target.value)}
             placeholder="Short explanation"
@@ -51,12 +53,13 @@ export default function AnnotationFormModal({
         </div>
         {showColorPicker && (
           <div className="mt-4">
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <label htmlFor="annotation-color" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
               Fill colour
             </label>
 
             <div className="flex items-center gap-3">
               <input
+                id="annotation-color"
                 type="color"
                 value={color}
                 onChange={(event) => onColorChange(event.target.value)}
@@ -75,11 +78,18 @@ export default function AnnotationFormModal({
           </button>
           <button
             onClick={onSave}
+            disabled={!label.trim()}
+            aria-describedby={!label.trim() ? 'annotation-label-error' : undefined}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             Save
           </button>
         </div>
+        {!label.trim() && (
+          <p id="annotation-label-error" className="mt-2 text-right text-xs text-red-600">
+            A label is required before saving.
+          </p>
+        )}
       </div>
     </div>
   );

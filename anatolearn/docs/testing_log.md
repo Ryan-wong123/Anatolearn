@@ -574,3 +574,21 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+## Issue 13 — Automated Critical-Workflow Test Baseline
+Date: 24 Aug 2026
+
+### Test architecture
+
+Vitest with React Testing Library covers frontend routing and annotation interactions. Supertest imports the exported Express application without opening a port. Playwright is configured for browser workflows. Shared JSDOM mocks reset session storage, DOM state, media queries, and object URLs after every test.
+
+API tests use deterministic records and mock database responses for unit-level contracts. Optional PostgreSQL integration setup uses `TEST_DATABASE_URL`; a hard guard requires the database name to contain `test`. `npm run test:db:setup` reapplies SQL files 001–006 and test fixtures in a repeatable order. No development records are read or mutated.
+
+### Coverage and commands
+
+`npm test`, `npm run test:watch`, `npm run test:coverage`, `npm run test:backend`, and `npm run test:e2e` are the standard entry points. V8 coverage fails when lines, functions, statements, or branches fall below 70% for the initial focused component set. Chromium must be installed with `npx playwright install chromium` before E2E execution.
+
+### Security regression cases
+
+The suite verifies missing, malformed, and expired-token rejection; teacher-only annotation mutations; student attempt ownership; spoofed `student_id` being ignored in favor of JWT identity; malformed/incomplete quiz rejection; and omission of correct answers from question retrieval. Server changes also normalize unsupported or oversized Multer uploads to JSON 400/413 responses.
+
+---
