@@ -1003,6 +1003,74 @@ app.get("/api/students/me/attempts", authenticate, async (req, res) => {
   res.json(result.rows);
 });
 
+// Learning dashboard data is derived exclusively from the authenticated JWT.
+// Video/model interaction tracking does not exist yet, so those values remain
+// null rather than presenting content-library totals as personal progress.
+app.get("/api/dashboard/summary", authenticate, async (req, res) => {
+  try {
+    const isStudent = req.user.role === "student";
+    const attemptsPromise = isStudent
+      ? pool.query(
+          `SELECT qa.id, qa.quiz_id, q.title AS quiz_title, qa.score, qa.status, qa.attempted_at
+           FROM quiz_attempts qa
+           JOIN quizzes q ON q.id = qa.quiz_id
+           WHERE qa.student_id = $1
+           ORDER BY qa.attempted_at DESC`,
+          [req.user.id]
+        )
+      : Promise.resolve({ rows: [] });
+
+    const featuredPromise = pool.query(
+      `SELECT id, 'model' AS type, title, description
+       FROM models
+       WHERE is_published = true
+       ORDER BY id
+       LIMIT 1`
+    );
+
+    const [attemptsResult, modelResult] = await Promise.all([
+      attemptsPromise,
+      featuredPromise,
+    ]);
+
+    let featured = modelResult.rows[0] || null;
+    if (!featured) {
+      const videoResult = await pool.query(
+        `SELECT id, 'video' AS type, title, description
+         FROM videos
+         WHERE is_published = true
+         ORDER BY id
+         LIMIT 1`
+      );
+      featured = videoResult.rows[0] || null;
+    }
+
+    const gradedAttempts = attemptsResult.rows.filter(
+      (attempt) => attempt.status === "graded" && attempt.score !== null
+    );
+    const averageScore = gradedAttempts.length
+      ? Math.round(
+          gradedAttempts.reduce((total, attempt) => total + Number(attempt.score), 0) /
+            gradedAttempts.length
+        )
+      : null;
+
+    res.json({
+      progress: {
+        quizzes_completed: attemptsResult.rows.length,
+        average_quiz_score: averageScore,
+        videos_watched: null,
+        models_explored: null,
+      },
+      recent_attempts: attemptsResult.rows.slice(0, 5),
+      featured,
+    });
+  } catch (err) {
+    console.error("Failed to load dashboard summary:", err);
+    res.status(500).json({ message: "Failed to load dashboard summary" });
+  }
+});
+
 app.get("/api/attempts/:id/answers", authenticate, async (req, res) => {
   const result = await pool.query(
     `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
@@ -1268,4 +1336,4 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+});

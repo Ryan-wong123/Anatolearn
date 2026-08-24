@@ -1,5 +1,14 @@
 # tasks.md — AnatoLearn Implementation Task Breakdown
 
+## Issue 20 — Expanded Dashboard Home Page
+
+- [~] Add personalised learning header, progress cards, continue-learning guidance, quick actions, recent attempts, and featured content
+- [~] Add an authenticated, user-owned dashboard summary endpoint and frontend API helper
+- [~] Provide loading, error, empty, populated, and teacher-specific states
+- [~] Update dashboard, API, architecture, product, and testing documentation
+
+Implementation and scoped checks are complete. Final completion remains pending because the repository-wide production build is blocked by the pre-existing unused `clampCameraOutsideModel` declaration in `Viewer.tsx:463`; live database and browser checks also remain outstanding.
+
 ## Purpose
 This file is the implementation checklist for AnatoLearn.
 

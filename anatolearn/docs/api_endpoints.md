@@ -10,6 +10,31 @@ Every endpoint below requires a valid JWT (`Authorization: Bearer <token>`) exce
 
 ---
 
+## Dashboard
+
+### `GET /api/dashboard/summary`
+
+Returns the signed-in user's learning summary. Authentication is required and the client does not provide a user identifier. For students, `quizzes_completed`, `average_quiz_score`, and `recent_attempts` are derived from `quiz_attempts.student_id = req.user.id`. Teachers receive no student-attempt data. The response includes at most five attempts, newest first.
+
+`videos_watched` and `models_explored` are `null` because the current schema has no interaction tracking. `featured` is the first published model by ID, falling back to the first published video, or `null` when neither exists.
+
+```json
+{
+  "progress": {
+    "quizzes_completed": 2,
+    "average_quiz_score": 85,
+    "videos_watched": null,
+    "models_explored": null
+  },
+  "recent_attempts": [],
+  "featured": { "id": 1, "type": "model", "title": "A1", "description": "..." }
+}
+```
+
+Returns 401 for a missing or invalid JWT and 500 with a stable error message if summary retrieval fails.
+
+---
+
 ## Health
 
 ### `GET /api/health`

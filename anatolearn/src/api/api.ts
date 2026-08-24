@@ -1,5 +1,32 @@
 const API_BASE = "http://localhost:5000/api";
 
+export interface DashboardAttempt {
+    id: number;
+    quiz_id: number;
+    quiz_title: string;
+    score: number | null;
+    status: string;
+    attempted_at: string;
+}
+
+export interface DashboardFeaturedContent {
+    id: number;
+    type: 'model' | 'video';
+    title: string;
+    description: string | null;
+}
+
+export interface DashboardSummary {
+    progress: {
+        quizzes_completed: number;
+        average_quiz_score: number | null;
+        videos_watched: number | null;
+        models_explored: number | null;
+    };
+    recent_attempts: DashboardAttempt[];
+    featured: DashboardFeaturedContent | null;
+}
+
 // Single source of truth for where the JWT lives in sessionStorage.
 // AppContext.tsx imports this too, so both stay in sync automatically.
 export const TOKEN_STORAGE_KEY = "anatolearn_token";
@@ -382,6 +409,8 @@ export const api = {
         request(`/quizzes/${quizId}/attempts/pending`),
 
     getMyAttempts: () => request(`/students/me/attempts`),
+
+    getDashboardSummary: (): Promise<DashboardSummary> => request(`/dashboard/summary`),
 
     getAttemptAnswers: (attemptId: number) =>
         request(`/attempts/${attemptId}/answers`),

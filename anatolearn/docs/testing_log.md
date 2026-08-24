@@ -1,5 +1,21 @@
 # Testing Log
 
+## Expanded Learning Dashboard — 24 Aug 2026
+
+Scope: `Dashboard.tsx`, the dashboard API helper, and authenticated summary endpoint.
+
+| Check | Result |
+|---|---|
+| Backend JavaScript syntax (`node --check backend/src/server.js`) | Pass |
+| Patch whitespace (`git diff --check`) | Pass after removing existing trailing whitespace at the server file end |
+| Scoped lint (`eslint src/pages/Dashboard.tsx src/api/api.ts`) | Pass |
+| Frontend production build (`npm run build`) | Blocked by pre-existing unused `clampCameraOutsideModel` declaration in `Viewer.tsx:463`; dashboard TypeScript emitted no reported error |
+| Repository-wide lint (`npm run lint -- --quiet`) | Blocked by 15 pre-existing errors in viewer, context, library, and quiz files; no error was reported in the changed files |
+| Dashboard states reviewed statically | Loading, error/retry, empty, populated, and teacher states present |
+| Ownership enforcement reviewed statically | Summary query uses verified `req.user.id` and accepts no student ID |
+
+No database-backed integration environment or browser session was available during this change, so live endpoint and responsive browser checks remain outstanding.
+
 ## Docker PostgreSQL Init Script Mount
 Date: 8 Jul 2026
 Tester: Member B

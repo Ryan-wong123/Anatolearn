@@ -265,7 +265,19 @@ No global state is needed for video play state.
 
 ---
 
-## 12. Performance Guidelines
+## 12. Dashboard Summary Flow
+
+The dashboard remains a page-layer composition and retrieves its data through `api.getDashboardSummary()`. The authenticated backend endpoint derives quiz aggregates and recent attempts from the JWT user ID; it accepts no client-supplied student identifier. It also returns one rule-based featured published item. Unsupported video-watch and model-exploration metrics are represented as `null`, preserving a clear distinction between zero activity and unavailable tracking.
+
+```
+Dashboard -> authenticated API helper -> GET /api/dashboard/summary
+                                      -> owned quiz attempts
+                                      -> published featured content
+```
+
+---
+
+## 13. Performance Guidelines
 
 - Three.js animation loop must use `requestAnimationFrame`
 - Do not call `setState` inside the Three.js animation loop
@@ -275,7 +287,7 @@ No global state is needed for video play state.
 
 ---
 
-## 13. Extensibility Notes
+## 14. Extensibility Notes
 
 | Change | What to edit |
 |---|---|
@@ -289,7 +301,7 @@ No global state is needed for video play state.
 
 ---
 
-## 14. Dependencies
+## 15. Dependencies
 
 ```json
 {
