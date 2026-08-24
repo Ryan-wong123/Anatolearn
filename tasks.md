@@ -696,6 +696,8 @@ Acceptance Criteria:
 ### Task 6.1 — Build Teacher Dashboard Page Shell
 **Depends on:** Milestone 2 (Layout) merged
 
+- [x] Issue #22 — expanded learning dashboard with progress, continuation, quick actions, recent self-owned attempts, featured content, and stable loading/error/empty states
+
 In `src/pages/Dashboard.tsx` (teacher view):
 - [x] Teacher stats and quick actions follow `design.md` section 6
 - [x] Stats fetched from respective `GET /api/...` endpoints

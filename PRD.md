@@ -64,6 +64,8 @@ The platform has five primary page sections accessible to all authenticated user
 | Self-Assessment | `/quizzes` | MCQ and practical quiz module with scoring and history |
 | Library | `/library` | Models, learning materials, downloadable files, and teacher-curated links |
 
+The Dashboard overview includes a personalised authenticated welcome, role display, quiz completion and score summaries, explicit availability status for video/model tracking, a latest-activity continuation action, four core quick actions, recent self-owned quiz attempts, and one featured model or video. All data-driven sections define loading, error, empty, and populated states. Selection of continuation and featured content is deterministic from available recent/list data and is not a recommendation engine.
+
 ---
 
 ## 5. Navigation Structure

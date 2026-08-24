@@ -2,6 +2,12 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Learning dashboard
+
+The authenticated `/dashboard` route is the learning home page. It presents the signed-in user's name and role, four progress summaries, a resume action, quick links to models, videos, quizzes, and the annotation viewer, recent quiz attempts, and one featured published model or video. Student quiz figures and history come from the JWT-scoped `GET /api/students/me/attempts` endpoint; the client never supplies a student identifier. Featured and continuation content reuse the authenticated model and video list endpoints and their existing detail routes.
+
+Each data-backed area has loading, failure, empty, and populated presentation. A learner with no activity is directed to quizzes, the model gallery, and videos. Video-watch and model-exploration events are not currently stored, so those two cards explicitly report that tracking is unavailable rather than displaying inferred figures. No dashboard-specific backend endpoint or recommendation engine is used.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

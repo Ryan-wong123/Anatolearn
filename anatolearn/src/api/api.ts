@@ -102,6 +102,16 @@ export const api = {
 
     getPrograms: () => request("/programs"),
 
+    // Dashboard reads only authenticated, server-filtered sources. Students
+    // receive published learning content and their own JWT-scoped attempts.
+    getDashboardModels: (studentView: boolean) =>
+        request(`/models${studentView ? '?published=true' : ''}`),
+
+    getDashboardVideos: (studentView: boolean) =>
+        request(`/videos${studentView ? '?published=true' : ''}`),
+
+    getDashboardAttempts: () => request(`/students/me/attempts`),
+
     getModels: (publishedOnly?: boolean, filters?: { system?: string; part?: string; q?: string }) => {
         const params = new URLSearchParams();
         if (publishedOnly) params.set('published', 'true');

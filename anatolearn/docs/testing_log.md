@@ -574,3 +574,26 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+
+---
+
+## GitHub Issue #22 — Expanded Learning Dashboard
+Date: 24 Aug 2026
+
+### Validation scope
+
+The dashboard and API helper files pass ESLint and a focused TypeScript check. A production Vite bundle was generated separately. The full `npm run build` TypeScript stage remains blocked by the pre-existing unused `clampCameraOutsideModel` declaration in `src/pages/Viewer.tsx`; Issue #22 does not modify that file. The repository-wide lint command also remains non-zero because of existing findings in viewer/context/library/quiz files, while the two changed source files pass.
+
+### Behaviour covered
+
+| Case | Expected |
+|---|---|
+| Student quiz data | Uses authenticated `GET /api/students/me/attempts`; no client student ID |
+| Progress | Four cards; graded attempt count/average are real, unsupported tracking is labelled unavailable |
+| Continue learning | Latest attempt, then first available model/video, then actionable empty state |
+| Recent attempts | Loading, API error, no-attempt, and populated states |
+| Featured content | Loading, API error, no-content, and populated states with existing detail route |
+| Navigation | Existing `/3dviewer`, `/videos`, `/quizzes`, and model/video detail routes |
+| Responsive layout | One-column mobile grids expanding at `sm`, `lg`, and `xl` breakpoints |
+
+No dashboard endpoint or database migration was added because the existing authenticated endpoints provide the supported information. Browser and live-backend checks were not available in this workspace.

@@ -166,6 +166,8 @@ Returns all attempts for a quiz with `status = 'pending_review'`, ordered by `at
 ### `GET /api/students/me/attempts`
 Returns the logged-in student's own quiz attempt history: `[{ id, quiz_id, quiz_title, score, status, attempted_at }]`, newest first. Scoped strictly to `req.user.id` — there's no `:studentId` param, so a student can't view anyone else's history by guessing an ID. `quiz_title` is joined in from `quizzes` so the frontend doesn't need a second lookup per attempt. Task 8.8, resolved 20 Jul 2026 now that auth exists — see `docs/database_schema.md`'s open questions for the history of why this was blocked.
 
+The dashboard also uses this endpoint for completed-quiz count, average graded score, latest activity, and recent attempts. It combines the response client-side with authenticated `GET /api/models?published=true` and `GET /api/videos?published=true`; no new summary endpoint is required. Model-exploration and video-watch totals are not returned because the current schema does not record those events.
+
 ### `GET /api/attempts/:id`
 Returns a single attempt's own record (`id`, `quiz_id`, `score`, `total_questions`, `correct_count`, `status`, `attempted_at`). Originally built for the frontend's sessionStorage-based "check my result later" workaround — now redundant with `GET /api/students/me/attempts` above, but still used by that workaround, which wasn't removed.
 

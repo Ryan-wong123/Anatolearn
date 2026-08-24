@@ -6,6 +6,8 @@ A web-based interactive 3D anatomy learning platform for health science educatio
 
 AnatoLearn lets students explore labelled 3D anatomical models directly in the browser, watch linked educational videos, and test their knowledge with self-assessment quizzes. Teachers can upload models, place and manage anatomical labels, link videos to specific structures, and build quizzes — all through a role-gated interface (Student / Teacher).
 
+The dashboard serves as the authenticated learning home page. It includes identity and role context, four progress cards, a continuation prompt, direct navigation to all core learning activities, recent student-owned quiz attempts, and featured model or video content. It reuses the existing authenticated list and detail routes. Empty states lead users to a quiz, model, or video, while independent loading and error states keep partial API failures understandable. Quiz statistics use only attempts associated with the JWT user; watch and exploration metrics remain visibly unavailable until durable event tracking exists.
+
 ## Team
 
 | Name | Role | Responsibility |

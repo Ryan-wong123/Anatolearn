@@ -43,6 +43,8 @@ Three.js Scene (Viewer only, isolated in useEffect)
 | Components | Reusable, typed UI building blocks; visual details follow `design.md` |
 | Three.js | 3D scene inside `Viewer.tsx`, isolated and cleaned up on unmount |
 
+The dashboard composes three existing authenticated sources: published models, published videos, and the current student's `/api/students/me/attempts` history. Requests remain in the API layer, and each source retains an independent loading/error state in the page. Quiz ownership is derived from the JWT on the server; no user identifier is accepted from the dashboard. The page does not infer watch or exploration progress where no persisted activity source exists.
+
 ---
 
 ## 3. Project Structure
