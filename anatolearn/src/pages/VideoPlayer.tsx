@@ -10,6 +10,8 @@ interface Video {
   video_path: string;
   thumbnail_path: string | null;
   created_at: string;
+  annotation_id: number | null;
+  linked_model_id: number | null;
 }
 
 export default function VideoPlayer() {
@@ -17,14 +19,22 @@ export default function VideoPlayer() {
   const navigate = useNavigate();
 
   const [video, setVideo] = useState<Video | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!videoId) return;
 
     api.getVideo(Number(videoId))
       .then(setVideo)
-      .catch((err) => console.error('Failed to load video:', err));
+      .catch((err) => {
+        console.error('Failed to load video:', err);
+        setError('Unable to load this video. Please try again.');
+      });
   }, [videoId]);
+
+  if (error) {
+    return <div role="alert" className="mx-auto max-w-5xl px-4 py-8 text-sm text-red-600">{error}</div>;
+  }
 
   if (!video) {
     return (
@@ -63,6 +73,14 @@ export default function VideoPlayer() {
           <p className="mt-2 text-sm text-slate-500">
             {video.description || 'No description provided.'}
           </p>
+          {video.annotation_id && video.linked_model_id && (
+            <button
+              onClick={() => navigate(`/3dviewer/${video.linked_model_id}?annotation=${video.annotation_id}`)}
+              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              View linked annotation
+            </button>
+          )}
         </div>
       </div>
     </div>

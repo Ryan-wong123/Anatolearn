@@ -71,3 +71,12 @@ export default defineConfig([
   },
 ])
 ```
+# Automated testing
+
+The frontend test stack uses Vitest, React Testing Library, `user-event`, and jsdom. The API stack uses Vitest and Supertest. Playwright provides Chromium browser-workflow coverage.
+
+Run `npm test` for frontend tests, `npm run test:watch` during development, `npm run test:coverage` for the enforced coverage report, `npm run test:backend` for API tests, and `npm run test:e2e` for browser workflows. Install the browser once with `npx playwright install chromium`.
+
+API integration data must use a dedicated PostgreSQL database whose name contains `test`; production-like database URLs are rejected by the test setup. Set `TEST_DATABASE_URL`, then initialize migrations `001_schema.sql` through `006_add_video_annotation_link.sql` with `node backend/test/migrate-test-db.js`. Migration `002_seed.sql` supplies deterministic baseline fixtures. Tests must clean records and uploaded files that they create and must not depend on execution order or development data.
+
+Coverage runs fail when line, statement, function, or branch coverage falls below 70 percent. The covered critical workflows include authentication and protected routing, quiz confidentiality/scoring/ownership, annotation validation and projected masks, model/video error and download behavior, and video-to-annotation navigation.

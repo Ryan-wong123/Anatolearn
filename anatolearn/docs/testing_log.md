@@ -574,3 +574,16 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+# Automated Critical-Workflow Test Infrastructure (Issue #18)
+
+**Date:** 24 August 2026
+
+The project now has three automated test layers. Frontend component tests run in jsdom with Vitest, React Testing Library, and `user-event`; API contract and security tests run with Supertest and Vitest; browser workflows run in Chromium through Playwright. Shared browser mocks reset DOM and session state after each test.
+
+The backend test environment overwrites `DATABASE_URL` with `TEST_DATABASE_URL` or a local `anatolearn_test` default and rejects any resulting URL that is not visibly identified as a test database. `backend/test/migrate-test-db.js` applies migrations 001–006 in order. Migration 002 provides stable fixtures; scenario-specific records must be removed in cleanup hooks, including generated upload files.
+
+Commands are `npm test`, `npm run test:watch`, `npm run test:coverage`, `npm run test:backend`, and `npm run test:e2e`. Chromium must first be installed with `npx playwright install chromium`. Both Vitest configurations enforce a 70 percent minimum for lines, statements, functions, and branches.
+
+Automated checks cover missing, malformed, and expired authentication tokens; protected-route redirects; quiz answer confidentiality, malformed submissions, token-derived student ownership, and cross-student attempt denial; annotation payload validation and projected-mask edge cases; unsupported media uploads; video loading failures and annotation navigation; and deterministic browser scenarios for protected access, quiz completion, annotation revisit, model download availability, and video annotation navigation.
+
+Validation recorded for this change: frontend Vitest suite passed (7 tests), backend Supertest suite passed (8 tests), the production build passed, and all five Playwright Chromium workflows passed. Coverage execution was also verified to reject the current repository-wide baseline because it remains below the new 70 percent gate.

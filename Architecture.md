@@ -305,3 +305,6 @@ No global state is needed for video play state.
   "autoprefixer": "latest"
 }
 ```
+# Automated Test Architecture
+
+Critical workflows are verified at three boundaries: Vitest/jsdom component tests under `anatolearn/src`, Supertest API tests under `anatolearn/backend/test`, and Playwright workflows under `anatolearn/e2e`. The Express application is exported without opening a listener when imported, allowing direct HTTP contract testing. PostgreSQL integration runs are isolated through a guarded test-only database configuration and migrations 001–006.

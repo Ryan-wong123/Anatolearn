@@ -371,3 +371,6 @@ The following are noted for future phases and are not required for the initial b
 - Advanced quiz analytics and reporting dashboards
 - Real-time collaboration between teachers
 - Email-based password reset
+# Quality Assurance Baseline
+
+Authentication, protected routing, quizzes, annotations, videos, and models are critical automated-test workflows. Automated coverage must include authorization and ownership enforcement, confidential quiz answers before submission, malformed input and unsupported upload rejection, user-visible loading/error states, and the principal browser journeys. Coverage execution has an initial 70 percent minimum threshold.
