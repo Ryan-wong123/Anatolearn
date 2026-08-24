@@ -562,10 +562,14 @@ app.get("/api/models/:id/annotations/export", authenticate, requireTeacher, asyn
 app.post("/api/models/:id/annotations", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
 
+  if (!annotation_type || !label || !label.trim()) {
+    return res.status(400).json({ message: "annotation_type and label are required" });
+  }
+
   const result = await pool.query(
     `INSERT INTO annotations 
-      (model_id, annotation_type, label, description, color, annotation_data)
-     VALUES ($1, $2, $3, $4, $5, $6)
+      (model_id, annotation_type, label, description, color, annotation_data, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
     [
       req.params.id,
@@ -574,6 +578,7 @@ app.post("/api/models/:id/annotations", authenticate, requireTeacher, async (req
       description || null,
       color || null,
       annotation_data || {},
+      req.user.id,
     ]
   );
 
@@ -582,8 +587,8 @@ app.post("/api/models/:id/annotations", authenticate, requireTeacher, async (req
 
 app.delete("/api/annotations/:id", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
-    "DELETE FROM annotations WHERE id = $1 RETURNING *",
-    [req.params.id]
+    "DELETE FROM annotations WHERE id = $1 AND created_by = $2 RETURNING *",
+    [req.params.id, req.user.id]
   );
 
   if (result.rows.length === 0) {
@@ -596,6 +601,10 @@ app.delete("/api/annotations/:id", authenticate, requireTeacher, async (req, res
 app.put("/api/annotations/:id", authenticate, requireTeacher, async (req, res) => {
   const { annotation_type, label, description, color, annotation_data } = req.body;
 
+  if (!annotation_type || !label || !label.trim()) {
+    return res.status(400).json({ message: "annotation_type and label are required" });
+  }
+
   const result = await pool.query(
     `UPDATE annotations
      SET annotation_type = $1,
@@ -604,9 +613,9 @@ app.put("/api/annotations/:id", authenticate, requireTeacher, async (req, res) =
          color = $4,
          annotation_data = $5,
          updated_at = CURRENT_TIMESTAMP
-     WHERE id = $6
+     WHERE id = $6 AND created_by = $7
      RETURNING *`,
-    [annotation_type, label, description || null, color || null, annotation_data || {}, req.params.id]
+    [annotation_type, label, description || null, color || null, annotation_data || {}, req.params.id, req.user.id]
   );
 
   if (result.rows.length === 0) {
@@ -776,6 +785,26 @@ app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
     });
 
     const total = questionsResult.rows.length;
+    const submittedIds = answers.map((answer) => Number(answer.question_id));
+    const expectedIds = questionsResult.rows.map((question) => Number(question.id));
+    if (
+      answers.length !== total ||
+      new Set(submittedIds).size !== submittedIds.length ||
+      submittedIds.some((id) => !expectedIds.includes(id))
+    ) {
+      return res.status(400).json({ message: "Submit exactly one answer for every quiz question" });
+    }
+
+    const invalidAnswer = answers.some((answer) => {
+      const question = questionMap[answer.question_id];
+      if (question.format === "mcq") {
+        return !["A", "B", "C", "D"].includes(answer.selected_option);
+      }
+      return typeof answer.answer_text !== "string" || !answer.answer_text.trim();
+    });
+    if (invalidAnswer) {
+      return res.status(400).json({ message: "Every answer must contain a valid response" });
+    }
     let correctCount = 0;
     let mcqCount = 0;
     let hasOpenEnded = false;
@@ -1008,17 +1037,18 @@ app.get("/api/attempts/:id/answers", authenticate, async (req, res) => {
     `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
      FROM quiz_attempt_answers qaa
      JOIN quiz_questions qq ON qq.id = qaa.question_id
-     WHERE qaa.attempt_id = $1
+     JOIN quiz_attempts qa ON qa.id = qaa.attempt_id
+     WHERE qaa.attempt_id = $1 AND ($2 = 'teacher' OR qa.student_id = $3)
      ORDER BY qaa.id`,
-    [req.params.id]
+    [req.params.id, req.user.role, req.user.id]
   );
   res.json(result.rows);
 });
 
 app.get("/api/attempts/:id", authenticate, async (req, res) => {
   const result = await pool.query(
-    "SELECT * FROM quiz_attempts WHERE id = $1",
-    [req.params.id]
+    "SELECT * FROM quiz_attempts WHERE id = $1 AND ($2 = 'teacher' OR student_id = $3)",
+    [req.params.id, req.user.role, req.user.id]
   );
 
   if (result.rows.length === 0) {
@@ -1266,6 +1296,10 @@ app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`AnatoLearn backend running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

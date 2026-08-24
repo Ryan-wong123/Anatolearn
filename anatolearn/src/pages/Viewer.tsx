@@ -106,6 +106,7 @@ export default function Viewer() {
   const currentMeshHitsRef = useRef<number[]>([]);
 
   const [selectedModel, setSelectedModel] = useState<ModelRecord | null>(null);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [addMode, setAddMode] = useState(false);
   const [drawMode, setDrawMode] = useState(false);
@@ -138,7 +139,11 @@ export default function Viewer() {
 
   useEffect(() => {
     if (!modelId) return;
-    api.getModel(Number(modelId)).then(setSelectedModel).catch(console.error);
+    setModelLoadError(null);
+    api.getModel(Number(modelId)).then(setSelectedModel).catch((error) => {
+      console.error(error);
+      setModelLoadError('Unable to load this model. Please return to the model library and try again.');
+    });
   }, [modelId]);
 
   useEffect(() => {
@@ -501,6 +506,10 @@ export default function Viewer() {
     camera.lookAt(center);
     camera.updateMatrixWorld();
   }
+
+  // Retained for the next camera-control integration; keep TypeScript's
+  // noUnusedLocals check from treating the safety helper as dead code.
+  void clampCameraOutsideModel;
 
   function getMarkerSize() {
     if (!modelRef.current) return 0.1;
@@ -1106,6 +1115,11 @@ export default function Viewer() {
       ref={viewerRef}
       className="relative h-[calc(100vh-4rem)] w-full overflow-hidden bg-slate-50"
     >
+      {modelLoadError && (
+        <div role="alert" className="absolute left-1/2 top-6 z-50 -translate-x-1/2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 shadow">
+          {modelLoadError}
+        </div>
+      )}
       <div ref={containerRef} className="absolute inset-0" />
 
       <ViewerInstructions

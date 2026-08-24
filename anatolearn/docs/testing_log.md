@@ -574,3 +574,21 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+## Issue 16 — High-risk workflow automation
+Date: 24 Aug 2026
+
+### Scope and method
+
+Configured deterministic frontend, API integration, and Playwright suites. Frontend component tests run in jsdom through user-visible roles and text. Supertest imports the Express application without opening a network listener and replaces PostgreSQL with a per-test mock. Playwright starts Vite on port 4173 and verifies browser routing.
+
+### Covered security and workflow assertions
+
+| Area | Automated assertions |
+|---|---|
+| Authentication | Registration validation, generic login failure, missing/invalid/expired JWT rejection, anonymous redirect |
+| Quizzes | Confidential question response, complete/valid submission, score, JWT-derived student ownership, cross-student denial, list loading/empty/error/data states |
+| Annotations | Required label, list selection, creator attribution, ownership-scoped deletion |
+| Viewer | Projected point simplification and a user-visible model API failure state |
+| Browser | Protected-route redirect and login-to-registration navigation |
+
+Commands: `npm test` and `npm run build` in `anatolearn`; `npm test` in `anatolearn/backend`; `npm run test:e2e` after `npx playwright install chromium`. No real accounts, secrets, database, or uploaded files are required by unit/integration tests.

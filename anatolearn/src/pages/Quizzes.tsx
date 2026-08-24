@@ -85,6 +85,8 @@ export default function Quizzes() {
   const { role } = useAppContext();
 
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loadingQuizzes, setLoadingQuizzes] = useState(true);
+  const [quizLoadError, setQuizLoadError] = useState<string | null>(null);
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -131,9 +133,15 @@ export default function Quizzes() {
   const [attemptHistory, setAttemptHistory] = useState<QuizAttemptSummary[]>([]);
 
   useEffect(() => {
+    setLoadingQuizzes(true);
+    setQuizLoadError(null);
     api.getQuizzes(role === 'student')
       .then(setQuizzes)
-      .catch((err) => console.error('Failed to load quizzes:', err));
+      .catch((err) => {
+        console.error('Failed to load quizzes:', err);
+        setQuizLoadError('Unable to load quizzes. Please try again.');
+      })
+      .finally(() => setLoadingQuizzes(false));
   }, [role]);
 
   useEffect(() => {
@@ -652,7 +660,13 @@ export default function Quizzes() {
           </div>
         ))}
 
-        {quizzes.length === 0 && (
+        {loadingQuizzes && <div className="py-12 text-center text-sm text-slate-400">Loading quizzes…</div>}
+
+        {!loadingQuizzes && quizLoadError && (
+          <div role="alert" className="py-12 text-center text-sm text-red-600">{quizLoadError}</div>
+        )}
+
+        {!loadingQuizzes && !quizLoadError && quizzes.length === 0 && (
           <div className="py-12 text-center text-sm text-slate-400">
             No quizzes found.
           </div>

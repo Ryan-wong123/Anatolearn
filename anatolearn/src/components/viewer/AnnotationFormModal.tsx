@@ -23,6 +23,7 @@ export default function AnnotationFormModal({
   onCancel,
   onSave,
 }: AnnotationFormModalProps) {
+  const isValid = label.trim().length > 0;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6">
@@ -32,6 +33,7 @@ export default function AnnotationFormModal({
             Label
           </label>
           <input
+            aria-label="Label"
             value={label}
             onChange={(event) => onLabelChange(event.target.value)}
             placeholder="e.g. Masseter muscle"
@@ -43,6 +45,7 @@ export default function AnnotationFormModal({
             Description
           </label>
           <textarea
+            aria-label="Description"
             value={description}
             onChange={(event) => onDescriptionChange(event.target.value)}
             placeholder="Short explanation"
@@ -75,7 +78,8 @@ export default function AnnotationFormModal({
           </button>
           <button
             onClick={onSave}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            disabled={!isValid}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Save
           </button>
