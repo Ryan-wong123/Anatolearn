@@ -92,6 +92,8 @@ export default function Viewer() {
   const modelRadiusRef = useRef(1);
 
   const markersRef = useRef<THREE.Mesh[]>([]);
+  const hotspotsRef = useRef<THREE.Sprite[]>([]);
+  const annotationHitTargetsRef = useRef<THREE.Mesh[]>([]);
   const pendingObjectsRef = useRef<THREE.Mesh[]>([]);
   const pendingPointRef = useRef<THREE.Vector3 | null>(null);
   const pendingAnnotationRef = useRef<Annotation | null>(null);
@@ -112,6 +114,7 @@ export default function Viewer() {
   const [regionMode, setRegionMode] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [popupAnnotation, setPopupAnnotation] = useState<Annotation | null>(null);
+  const [hoveredAnnotation, setHoveredAnnotation] = useState<Annotation | null>(null);
   const [modelVideos, setModelVideos] = useState<LinkedVideo[]>([]);
   const [playingVideo, setPlayingVideo] = useState<LinkedVideo | null>(null);
   const [label, setLabel] = useState('');
@@ -119,6 +122,7 @@ export default function Viewer() {
   const [color, setColor] = useState('#22d3ee');
   const [isGeneratingRegion, setIsGeneratingRegion] = useState(false);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  const annotationsVisibleRef = useRef(annotationsVisible);
   const [isolateSelected, setIsolateSelected] = useState(false);
   const [annotationsPanelOpen, setAnnotationsPanelOpen] = useState(true);
   const [regionBoundaryPreview, setRegionBoundaryPreview] = useState<ScreenPoint[]>([]);
@@ -140,6 +144,10 @@ export default function Viewer() {
     if (!modelId) return;
     api.getModel(Number(modelId)).then(setSelectedModel).catch(console.error);
   }, [modelId]);
+
+  useEffect(() => {
+    annotationsVisibleRef.current = annotationsVisible;
+  }, [annotationsVisible]);
 
   useEffect(() => {
     if (!sceneRef.current) return;
@@ -231,14 +239,21 @@ export default function Viewer() {
 
         api.getAnnotations(selectedModel.id)
           .then(async (rows) => {
+            clearAnnotationHitTargets();
             clearMarkers();
-
+            clearHotspots();
             const loaded: Annotation[] =
               rows.map(fromDbAnnotation);
 
             setAnnotations(loaded);
 
-            for (const annotation of loaded) {
+            for (
+              let index = 0;
+              index < loaded.length;
+              index += 1
+            ) {
+              const annotation = loaded[index];
+
               const hadCachedGeometry =
                 Boolean(
                   annotation.projectedMask
@@ -248,6 +263,11 @@ export default function Viewer() {
                 );
 
               createAnnotationVisual(annotation);
+
+              createAnnotationHotspot(
+                annotation,
+                index + 1,
+              );
 
               const generatedCachedGeometry =
                 annotation.projectedMask
@@ -390,7 +410,10 @@ export default function Viewer() {
     renderer.domElement.addEventListener('pointermove', handlePointerMove);
     renderer.domElement.addEventListener('pointerup', handlePointerUp);
     renderer.domElement.addEventListener('pointerleave', handlePointerUp);
-
+    renderer.domElement.addEventListener(
+      'pointermove',
+      handleAnnotationHover,
+    );
     const handleResize = () => {
       const width = container.clientWidth;
       const height = container.clientHeight;
@@ -417,8 +440,14 @@ export default function Viewer() {
       renderer.domElement.removeEventListener('pointermove', handlePointerMove);
       renderer.domElement.removeEventListener('pointerup', handlePointerUp);
       renderer.domElement.removeEventListener('pointerleave', handlePointerUp);
+      renderer.domElement.removeEventListener(
+        'pointermove',
+        handleAnnotationHover,
+      );
       window.removeEventListener('resize', handleResize);
+      clearAnnotationHitTargets();
       clearMarkers();
+      clearHotspots();
       clearPendingObjects();
       controls.dispose();
       renderer.dispose();
@@ -427,8 +456,15 @@ export default function Viewer() {
   }, [selectedModel]);
 
   useEffect(() => {
-    setAnnotationVisibility(popupAnnotation);
-  }, [annotationsVisible, isolateSelected, popupAnnotation]);
+    setAnnotationVisibility(
+      popupAnnotation,
+      hoveredAnnotation,
+    );
+  }, [
+    annotationsVisible,
+    popupAnnotation,
+    hoveredAnnotation,
+  ]);
 
   function centerCamera(object: THREE.Object3D) {
     const camera = cameraRef.current;
@@ -705,6 +741,256 @@ export default function Viewer() {
     markersRef.current.push(marker);
   }
 
+  function createHotspotTexture(
+    number: number,
+    annotation: Annotation,
+  ) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      return null;
+    }
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Circular marker.
+    context.beginPath();
+    context.arc(128, 128, 100, 0, Math.PI * 2);
+
+    context.fillStyle = annotation.color ?? '#2563eb';
+    context.fill();
+
+    // White outline.
+    context.lineWidth = 12;
+    context.strokeStyle = '#ffffff';
+    context.stroke();
+
+    // Annotation number.
+    context.fillStyle = '#ffffff';
+    context.font = 'bold 110px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(String(number), 128, 136);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    return texture;
+  }
+
+  function createAnnotationHotspot(
+    annotation: Annotation,
+    number: number,
+  ) {
+    if (!sceneRef.current) return;
+
+    const texture =
+      createHotspotTexture(number, annotation);
+
+    if (!texture) return;
+
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+    });
+    
+    const hotspot = new THREE.Sprite(material);
+
+    const position = new THREE.Vector3(
+      annotation.position.x,
+      annotation.position.y,
+      annotation.position.z,
+    );
+
+    hotspot.position.copy(position);
+
+    const size = getMarkerSize() * 2.0;
+
+    hotspot.scale.set(size, size, 1);
+
+    if (annotation.view) {
+      const outwardDirection = new THREE.Vector3(
+        annotation.view.x,
+        annotation.view.y,
+        annotation.view.z,
+      ).normalize();
+
+      hotspot.position.addScaledVector(
+        outwardDirection,
+        size * 0.75,
+      );
+    }
+
+    hotspot.userData.annotation = annotation;
+    hotspot.userData.annotationNumber = number;
+    hotspot.userData.isAnnotationHotspot = true;
+
+    // Hidden until "Show All" is enabled.
+    hotspot.visible = annotationsVisible;
+
+    sceneRef.current.add(hotspot);
+    hotspotsRef.current.push(hotspot);
+  }
+
+  function createAnnotationHitTarget(
+    annotation: Annotation,
+    visual: THREE.Mesh,
+  ) {
+    if (!sceneRef.current) return;
+
+    const material = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      colorWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    const hitTarget = new THREE.Mesh(
+      visual.geometry,
+      material,
+    );
+
+    hitTarget.position.copy(visual.position);
+    hitTarget.rotation.copy(visual.rotation);
+    hitTarget.scale.copy(visual.scale);
+
+    hitTarget.userData.annotation = annotation;
+    hitTarget.userData.isAnnotationHitTarget = true;
+    hitTarget.userData.maskCanvas = visual.userData.maskCanvas;
+
+    sceneRef.current.add(hitTarget);
+
+    annotationHitTargetsRef.current.push(hitTarget);
+  }
+
+  function handleAnnotationHover(
+    event: PointerEvent,
+  ) {
+    if (
+      !rendererRef.current ||
+      !cameraRef.current
+    ) {
+      return;
+    }
+
+    // Hover functionality only exists while
+    // Show All Annotations is enabled.
+    if (!annotationsVisibleRef.current) {
+      setHoveredAnnotation(null);
+      return;
+    }
+
+    const canvas =
+      rendererRef.current.domElement;
+
+    const rect =
+      canvas.getBoundingClientRect();
+
+    const pointer = new THREE.Vector2(
+      ((event.clientX - rect.left) /
+        rect.width) *
+        2 -
+        1,
+
+      -(
+        (event.clientY - rect.top) /
+        rect.height
+      ) *
+        2 +
+        1,
+    );
+
+    const raycaster =
+      new THREE.Raycaster();
+
+    raycaster.setFromCamera(
+      pointer,
+      cameraRef.current,
+    );
+
+    // First check the numbered hotspots.
+    const hotspotIntersections =
+      raycaster.intersectObjects(
+        hotspotsRef.current,
+        false,
+      );
+
+    if (hotspotIntersections.length > 0) {
+      const annotation =
+        hotspotIntersections[0]
+          .object
+          .userData.annotation as Annotation;
+
+      setHoveredAnnotation(annotation);
+      return;
+    }
+
+    // Then check the invisible annotation geometry.
+    const annotationIntersections =
+      raycaster.intersectObjects(
+        annotationHitTargetsRef.current,
+        false,
+      );
+
+    const acceptedAnnotationHit =
+      annotationIntersections.find((hit) => {
+        const hitTarget =
+          hit.object as THREE.Mesh;
+
+        const canvas =
+          hitTarget.userData
+            .maskCanvas as
+            | HTMLCanvasElement
+            | undefined;
+
+        // Non-masked annotations can use
+        // their complete geometry.
+        if (!canvas) {
+          return true;
+        }
+
+        // Projected annotations only count when
+        // the cursor is actually over a painted
+        // portion of the mask.
+        return Boolean(
+          hit.uv &&
+          maskContainsUv(canvas, hit.uv),
+        );
+      });
+
+    if (acceptedAnnotationHit) {
+      const annotation =
+        acceptedAnnotationHit.object
+          .userData.annotation as Annotation;
+
+      setHoveredAnnotation(annotation);
+      return;
+    }
+
+    setHoveredAnnotation(null);
+  }
+
+  function clearHotspots() {
+    hotspotsRef.current.forEach((hotspot) => {
+      hotspot.removeFromParent();
+
+      const material =
+        hotspot.material as THREE.SpriteMaterial;
+
+      material.map?.dispose();
+      material.dispose();
+    });
+
+    hotspotsRef.current = [];
+  }
+
   function createLegacyVisual(annotation: Annotation) {
     if (!sceneRef.current) return;
 
@@ -747,16 +1033,55 @@ export default function Viewer() {
   }
 
   function createAnnotationVisual(annotation: Annotation) {
-    if (annotation.kind === 'projectedDraw' || annotation.kind === 'projectedRegion') {
-      const projected = createProjectedVisual(annotation);
-      if (projected) markersRef.current.push(projected);
+    if (
+      annotation.kind === 'projectedDraw' ||
+      annotation.kind === 'projectedRegion'
+    ) {
+      const projected =
+        createProjectedVisual(annotation);
+
+      if (projected) {
+        projected.visible = false;
+
+        markersRef.current.push(projected);
+
+        createAnnotationHitTarget(
+          annotation,
+          projected,
+        );
+      }
+
       return;
     }
-    if (annotation.kind === 'draw' || annotation.kind === 'region') {
+
+    if (
+      annotation.kind === 'draw' ||
+      annotation.kind === 'region'
+    ) {
       createLegacyVisual(annotation);
+
+      markersRef.current.forEach((marker) => {
+        if (
+          marker.userData.annotation?.id ===
+          annotation.id
+        ) {
+          marker.visible = false;
+        }
+      });
+
       return;
     }
+
     createPointMarker(annotation);
+
+    markersRef.current.forEach((marker) => {
+      if (
+        marker.userData.annotation?.id ===
+        annotation.id
+      ) {
+        marker.visible = false;
+      }
+    });
   }
 
   function disposeMarker(marker: THREE.Mesh) {
@@ -779,6 +1104,28 @@ export default function Viewer() {
     markersRef.current.forEach(disposeMarker);
     markersRef.current = [];
     setPopupAnnotation(null);
+  }
+
+  function clearAnnotationHitTargets() {
+    annotationHitTargetsRef.current.forEach(
+      (hitTarget) => {
+        hitTarget.removeFromParent();
+
+        const materials =
+          Array.isArray(hitTarget.material)
+            ? hitTarget.material
+            : [hitTarget.material];
+
+        materials.forEach((material) => {
+          material.dispose();
+        });
+
+        // DO NOT dispose hitTarget.geometry.
+        // It is shared with the actual annotation visual.
+      },
+    );
+
+    annotationHitTargetsRef.current = [];
   }
 
   function getCenterOfPoints(points: THREE.Vector3[]) {
@@ -999,14 +1346,55 @@ export default function Viewer() {
     return 'View';
   }
 
-  function setAnnotationVisibility(annotation: Annotation | null) {
+  function setAnnotationVisibility(
+    selectedAnnotation: Annotation | null,
+    hoveredAnnotation: Annotation | null,
+  ) {
+
     markersRef.current.forEach((marker) => {
+      const annotation =
+        marker.userData.annotation as
+          | Annotation
+          | undefined;
+
       const isSelected = Boolean(
-        annotation && marker.userData.annotation?.id === annotation.id,
+        selectedAnnotation &&
+        annotation?.id === selectedAnnotation.id,
       );
-      if (!annotationsVisible) marker.visible = isSelected;
-      else if (isolateSelected && annotation) marker.visible = isSelected;
-      else marker.visible = true;
+
+      const isHovered = Boolean(
+        hoveredAnnotation &&
+        annotation?.id === hoveredAnnotation.id,
+      );
+
+      marker.visible =
+        isSelected || isHovered;
+    });
+
+    hotspotsRef.current.forEach((hotspot) => {
+      const annotation =
+        hotspot.userData.annotation as
+          | Annotation
+          | undefined;
+
+      const isHovered =
+        Boolean(
+          hoveredAnnotation &&
+          annotation?.id ===
+            hoveredAnnotation.id,
+        );
+
+      const isSelected =
+        Boolean(
+          selectedAnnotation &&
+          annotation?.id ===
+            selectedAnnotation.id,
+        );
+
+      hotspot.visible =
+        annotationsVisible &&
+        !isHovered &&
+        !isSelected;
     });
   }
 
@@ -1143,6 +1531,7 @@ export default function Viewer() {
             (previous) => !previous
           );
           setPopupAnnotation(null);
+          setHoveredAnnotation(null);
           setIsolateSelected(false);
         }}
         onSaveNeutralView={saveNeutralView}
@@ -1182,6 +1571,8 @@ export default function Viewer() {
         modelTitle={selectedModel?.title ?? 'Model'}
         onToggleOpen={() => setAnnotationsPanelOpen((open) => !open)}
         onSelect={focusAnnotation}
+        onHover={setHoveredAnnotation}
+        onHoverEnd={() => setHoveredAnnotation(null)}
       />
 
       {popupAnnotation && (

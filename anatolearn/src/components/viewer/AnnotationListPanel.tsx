@@ -12,6 +12,8 @@ interface AnnotationListPanelProps {
   modelTitle: string;
   onToggleOpen: () => void;
   onSelect: (annotation: Annotation) => void;
+  onHover: (annotation: Annotation) => void;
+  onHoverEnd: () => void;
 }
 
 export default function AnnotationListPanel({
@@ -23,6 +25,8 @@ export default function AnnotationListPanel({
   modelTitle,
   onToggleOpen,
   onSelect,
+  onHover,
+  onHoverEnd,
 }: AnnotationListPanelProps) {
   return (
     <DraggablePanel
@@ -58,13 +62,26 @@ export default function AnnotationListPanel({
                 <button
                   key={annotation.id ?? `${annotation.label}-${index}`}
                   onClick={() => onSelect(annotation)}
+                  onMouseEnter={() => onHover(annotation)}
+                  onMouseLeave={onHoverEnd}
                   className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                     selectedAnnotation === annotation
                       ? 'border-blue-300 bg-blue-50 text-blue-800'
                       : 'border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  {index + 1}. {annotation.label}
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full border border-slate-300"
+                      style={{
+                        backgroundColor: annotation.color ?? '#2563eb',
+                      }}
+                    />
+
+                    <span>
+                      {index + 1}. {annotation.label}
+                    </span>
+                  </span>
                 </button>
               ))
             )}
