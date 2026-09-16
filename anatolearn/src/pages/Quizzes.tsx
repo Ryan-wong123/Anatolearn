@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clock, BookOpen, Search } from 'lucide-react';
+import { Clock, BookOpen, Search, Heart } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../api/api';
 
@@ -136,6 +136,9 @@ export default function Quizzes() {
   // account rather than the old same-browser sessionStorage stopgap.
   const [attemptHistory, setAttemptHistory] = useState<QuizAttemptSummary[]>([]);
 
+  // Students only — which quiz ids are currently favorited.
+  const [favoritedQuizIds, setFavoritedQuizIds] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     api.getQuizzes(role === 'student')
       .then(setQuizzes)
@@ -148,6 +151,35 @@ export default function Quizzes() {
       .then(setAttemptHistory)
       .catch((err) => console.error('Failed to load attempt history:', err));
   }, [role]);
+
+  useEffect(() => {
+    if (role !== 'student') return;
+    api.getFavorites()
+      .then((data: { quizzes: { id: number }[] }) => {
+        setFavoritedQuizIds(new Set(data.quizzes.map((q) => q.id)));
+      })
+      .catch((err) => console.error('Failed to load favorites:', err));
+  }, [role]);
+
+  const toggleFavorite = async (quiz: Quiz) => {
+    const isFavorited = favoritedQuizIds.has(quiz.id);
+    try {
+      if (isFavorited) {
+        await api.removeFavorite('quiz', quiz.id);
+        setFavoritedQuizIds((prev) => {
+          const next = new Set(prev);
+          next.delete(quiz.id);
+          return next;
+        });
+      } else {
+        await api.addFavorite('quiz', quiz.id);
+        setFavoritedQuizIds((prev) => new Set(prev).add(quiz.id));
+      }
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+    }
+  };
+
 
   const handleStartQuiz = async (quiz: Quiz) => {
     try {
@@ -675,12 +707,27 @@ export default function Quizzes() {
               </span>
 
               {role === 'student' && (
-                <button
-                  onClick={() => handleStartQuiz(quiz)}
-                  className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-                >
-                  Start Quiz
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleFavorite(quiz)}
+                    title={favoritedQuizIds.has(quiz.id) ? 'Remove from favourites' : 'Save to favourites'}
+                    className="p-1"
+                  >
+                    <Heart
+                      className={`w-4 h-4 ${
+                        favoritedQuizIds.has(quiz.id)
+                          ? 'fill-red-500 text-red-500'
+                          : 'text-slate-400 dark:text-slate-500'
+                      }`}
+                    />
+                  </button>
+                  <button
+                    onClick={() => handleStartQuiz(quiz)}
+                    className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                  >
+                    Start Quiz
+                  </button>
+                </div>
               )}
 
               {role === 'teacher' && (

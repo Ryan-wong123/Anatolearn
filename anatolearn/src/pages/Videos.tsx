@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Play, Upload, X } from 'lucide-react';
+import { Search, Play, Upload, X, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { useToast } from '../context/ToastContext';
@@ -51,12 +51,46 @@ export default function Videos() {
   // for a student viewing this page).
   const [annotationOptions, setAnnotationOptions] = useState<AnnotationOption[]>([]);
 
+  // Students only — which video ids are currently favorited, so the heart
+  // icon on each card can render filled/unfilled.
+  const [favoritedVideoIds, setFavoritedVideoIds] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     if (role !== 'teacher') return;
     api.getAllAnnotations()
       .then(setAnnotationOptions)
       .catch((err) => console.error('Failed to load annotations for linking:', err));
   }, [role]);
+
+  useEffect(() => {
+    if (role !== 'student') return;
+    api.getFavorites()
+      .then((data: { videos: { id: number }[] }) => {
+        setFavoritedVideoIds(new Set(data.videos.map((v) => v.id)));
+      })
+      .catch((err) => console.error('Failed to load favorites:', err));
+  }, [role]);
+
+  const toggleFavorite = async (video: Video, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isFavorited = favoritedVideoIds.has(video.id);
+    try {
+      if (isFavorited) {
+        await api.removeFavorite('video', video.id);
+        setFavoritedVideoIds((prev) => {
+          const next = new Set(prev);
+          next.delete(video.id);
+          return next;
+        });
+      } else {
+        await api.addFavorite('video', video.id);
+        setFavoritedVideoIds((prev) => new Set(prev).add(video.id));
+      }
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err);
+      toast('Failed to update favorite. Please try again.');
+    }
+  };
 
   const loadVideos = () => {
     api.getVideos(role === 'student')
@@ -240,6 +274,22 @@ export default function Videos() {
                 <span className="absolute top-2 left-2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs font-medium px-2 py-0.5 rounded-full">
                   Unpublished
                 </span>
+              )}
+
+              {role === 'student' && (
+                <button
+                  onClick={(e) => toggleFavorite(video, e)}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 dark:bg-slate-900/90 flex items-center justify-center hover:bg-white dark:hover:bg-slate-900 transition-colors"
+                  title={favoritedVideoIds.has(video.id) ? 'Remove from favourites' : 'Save to favourites'}
+                >
+                  <Heart
+                    className={`w-4 h-4 ${
+                      favoritedVideoIds.has(video.id)
+                        ? 'fill-red-500 text-red-500'
+                        : 'text-slate-400 dark:text-slate-500'
+                    }`}
+                  />
+                </button>
               )}
             </div>
 

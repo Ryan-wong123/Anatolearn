@@ -399,4 +399,15 @@ export const api = {
             method: 'PATCH',
             body: JSON.stringify({ teacher_score: teacherScore }),
         }),
+
+    getFavorites: () => request(`/favorites`),
+
+    addFavorite: (itemType: 'video' | 'quiz', itemId: number) =>
+        apiFetch(`/favorites`, {
+            method: 'POST',
+            body: JSON.stringify({ item_type: itemType, item_id: itemId }),
+        }),
+
+    removeFavorite: (itemType: 'video' | 'quiz', itemId: number) =>
+        apiFetch(`/favorites/${itemType}/${itemId}`, { method: 'DELETE' }),
 };

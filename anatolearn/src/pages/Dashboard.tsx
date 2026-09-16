@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trophy, Activity, Box, Video, BookOpen } from 'lucide-react';
+import { Trophy, Activity, Box, Video, BookOpen, Heart, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../api/api';
@@ -20,6 +20,18 @@ interface AttemptSummary {
   attempted_at: string;
 }
 
+interface FavoriteVideo {
+  id: number;
+  title: string;
+  thumbnail_path: string | null;
+}
+
+interface FavoriteQuiz {
+  id: number;
+  title: string;
+  category: string | null;
+}
+
 export default function Dashboard() {
   const { role, program, user } = useAppContext();
 
@@ -31,6 +43,9 @@ export default function Dashboard() {
   const [quizzesTaken, setQuizzesTaken] = useState<number>(0);
   const [avgScore, setAvgScore] = useState<number | null>(null);
   const [recentAttempts, setRecentAttempts] = useState<AttemptSummary[]>([]);
+
+  const [favoriteVideos, setFavoriteVideos] = useState<FavoriteVideo[]>([]);
+  const [favoriteQuizzes, setFavoriteQuizzes] = useState<FavoriteQuiz[]>([]);
 
   useEffect(() => {
     if (role === 'teacher') {
@@ -60,6 +75,13 @@ export default function Dashboard() {
           }
         })
         .catch((err) => console.error('Failed to load attempts:', err));
+
+      api.getFavorites()
+        .then((data: { videos: FavoriteVideo[]; quizzes: FavoriteQuiz[] }) => {
+          setFavoriteVideos(data.videos);
+          setFavoriteQuizzes(data.quizzes);
+        })
+        .catch((err) => console.error('Failed to load favorites:', err));
     }
   }, [role]);
 
@@ -141,7 +163,60 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="mt-8">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
+              Favourites
+            </h2>
+            {favoriteVideos.length === 0 && favoriteQuizzes.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 text-center">
+                <p className="text-sm text-slate-400 dark:text-slate-500">
+                  No favourites yet. Tap the heart icon on a video or quiz to save it here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {favoriteVideos.map((video) => (
+                  <Link
+                    key={`video-${video.id}`}
+                    to={`/videos/${video.id}`}
+                    className="flex items-center gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-3 hover:shadow-md transition-shadow"
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {video.thumbnail_path ? (
+                        <img src={video.thumbnail_path} alt={video.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <Play className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{video.title}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">Video</p>
+                    </div>
+                    <Heart className="w-4 h-4 fill-red-500 text-red-500 flex-shrink-0 ml-auto" />
+                  </Link>
+                ))}
+
+                {favoriteQuizzes.map((quiz) => (
+                  <Link
+                    key={`quiz-${quiz.id}`}
+                    to="/quizzes"
+                    className="flex items-center gap-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-3 hover:shadow-md transition-shadow"
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0">
+                      <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{quiz.title}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">Quiz{quiz.category ? ` · ${quiz.category}` : ''}</p>
+                    </div>
+                    <Heart className="w-4 h-4 fill-red-500 text-red-500 flex-shrink-0 ml-auto" />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Link to="/3dviewer" className="flex items-center justify-center px-4 py-4 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               Explore 3D Models
             </Link>

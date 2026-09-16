@@ -129,6 +129,13 @@ function requireTeacher(req, res, next) {
   next();
 }
 
+function requireStudent(req, res, next) {
+  if (!req.user || req.user.role !== "student") {
+    return res.status(403).json({ message: "Student access required" });
+  }
+  next();
+}
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { name, email, password, role, program_id } = req.body;
@@ -1307,6 +1314,77 @@ app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req
   }
 
   res.json(result.rows[0]);
+});
+
+// Favorites — students can save videos or quizzes for quick access from
+// the Dashboard. Teachers don't get this (they manage content, they don't
+// consume it), so every route here is student-only.
+
+app.get("/api/favorites", authenticate, requireStudent, async (req, res) => {
+  const videoFavorites = await pool.query(
+    `SELECT f.id AS favorite_id, f.item_type, f.created_at,
+            v.id, v.title, v.description, v.thumbnail_path, v.is_published
+     FROM favorites f
+     JOIN videos v ON v.id = f.item_id
+     WHERE f.user_id = $1 AND f.item_type = 'video'
+     ORDER BY f.created_at DESC`,
+    [req.user.id]
+  );
+
+  const quizFavorites = await pool.query(
+    `SELECT f.id AS favorite_id, f.item_type, f.created_at,
+            q.id, q.title, q.description, q.type, q.category, q.is_published
+     FROM favorites f
+     JOIN quizzes q ON q.id = f.item_id
+     WHERE f.user_id = $1 AND f.item_type = 'quiz'
+     ORDER BY f.created_at DESC`,
+    [req.user.id]
+  );
+
+  res.json({
+    videos: videoFavorites.rows,
+    quizzes: quizFavorites.rows,
+  });
+});
+
+app.post("/api/favorites", authenticate, requireStudent, async (req, res) => {
+  const { item_type, item_id } = req.body;
+
+  if (!["video", "quiz"].includes(item_type) || !item_id) {
+    return res.status(400).json({ message: "item_type ('video' or 'quiz') and item_id are required" });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO favorites (user_id, item_type, item_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, item_type, item_id) DO NOTHING
+       RETURNING *`,
+      [req.user.id, item_type, item_id]
+    );
+
+    // Already favorited (ON CONFLICT DO NOTHING returned no row) — not an
+    // error, just nothing new to report.
+    res.status(201).json(result.rows[0] || { message: "Already favorited" });
+  } catch (err) {
+    console.error("Failed to add favorite:", err);
+    res.status(500).json({ message: "Failed to add favorite" });
+  }
+});
+
+app.delete("/api/favorites/:item_type/:item_id", authenticate, requireStudent, async (req, res) => {
+  const { item_type, item_id } = req.params;
+
+  if (!["video", "quiz"].includes(item_type)) {
+    return res.status(400).json({ message: "item_type must be 'video' or 'quiz'" });
+  }
+
+  const result = await pool.query(
+    `DELETE FROM favorites WHERE user_id = $1 AND item_type = $2 AND item_id = $3 RETURNING *`,
+    [req.user.id, item_type, item_id]
+  );
+
+  res.json(result.rows[0] || { message: "Not favorited" });
 });
 
 const PORT = process.env.PORT || 5000;
