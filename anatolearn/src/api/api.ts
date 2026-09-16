@@ -244,6 +244,12 @@ export const api = {
     deleteResource: (id: number) =>
         apiFetch(`/resources/${id}`, { method: 'DELETE' }),
 
+    updateResource: (id: number, data: { title: string; description?: string; url?: string }) =>
+        apiFetch(`/resources/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
     publishResource: (id: number, isPublished: boolean) =>
         apiFetch(`/resources/${id}/publish`, {
             method: 'PATCH',

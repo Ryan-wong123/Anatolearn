@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
-  GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut,
+  GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun, Moon,
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { api } from '../api/api';
@@ -23,7 +23,7 @@ type Program = {
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { role, setRole, program, setProgram, user, logout, isDevMode } = useAppContext();
+  const { role, setRole, program, setProgram, user, logout, isDevMode, theme, toggleTheme } = useAppContext();
 
   const [programs, setPrograms] = useState<Program[]>([]);
 
@@ -48,15 +48,15 @@ export default function Layout() {
   }
 
   return (
-    <div className="bg-slate-50 min-h-screen flex flex-col">
-      <nav className="h-16 bg-white border-b border-slate-200 sticky top-0 z-50">
+    <div className="bg-slate-50 dark:bg-slate-800 min-h-screen flex flex-col">
+      <nav className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                 <GraduationCap className="w-5 h-5 text-white" />
               </div>
-              <span className="font-bold text-xl text-slate-900 tracking-tight font-display">
+              <span className="font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight font-display">
                 AnatoLearn
               </span>
             </Link>
@@ -70,8 +70,8 @@ export default function Layout() {
                     to={path}
                     className={`px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors ${
                       isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -83,14 +83,14 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Program
             </span>
 
             <select
               value={program}
               onChange={(e) => setProgram(e.target.value)}
-              className="pl-3 pr-8 py-1.5 text-sm border border-slate-300 rounded-md bg-white focus:outline-none"
+              className="text-slate-900 dark:text-slate-100 pl-3 pr-8 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 focus:outline-none"
             >
               {programs.map((p) => (
                 <option key={p.id} value={p.name}>
@@ -108,17 +108,17 @@ export default function Layout() {
                 <button
                   onClick={() => setRole('student')}
                   className={`text-sm transition-colors ${
-                    role === 'student' ? 'font-semibold text-slate-900' : 'text-slate-400'
+                    role === 'student' ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'
                   }`}
                   title="Dev mode only — real role comes from your account"
                 >
                   Student
                 </button>
-                <span className="text-slate-300">|</span>
+                <span className="text-slate-300 dark:text-slate-600">|</span>
                 <button
                   onClick={() => setRole('teacher')}
                   className={`text-sm transition-colors ${
-                    role === 'teacher' ? 'font-semibold text-slate-900' : 'text-slate-400'
+                    role === 'teacher' ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'
                   }`}
                   title="Dev mode only — real role comes from your account"
                 >
@@ -127,18 +127,26 @@ export default function Layout() {
               </div>
             )}
 
+            <button
+              onClick={toggleTheme}
+              className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 dark:text-slate-500 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:bg-slate-800 transition-colors"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
             <div className="flex items-center gap-2">
               {user && (
-                <span className="hidden sm:block text-sm text-slate-600 max-w-[140px] truncate">
+                <span className="hidden sm:block text-sm text-slate-600 dark:text-slate-400 max-w-[140px] truncate">
                   {user.name}
                 </span>
               )}
               <button className="p-1">
-                <UserCircle2 className="w-8 h-8 text-slate-400" />
+                <UserCircle2 className="w-8 h-8 text-slate-400 dark:text-slate-500" />
               </button>
               <button
                 onClick={handleLogout}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+                className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 title="Log out"
               >
                 <LogOut className="w-5 h-5" />

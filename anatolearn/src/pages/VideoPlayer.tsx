@@ -29,7 +29,7 @@ export default function VideoPlayer() {
   if (!video) {
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <p className="text-sm text-slate-500">Loading video...</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Loading video...</p>
       </div>
     );
   }
@@ -38,13 +38,13 @@ export default function VideoPlayer() {
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
       <button
         onClick={() => navigate('/videos')}
-        className="mb-6 flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900"
+        className="mb-6 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Videos
       </button>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         <video
           controls
           autoPlay
@@ -56,11 +56,11 @@ export default function VideoPlayer() {
         </video>
 
         <div className="p-6">
-          <h1 className="text-2xl font-bold text-slate-900 font-display">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-display">
             {video.title}
           </h1>
 
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             {video.description || 'No description provided.'}
           </p>
         </div>

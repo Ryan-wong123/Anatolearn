@@ -43,7 +43,7 @@ export default function ViewerToolbar({
             onClick={onToggleAdd}
             className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
               addMode
-                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
             }`}
           >
@@ -54,8 +54,8 @@ export default function ViewerToolbar({
             onClick={onToggleDraw}
             className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
               drawMode
-                ? 'bg-yellow-300 text-slate-900 hover:bg-yellow-400'
-                : 'border border-slate-200 bg-white hover:bg-slate-50'
+                ? 'bg-yellow-300 text-slate-900 dark:text-slate-100 hover:bg-yellow-400'
+                : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
             {drawMode ? 'Cancel Highlight' : 'Draw Highlight'}
@@ -65,15 +65,15 @@ export default function ViewerToolbar({
             onClick={onToggleRegion}
             className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
               regionMode
-                ? 'bg-cyan-300 text-slate-900 hover:bg-cyan-400'
-                : 'border border-slate-200 bg-white hover:bg-slate-50'
+                ? 'bg-cyan-300 text-slate-900 dark:text-slate-100 hover:bg-cyan-400'
+                : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
             {regionMode ? 'Cancel Region' : 'Region Fill'}
           </button>
           <button
             onClick={onSaveNeutralView}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+            className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             {hasNeutralView
               ? 'Update Neutral View'
@@ -86,21 +86,21 @@ export default function ViewerToolbar({
         disabled={!hasNeutralView}
         className={`rounded-lg border px-4 py-2 text-sm font-medium shadow-sm ${
           hasNeutralView
-            ? 'border-slate-200 bg-white hover:bg-slate-50'
-            : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+            ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
+            : 'cursor-not-allowed border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
         }`}
       >
         Return to Neutral View
       </button>
       <button
         onClick={onToggleAnnotations}
-        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+        className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         {annotationsVisible ? 'Hide Annotations' : 'Show Annotations'}
       </button>
       <button
         onClick={onToggleBackground}
-        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+        className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         {darkBackground ? 'Light Background' : 'Dark Background'}
       </button>

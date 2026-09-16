@@ -41,17 +41,17 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {children}
       {pending && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[90] p-4">
-          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-sm p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900 font-display">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-sm p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
               {pending.options.title}
             </h3>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
               {pending.options.message}
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 Cancel
               </button>

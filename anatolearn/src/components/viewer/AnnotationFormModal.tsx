@@ -25,33 +25,33 @@ export default function AnnotationFormModal({
 }: AnnotationFormModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6">
-        <h2 className="font-display text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+        <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
         <div className="mt-4">
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Label
           </label>
           <input
             value={label}
             onChange={(event) => onLabelChange(event.target.value)}
             placeholder="e.g. Masseter muscle"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 w-full rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
         <div className="mt-4">
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Description
           </label>
           <textarea
             value={description}
             onChange={(event) => onDescriptionChange(event.target.value)}
             placeholder="Short explanation"
-            className="h-28 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 h-28 w-full resize-none rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
         {showColorPicker && (
           <div className="mt-4">
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Fill colour
             </label>
 
@@ -60,17 +60,17 @@ export default function AnnotationFormModal({
                 type="color"
                 value={color}
                 onChange={(event) => onColorChange(event.target.value)}
-                className="h-10 w-14 cursor-pointer rounded border border-slate-200 bg-white p-1"
+                className="text-slate-900 dark:text-slate-100 h-10 w-14 cursor-pointer rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1"
               />
 
-              <span className="text-sm text-slate-600">
+              <span className="text-sm text-slate-600 dark:text-slate-400">
                 {color.toUpperCase()}
               </span>
             </div>
           </div>
         )}
         <div className="mt-6 flex items-center justify-between">
-          <button onClick={onCancel} className="text-sm text-slate-500 hover:text-slate-700">
+          <button onClick={onCancel} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">
             Cancel
           </button>
           <button

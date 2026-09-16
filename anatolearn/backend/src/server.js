@@ -746,8 +746,15 @@ app.get("/api/quizzes", authenticate, async (req, res) => {
 });
 
 app.get("/api/quizzes/:id/questions", authenticate, async (req, res) => {
+  // Students must never receive the answer key while attempting a quiz.
+  // Teachers need it to prefill the question editor with the existing
+  // correct answer / model answer.
+  const columns = req.user.role === "teacher"
+    ? "id, quiz_id, question, format, option_a, option_b, option_c, option_d, correct_option, model_answer"
+    : "id, quiz_id, question, format, option_a, option_b, option_c, option_d";
+
   const result = await pool.query(
-    "SELECT id, quiz_id, question, format, option_a, option_b, option_c, option_d FROM quiz_questions WHERE quiz_id = $1 ORDER BY id",
+    `SELECT ${columns} FROM quiz_questions WHERE quiz_id = $1 ORDER BY id`,
     [req.params.id]
   );
 
@@ -1247,6 +1254,44 @@ app.delete("/api/resources/:id", authenticate, requireTeacher, async (req, res) 
   }
 
   res.json({ message: "Resource deleted" });
+});
+
+app.put("/api/resources/:id", authenticate, requireTeacher, async (req, res) => {
+  const { title, description, url } = req.body;
+
+  if (!title || !title.trim()) {
+    return res.status(400).json({ message: "title is required" });
+  }
+
+  try {
+    const existing = await pool.query("SELECT * FROM resources WHERE id = $1", [req.params.id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ message: "Resource not found" });
+    }
+
+    const resource = existing.rows[0];
+
+    // Only link-type resources can have their URL edited here — pdf/document
+    // resources are tied to an uploaded file and would need a re-upload flow,
+    // which is out of scope for this edit action.
+    let filePath = resource.file_path;
+    if (resource.resource_type === "link") {
+      if (!url || !url.trim()) {
+        return res.status(400).json({ message: "url is required for link resources" });
+      }
+      filePath = url;
+    }
+
+    const result = await pool.query(
+      `UPDATE resources SET title = $1, description = $2, file_path = $3 WHERE id = $4 RETURNING *`,
+      [title, description || null, filePath, req.params.id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to update resource:", err);
+    res.status(500).json({ message: "Failed to update resource" });
+  }
 });
 
 app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req, res) => {

@@ -64,13 +64,13 @@ export default function Dashboard() {
   }, [role]);
 
   const teacherStats = [
-    { label: 'Models Uploaded', value: modelCount === null ? '—' : String(modelCount), icon: Box, iconColor: 'text-blue-500' },
-    { label: 'Videos Uploaded', value: videoCount === null ? '—' : String(videoCount), icon: Video, iconColor: 'text-purple-500' },
-    { label: 'Quizzes Created', value: quizCount === null ? '—' : String(quizCount), icon: Activity, iconColor: 'text-green-500' },
+    { label: 'Models Uploaded', value: modelCount === null ? '—' : String(modelCount), icon: Box, iconColor: 'text-blue-500 dark:text-blue-400' },
+    { label: 'Videos Uploaded', value: videoCount === null ? '—' : String(videoCount), icon: Video, iconColor: 'text-purple-500 dark:text-purple-400' },
+    { label: 'Quizzes Created', value: quizCount === null ? '—' : String(quizCount), icon: Activity, iconColor: 'text-green-500 dark:text-green-400' },
   ];
 
   const studentStats = [
-    { label: 'Quizzes Taken', value: String(quizzesTaken), icon: BookOpen, iconColor: 'text-blue-500' },
+    { label: 'Quizzes Taken', value: String(quizzesTaken), icon: BookOpen, iconColor: 'text-blue-500 dark:text-blue-400' },
     { label: 'Average Score', value: avgScore !== null ? `${avgScore}%` : '—', icon: Trophy, iconColor: 'text-yellow-500' },
   ];
 
@@ -80,19 +80,19 @@ export default function Dashboard() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
 
       <div>
-        <h1 className="text-3xl font-bold text-slate-900 font-display">
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 font-display">
           Welcome back{user?.name ? `, ${user.name}` : ''}
         </h1>
-        <p className="mt-1 text-slate-500 text-sm">{program} Program Overview</p>
+        <p className="mt-1 text-slate-500 dark:text-slate-400 text-sm">{program} Program Overview</p>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
         {stats.map(({ label, value, icon: Icon, iconColor }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4">
+          <div key={label} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5 flex items-center gap-4">
             <Icon className={`w-6 h-6 flex-shrink-0 ${iconColor}`} />
             <div>
-              <p className="text-sm text-slate-500">{label}</p>
-              <p className="text-2xl font-bold text-slate-900 font-display">{value}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-display">{value}</p>
             </div>
           </div>
         ))}
@@ -100,26 +100,26 @@ export default function Dashboard() {
 
       {role === 'student' && (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-slate-900 font-display mb-4">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
             Recent Activity
           </h2>
           {recentAttempts.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 text-center">
-              <p className="text-sm text-slate-400">No quiz attempts yet. Head to the Quizzes page to get started.</p>
-              <Link to="/quizzes" className="mt-3 inline-block text-sm text-blue-600 hover:text-blue-800 font-medium">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 text-center">
+              <p className="text-sm text-slate-400 dark:text-slate-500">No quiz attempts yet. Head to the Quizzes page to get started.</p>
+              <Link to="/quizzes" className="mt-3 inline-block text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">
                 Browse Quizzes →
               </Link>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
               {recentAttempts.map((attempt) => (
                 <div
                   key={attempt.id}
-                  className="px-5 py-3 flex items-center justify-between border-b border-slate-100 last:border-b-0"
+                  className="px-5 py-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-b-0"
                 >
                   <div>
-                    <p className="text-sm font-medium text-slate-900">{attempt.quiz_title}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{attempt.quiz_title}</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                       {new Date(attempt.attempted_at).toLocaleDateString(undefined, {
                         year: 'numeric',
                         month: 'short',
@@ -128,11 +128,11 @@ export default function Dashboard() {
                     </p>
                   </div>
                   {attempt.status === 'graded' ? (
-                    <span className="text-sm font-semibold text-slate-900">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                       {attempt.score}%
                     </span>
                   ) : (
-                    <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
                       Pending Review
                     </span>
                   )}
@@ -142,13 +142,13 @@ export default function Dashboard() {
           )}
 
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Link to="/3dviewer" className="flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors">
+            <Link to="/3dviewer" className="flex items-center justify-center px-4 py-4 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               Explore 3D Models
             </Link>
-            <Link to="/videos" className="flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors">
+            <Link to="/videos" className="flex items-center justify-center px-4 py-4 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               Watch Videos
             </Link>
-            <Link to="/quizzes" className="flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors">
+            <Link to="/quizzes" className="flex items-center justify-center px-4 py-4 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               Take a Quiz
             </Link>
           </div>
@@ -157,7 +157,7 @@ export default function Dashboard() {
 
       {role === 'teacher' && (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-slate-900 font-display mb-4">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
             Quick Actions
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -165,7 +165,7 @@ export default function Dashboard() {
               <Link
                 key={label}
                 to={path}
-                className="flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+                className="flex items-center justify-center px-4 py-4 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 {label}
               </Link>

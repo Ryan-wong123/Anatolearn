@@ -1,9 +1,10 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { TOKEN_STORAGE_KEY } from '../api/api';
 
 type Role = 'student' | 'teacher';
 type Program = string;
+type Theme = 'light' | 'dark';
 
 // What the backend's /api/auth/login and /api/auth/register return as `user`.
 interface AuthUser {
@@ -15,6 +16,7 @@ interface AuthUser {
 }
 
 const USER_STORAGE_KEY = 'anatolearn_user';
+const THEME_STORAGE_KEY = 'anatolearn_theme';
 
 function loadStoredUser(): AuthUser | null {
   const raw = sessionStorage.getItem(USER_STORAGE_KEY);
@@ -24,6 +26,16 @@ function loadStoredUser(): AuthUser | null {
   } catch {
     return null;
   }
+}
+
+function loadStoredTheme(): Theme {
+  const raw = localStorage.getItem(THEME_STORAGE_KEY);
+  if (raw === 'dark' || raw === 'light') return raw;
+  // Fall back to the user's OS-level preference on first visit.
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  return 'light';
 }
 
 interface AppContextType {
@@ -39,6 +51,8 @@ interface AppContextType {
   // production build. The Student|Teacher nav toggle checks this so it
   // cannot appear (or do anything) outside of local development.
   isDevMode: boolean;
+  theme: Theme;
+  toggleTheme: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -52,8 +66,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sessionStorage.getItem(TOKEN_STORAGE_KEY)
   );
   const [user, setUser] = useState<AuthUser | null>(storedUser);
+  const [theme, setTheme] = useState<Theme>(loadStoredTheme);
 
   const isDevMode = import.meta.env.DEV;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }
 
   function login(newToken: string, newUser: AuthUser) {
     sessionStorage.setItem(TOKEN_STORAGE_KEY, newToken);
@@ -73,7 +102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider
-      value={{ role, setRole, program, setProgram, token, user, login, logout, isDevMode }}
+      value={{ role, setRole, program, setProgram, token, user, login, logout, isDevMode, theme, toggleTheme }}
     >
       {children}
     </AppContext.Provider>

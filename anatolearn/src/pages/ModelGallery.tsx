@@ -231,10 +231,10 @@ export default function ModelGallery() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 font-display">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 font-display">
             3D Model Library
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Select an anatomical model to open it in the interactive 3D viewer.
           </p>
         </div>
@@ -252,13 +252,13 @@ export default function ModelGallery() {
 
       <div className="mb-6 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search models..."
-            className="pl-9 pr-3 py-2 w-full border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            className="text-slate-900 dark:text-slate-100 pl-9 pr-3 py-2 w-full border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
           />
         </div>
 
@@ -274,7 +274,7 @@ export default function ModelGallery() {
             );
             if (!stillValid) setPartFilter('');
           }}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none"
+          className="text-slate-900 dark:text-slate-100 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none"
         >
           <option value="">All Systems</option>
           {availableSystems.map((s) => (
@@ -285,7 +285,7 @@ export default function ModelGallery() {
         <select
           value={partFilter}
           onChange={(e) => setPartFilter(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none"
+          className="text-slate-900 dark:text-slate-100 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none"
         >
           <option value="">All Body Parts</option>
           {availableParts.map((p) => (
@@ -295,8 +295,8 @@ export default function ModelGallery() {
       </div>
 
       {models.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
-          <p className="text-sm text-slate-500">No models match your search.</p>
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-8 text-center">
+          <p className="text-sm text-slate-500 dark:text-slate-400">No models match your search.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -304,7 +304,7 @@ export default function ModelGallery() {
             <div
               key={model.id}
               onClick={() => navigate(`/3dviewer/${model.id}`)}
-              className="text-left bg-white border border-slate-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+              className="text-left bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all cursor-pointer"
             >
               <div className="relative">
                 {model.thumbnail_path ? (
@@ -314,34 +314,34 @@ export default function ModelGallery() {
                     className="w-full h-44 object-cover rounded-lg mb-4"
                   />
                 ) : (
-                  <div className="w-full h-44 rounded-lg bg-blue-50 flex items-center justify-center mb-4">
-                    <Box className="w-10 h-10 text-blue-600" />
+                  <div className="w-full h-44 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center mb-4">
+                    <Box className="w-10 h-10 text-blue-600 dark:text-blue-400" />
                   </div>
                 )}
 
                 {role === 'teacher' && !model.is_published && (
-                  <span className="absolute top-2 left-2 bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                  <span className="absolute top-2 left-2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs font-medium px-2 py-0.5 rounded-full">
                     Unpublished
                   </span>
                 )}
               </div>
 
-              <h2 className="font-semibold text-slate-900 font-display">
+              <h2 className="font-semibold text-slate-900 dark:text-slate-100 font-display">
                 {model.title}
               </h2>
 
               {(model.body_system || model.body_part) && (
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                   {[model.body_system, model.body_part].filter(Boolean).join(' · ')}
                 </p>
               )}
 
-              <p className="mt-2 text-sm text-slate-500 line-clamp-3">
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 line-clamp-3">
                 {model.description || 'No description provided.'}
               </p>
 
               <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm font-medium text-blue-600">
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
                   Open Viewer →
                 </p>
 
@@ -349,29 +349,29 @@ export default function ModelGallery() {
                   onClick={(e) => handleDownload(model, e)}
                   disabled={downloadingId === model.id}
                   title="Download model file"
-                  className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40"
+                  className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-40"
                 >
                   <Download className="w-4 h-4" />
                 </button>
               </div>
 
               {role === 'teacher' && (
-                <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100 relative">
+                <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 relative">
                   <button
                     onClick={(e) => openEdit(model, e)}
-                    className="text-xs text-slate-500 hover:text-blue-600 transition-colors"
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                   >
                     Edit
                   </button>
                   <button
                     onClick={(e) => handleTogglePublish(model, e)}
-                    className="text-xs text-slate-500 hover:text-blue-600 transition-colors"
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                   >
                     {model.is_published ? 'Unpublish' : 'Publish'}
                   </button>
                   <button
                     onClick={(e) => handleDelete(model, e)}
-                    className="text-xs text-slate-500 hover:text-red-600 transition-colors"
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   >
                     Delete
                   </button>
@@ -381,7 +381,7 @@ export default function ModelGallery() {
                       setOpenExportMenuId(openExportMenuId === model.id ? null : model.id);
                     }}
                     disabled={exportingId === model.id}
-                    className="text-xs text-slate-500 hover:text-blue-600 transition-colors ml-auto"
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors ml-auto"
                   >
                     Export Annotations
                   </button>
@@ -389,17 +389,17 @@ export default function ModelGallery() {
                   {openExportMenuId === model.id && (
                     <div
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-md z-10 py-1 w-40"
+                      className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-md z-10 py-1 w-40"
                     >
                       <button
                         onClick={(e) => handleExport(model, 'json', e)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                       >
                         <FileJson className="w-3.5 h-3.5" /> JSON
                       </button>
                       <button
                         onClick={(e) => handleExport(model, 'csv', e)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                       >
                         <FileText className="w-3.5 h-3.5" /> CSV
                       </button>
@@ -414,14 +414,14 @@ export default function ModelGallery() {
 
       {showUpload && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-md p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900 font-display">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
                 Upload Model
               </h2>
               <button
                 onClick={closeUploadModal}
-                className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -429,74 +429,74 @@ export default function ModelGallery() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
                 <input
                   type="text"
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
-                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="e.g. Cardiovascular System"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
                 <textarea
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
                   rows={3}
-                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                   placeholder="Optional"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body System
                   </label>
                   <input
                     type="text"
                     value={uploadBodySystem}
                     onChange={(e) => setUploadBodySystem(e.target.value)}
-                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                     placeholder="e.g. Cardiovascular"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body Part
                   </label>
                   <input
                     type="text"
                     value={uploadBodyPart}
                     onChange={(e) => setUploadBodyPart(e.target.value)}
-                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                     placeholder="e.g. Chest"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Model File
                 </label>
-                <div className="mt-1 border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:bg-slate-50 transition-colors">
+                <div className="mt-1 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <input
                     type="file"
                     accept=".glb,.gltf,.obj"
                     onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                    className="w-full text-sm text-slate-600"
+                    className="bg-white dark:bg-slate-900 w-full text-sm text-slate-600 dark:text-slate-400"
                   />
-                  <p className="text-xs text-slate-400 mt-2">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
                     Supported formats: .glb, .gltf, .obj
                   </p>
                   {uploadFile && (
-                    <p className="text-xs text-slate-600 mt-2 font-medium">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 font-medium">
                       Selected: {uploadFile.name}
                     </p>
                   )}
@@ -505,7 +505,7 @@ export default function ModelGallery() {
             </div>
 
             {uploadError && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 mt-4">
+              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {uploadError}
               </p>
             )}
@@ -513,7 +513,7 @@ export default function ModelGallery() {
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={closeUploadModal}
-                className="text-sm text-slate-500 hover:text-slate-700 transition-colors"
+                className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
               >
                 Cancel
               </button>
@@ -531,64 +531,64 @@ export default function ModelGallery() {
 
       {editingModel && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold text-slate-900 font-display mb-4">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
               Edit Model
             </h2>
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
                 <input
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body System
                   </label>
                   <input
                     type="text"
                     value={editBodySystem}
                     onChange={(e) => setEditBodySystem(e.target.value)}
-                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body Part
                   </label>
                   <input
                     type="text"
                     value={editBodyPart}
                     onChange={(e) => setEditBodyPart(e.target.value)}
-                    className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   />
                 </div>
               </div>
             </div>
 
             {editError && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 mt-4">
+              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {editError}
               </p>
             )}
@@ -596,7 +596,7 @@ export default function ModelGallery() {
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={closeEdit}
-                className="text-sm text-slate-500 hover:text-slate-700 transition-colors"
+                className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
               >
                 Cancel
               </button>
