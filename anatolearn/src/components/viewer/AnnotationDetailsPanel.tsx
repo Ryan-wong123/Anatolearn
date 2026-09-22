@@ -48,7 +48,7 @@ export default function AnnotationDetailsPanel({
       initialPosition={{ x: 9999, y: 390 }}
       className="w-80 max-w-[calc(100%-3rem)]"
     >
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/95 p-4 shadow-xl backdrop-blur-sm">
+      <div className="rounded-xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95">
         <div className="mb-3 flex cursor-move items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
             <h2 className="font-display font-semibold text-slate-900 dark:text-slate-100">{annotation.label}</h2>

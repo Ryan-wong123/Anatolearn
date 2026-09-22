@@ -35,18 +35,17 @@ export default function AnnotationListPanel({
       initialPosition={{ x: 9999, y: 88 }}
       className="w-80 max-w-[calc(100%-3rem)]"
     >
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-xl backdrop-blur-sm">
-        <div className="flex cursor-move items-center justify-between gap-3 px-4 py-3">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95">        <div className="flex cursor-move items-center justify-between gap-3 px-4 py-3">
           <div>
-            <span className="font-display font-semibold text-slate-900">
+            <span className="font-display font-semibold text-slate-900 dark:text-slate-100">
               {modelTitle} ({annotations.length})
             </span>
-            <span className="ml-2 text-xs text-slate-400">Drag</span>
+            <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">Drag</span>
           </div>
           <button
             type="button"
             onClick={onToggleOpen}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-lg leading-none text-slate-600 hover:bg-slate-50"
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-lg leading-none text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             aria-label={open ? 'Collapse annotations' : 'Expand annotations'}
           >
             {open ? '−' : '+'}
@@ -54,9 +53,9 @@ export default function AnnotationListPanel({
         </div>
 
         {open && (
-          <div className="max-h-[45vh] space-y-2 overflow-y-auto border-t border-slate-100 p-3">
+          <div className="max-h-[45vh] space-y-2 overflow-y-auto border-t border-slate-100 p-3 dark:border-slate-800">
             {annotations.length === 0 ? (
-              <p className="px-1 py-2 text-sm text-slate-400">No annotations yet.</p>
+              <p className="px-1 py-2 text-sm text-slate-400 dark:text-slate-500">No annotations yet.</p>
             ) : (
               annotations.map((annotation, index) => (
                 <button
@@ -66,8 +65,8 @@ export default function AnnotationListPanel({
                   onMouseLeave={onHoverEnd}
                   className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                     selectedAnnotation === annotation
-                      ? 'border-blue-300 bg-blue-50 text-blue-800'
-                      : 'border-slate-200 hover:bg-slate-50'
+                      ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
                   }`}
                 >
                   <span className="flex items-center gap-2">

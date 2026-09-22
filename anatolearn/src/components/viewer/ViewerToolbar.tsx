@@ -55,7 +55,7 @@ export default function ViewerToolbar({
             className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
               drawMode
                 ? 'bg-yellow-300 text-slate-900 dark:text-slate-100 hover:bg-yellow-400'
-                : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
+                : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
             {drawMode ? 'Cancel Highlight' : 'Draw Highlight'}
@@ -66,7 +66,7 @@ export default function ViewerToolbar({
             className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
               regionMode
                 ? 'bg-cyan-300 text-slate-900 dark:text-slate-100 hover:bg-cyan-400'
-                : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
+                : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
             {regionMode ? 'Cancel Region' : 'Region Fill'}
@@ -86,7 +86,7 @@ export default function ViewerToolbar({
         disabled={!hasNeutralView}
         className={`rounded-lg border px-4 py-2 text-sm font-medium shadow-sm ${
           hasNeutralView
-            ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
+            ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
             : 'cursor-not-allowed border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
         }`}
       >
