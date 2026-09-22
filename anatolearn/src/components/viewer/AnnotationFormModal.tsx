@@ -3,10 +3,13 @@ interface AnnotationFormModalProps {
   label: string;
   description: string;
   color: string;
+  opacity: number;
   showColorPicker: boolean;
+  showOpacitySlider: boolean;
   onLabelChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onColorChange: (value: string) => void;
+  onOpacityChange: (value: number) => void;
   onCancel: () => void;
   onSave: () => void;
 }
@@ -16,10 +19,13 @@ export default function AnnotationFormModal({
   label,
   description,
   color,
+  opacity,
   showColorPicker,
+  showOpacitySlider,
   onLabelChange,
   onDescriptionChange,
   onColorChange,
+  onOpacityChange,
   onCancel,
   onSave,
 }: AnnotationFormModalProps) {
@@ -67,6 +73,31 @@ export default function AnnotationFormModal({
                 {color.toUpperCase()}
               </span>
             </div>
+          </div>
+        )}
+        {showOpacitySlider && (
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Opacity
+              </label>
+
+              <span className="text-sm text-slate-600 dark:text-slate-400">
+                {Math.round(opacity * 100)}%
+              </span>
+            </div>
+
+            <input
+              type="range"
+              min="0.05"
+              max="1"
+              step="0.05"
+              value={opacity}
+              onChange={(event) =>
+                onOpacityChange(Number(event.target.value))
+              }
+              className="w-full cursor-pointer"
+            />
           </div>
         )}
         <div className="mt-6 flex items-center justify-between">

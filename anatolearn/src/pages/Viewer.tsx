@@ -66,6 +66,7 @@ function fromDbAnnotation(row: any): Annotation {
         : kind === 'projectedDraw'
           ? '#facc15'
           : undefined),
+    opacity: data.opacity,
     kind,
     position: data.position,
     drawPoints: data.drawPoints,
@@ -120,6 +121,7 @@ export default function Viewer() {
   const [label, setLabel] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#22d3ee');
+  const [opacity, setOpacity] = useState(0.24);
   const [isGeneratingRegion, setIsGeneratingRegion] = useState(false);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const annotationsVisibleRef = useRef(annotationsVisible);
@@ -613,6 +615,7 @@ export default function Viewer() {
       label: '',
       description: '',
       color: mode === 'fill' ? '#22d3ee' : '#facc15',
+      opacity: mode === 'fill' ? 0.24 : 0.32,
       kind: mode === 'fill' ? 'projectedRegion' : 'projectedDraw',
       position: projectedMask.position,
       projectedMask,
@@ -634,6 +637,7 @@ export default function Viewer() {
     setLabel('');
     setDescription('');
     setColor(annotation.color ?? '#22d3ee');
+    setOpacity(annotation.opacity ?? (mode === 'fill' ? 0.24 : 0.32));
     setFormOpen(true);
     setDrawMode(false);
     setRegionMode(false);
@@ -1157,6 +1161,11 @@ export default function Viewer() {
           editingAnnotationRef.current.kind === 'projectedRegion'
             ? color
             : editingAnnotationRef.current.color,
+        opacity:
+          editingAnnotationRef.current.kind === 'projectedRegion' ||
+          editingAnnotationRef.current.kind === 'projectedDraw'
+            ? opacity
+            : editingAnnotationRef.current.opacity,
       };
       const savedRow = await api.updateAnnotation(updated.id!, createPayload(updated));
       const saved = fromDbAnnotation(savedRow);
@@ -1167,11 +1176,20 @@ export default function Viewer() {
 
         marker.userData.annotation = saved;
 
-        if (
-          saved.kind === 'projectedRegion' &&
-          marker.material instanceof THREE.MeshBasicMaterial
-        ) {
-          marker.material.color.set(saved.color ?? '#22d3ee');
+        if (marker.material instanceof THREE.MeshBasicMaterial) {
+          if (saved.kind === 'projectedRegion') {
+            marker.material.color.set(saved.color ?? '#22d3ee');
+          }
+
+          if (
+            saved.kind === 'projectedRegion' ||
+            saved.kind === 'projectedDraw'
+          ) {
+            marker.material.opacity =
+              saved.opacity ??
+              (saved.kind === 'projectedRegion' ? 0.24 : 0.32);
+          }
+
           marker.material.needsUpdate = true;
         }
       });
@@ -1192,6 +1210,7 @@ export default function Viewer() {
           pendingAnnotationRef.current.kind === 'projectedRegion'
             ? color
             : pendingAnnotationRef.current.color,
+        opacity,
       };
     } else {
       if (!pendingPointRef.current) return;
@@ -1212,15 +1231,25 @@ export default function Viewer() {
         pendingObjectsRef.current.forEach((object) => {
           object.userData.annotation = saved;
 
-          if (
-            saved.kind === 'projectedRegion' &&
-            object.material instanceof THREE.MeshBasicMaterial
-          ) {
-            object.material.color.set(saved.color ?? '#22d3ee');
+          if (object.material instanceof THREE.MeshBasicMaterial) {
+            if (saved.kind === 'projectedRegion') {
+              object.material.color.set(saved.color ?? '#22d3ee');
+            }
+
+            if (
+              saved.kind === 'projectedRegion' ||
+              saved.kind === 'projectedDraw'
+            ) {
+              object.material.opacity =
+                saved.opacity ??
+                (saved.kind === 'projectedRegion' ? 0.24 : 0.32);
+            }
+
             object.material.needsUpdate = true;
           }
 
           markersRef.current.push(object);
+          createAnnotationHitTarget(saved, object);
         });
 
         pendingObjectsRef.current = [];
@@ -1231,6 +1260,10 @@ export default function Viewer() {
         setAddMode(false);
       }
 
+      createAnnotationHotspot(
+        saved,
+        annotations.length + 1,
+      );
       setAnnotations((previous) => [...previous, saved]);
       setPopupAnnotation(saved);
       setFormOpen(false);
@@ -1253,6 +1286,7 @@ export default function Viewer() {
         regionTriangles: annotation.regionTriangles,
         projectedMask: annotation.projectedMask,
         view: annotation.view,
+        opacity: annotation.opacity,
       },
     };
   }
@@ -1271,15 +1305,60 @@ export default function Viewer() {
       }
     }
 
-    const related = markersRef.current.filter(
-      (marker) => marker.userData.annotation?.id === annotation.id,
+    // Remove invisible hover targets belonging to this annotation.
+    annotationHitTargetsRef.current =
+      annotationHitTargetsRef.current.filter((hitTarget) => {
+        const belongsToDeletedAnnotation =
+          hitTarget.userData.annotation?.id === annotation.id;
+
+        if (belongsToDeletedAnnotation) {
+          hitTarget.removeFromParent();
+
+          const materials = Array.isArray(hitTarget.material)
+            ? hitTarget.material
+            : [hitTarget.material];
+
+          materials.forEach((material) => {
+            material.dispose();
+          });
+
+          // Do NOT dispose geometry here.
+          // It is shared with the annotation visual.
+        }
+
+        return !belongsToDeletedAnnotation;
+      });
+
+    // Remove the actual annotation visual.
+    const relatedMarkers = markersRef.current.filter(
+      (marker) =>
+        marker.userData.annotation?.id === annotation.id,
     );
-    related.forEach(disposeMarker);
+
+    relatedMarkers.forEach(disposeMarker);
+
     markersRef.current = markersRef.current.filter(
-      (marker) => marker.userData.annotation?.id !== annotation.id,
+      (marker) =>
+        marker.userData.annotation?.id !== annotation.id,
     );
-    setAnnotations((previous) => previous.filter((item) => item.id !== annotation.id));
+
+    // Build the new annotation list immediately.
+    const remainingAnnotations = annotations.filter(
+      (item) => item.id !== annotation.id,
+    );
+
+    setAnnotations(remainingAnnotations);
+
+    // Rebuild every numbered hotspot so numbering stays sequential.
+    clearHotspots();
+
+    remainingAnnotations.forEach((item, index) => {
+      createAnnotationHotspot(item, index + 1);
+    });
+
+    setHoveredAnnotation(null);
     setPopupAnnotation(null);
+    setIsolateSelected(false);
   }
 
   function editSelectedAnnotation() {
@@ -1296,6 +1375,10 @@ export default function Viewer() {
         : '#facc15'),
     );
 
+    setOpacity(
+      popupAnnotation.opacity ??
+      (popupAnnotation.kind === 'projectedRegion' ? 0.24 : 0.32),
+    );
     setPopupAnnotation(null);
     setFormOpen(true);
   }
@@ -1622,13 +1705,21 @@ export default function Viewer() {
           label={label}
           description={description}
           color={color}
+          opacity={opacity}
           showColorPicker={
             editingAnnotationRef.current?.kind === 'projectedRegion' ||
             pendingAnnotationRef.current?.kind === 'projectedRegion'
           }
+          showOpacitySlider={
+            editingAnnotationRef.current?.kind === 'projectedRegion' ||
+            editingAnnotationRef.current?.kind === 'projectedDraw' ||
+            pendingAnnotationRef.current?.kind === 'projectedRegion' ||
+            pendingAnnotationRef.current?.kind === 'projectedDraw'
+          }
           onLabelChange={setLabel}
           onDescriptionChange={setDescription}
           onColorChange={setColor}
+          onOpacityChange={setOpacity}
           onCancel={cancelForm}
           onSave={saveAnnotation}
         />

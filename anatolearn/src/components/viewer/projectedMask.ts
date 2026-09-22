@@ -645,9 +645,10 @@ export function createProjectedMaskMesh(
       transparent: true,
 
       opacity:
-        data.mode === 'fill'
+        annotation.opacity ??
+        (data.mode === 'fill'
           ? 0.24
-          : 0.32,
+          : 0.32),
 
       depthWrite: false,
 

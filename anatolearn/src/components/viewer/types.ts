@@ -91,6 +91,11 @@ export interface Annotation {
   color?: string;
 
   /**
+   * Opacity of projected annotations, from 0 to 1.
+   */
+  opacity?: number;
+
+  /**
    * Legacy annotation properties.
    */
   drawPoints?: DrawPoint[];
