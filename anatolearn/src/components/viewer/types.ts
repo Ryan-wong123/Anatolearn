@@ -118,6 +118,13 @@ export interface Annotation {
   };
 }
 
+export interface LinkedVideo {
+  id: number;
+  title: string;
+  video_path: string;
+  annotation_id: number | null;
+}
+
 export interface NeutralView {
   cameraPosition: DrawPoint;
   target: DrawPoint;

@@ -11,71 +11,27 @@ import AnnotationListPanel from '../components/viewer/AnnotationListPanel';
 import RegionGeneratingOverlay from '../components/viewer/RegionGeneratingOverlay';
 import ViewerInstructions from '../components/viewer/ViewerInstructions';
 import ViewerToolbar from '../components/viewer/ViewerToolbar';
+import VideoPlayerModal from '../components/viewer/VideoPlayerModal';
 import type {
   Annotation,
-  AnnotationKind,
-  DrawPoint,
+  LinkedVideo,
   ModelRecord,
-  ProjectedMaskData,
   ScreenPoint,
 } from '../components/viewer/types';
 import {
-  createProjectedMaskMesh,
-  disposeProjectedMask,
   maskContainsUv,
   simplifyScreenPoints,
 } from '../components/viewer/projectedMask';
-
-interface LinkedVideo {
-  id: number;
-  title: string;
-  video_path: string;
-  annotation_id: number | null;
-}
-
-function toDbAnnotationType(
-  kind: AnnotationKind,
-): 'point' | 'highlight' | 'region_fill' {
-  if (kind === 'point') return 'point';
-  if (kind === 'draw' || kind === 'projectedDraw') return 'highlight';
-  return 'region_fill';
-}
-
-function fromDbAnnotation(row: any): Annotation {
-  const data = row.annotation_data ?? {};
-  let kind: AnnotationKind;
-
-  if (row.annotation_type === 'point') {
-    kind = 'point';
-  } else if (data.projectedMask) {
-    kind = row.annotation_type === 'highlight' ? 'projectedDraw' : 'projectedRegion';
-  } else if (row.annotation_type === 'highlight') {
-    kind = 'draw';
-  } else {
-    kind = 'region';
-  }
-
-  return {
-    id: row.id,
-    label: row.label,
-    description: row.description || '',
-    color:
-      row.color ||
-      (kind === 'projectedRegion'
-        ? '#22d3ee'
-        : kind === 'projectedDraw'
-          ? '#facc15'
-          : undefined),
-    opacity: data.opacity,
-    kind,
-    position: data.position,
-    drawPoints: data.drawPoints,
-    regionPlane: data.regionPlane,
-    regionTriangles: data.regionTriangles,
-    projectedMask: data.projectedMask,
-    view: data.view,
-  };
-}
+import { createAnnotationVisualController } from '../components/viewer/annotationVisuals';
+import {
+  fromDbAnnotation,
+  toDbAnnotationType,
+} from '../components/viewer/annotationMapping';
+import {
+  buildProjectedMaskData,
+  getDominantMeshIndex,
+  vectorToPoint,
+} from '../components/viewer/projectedMaskData';
 
 export default function Viewer() {
   const { role } = useAppContext();
@@ -603,13 +559,14 @@ export default function Viewer() {
     }
 
     const meshIndex = getDominantMeshIndex(currentMeshHitsRef.current);
-    const projectedMask = buildProjectedMaskData(screenPoints, worldPoints, meshIndex, mode);
-    if (!projectedMask) {
-      alert('Could not project this annotation. Try drawing a smaller region on one visible surface.');
-      setDrawMode(false);
-      setRegionMode(false);
-      return;
-    }
+    const projectedMask = buildProjectedMaskData(
+      cameraRef.current,
+      getMarkerSize(),
+      screenPoints,
+      worldPoints,
+      meshIndex,
+      mode,
+    );
 
     const annotation: Annotation = {
       label: '',
@@ -643,505 +600,32 @@ export default function Viewer() {
     setRegionMode(false);
   }
 
-  function getDominantMeshIndex(indices: number[]) {
-    const counts = new Map<number, number>();
-    indices.forEach((index) => counts.set(index, (counts.get(index) ?? 0) + 1));
-    let selected = 0;
-    let highest = -1;
-    counts.forEach((count, index) => {
-      if (count > highest) {
-        selected = index;
-        highest = count;
-      }
-    });
-    return selected;
-  }
-
-  function buildProjectedMaskData(
-    screenPoints: ScreenPoint[],
-    worldPoints: THREE.Vector3[],
-    meshIndex: number,
-    mode: 'stroke' | 'fill',
-  ): ProjectedMaskData | null {
-    if (!cameraRef.current) return null;
-
-    const camera = cameraRef.current;
-    camera.updateMatrixWorld(true);
-
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
-    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
-
-    const center = getCenterOfPoints(worldPoints);
-    const localPoints = worldPoints.map((point) => point.clone().sub(center));
-    const rightValues = localPoints.map((point) => point.dot(right));
-    const upValues = localPoints.map((point) => point.dot(up));
-
-    const minRight = Math.min(...rightValues);
-    const maxRight = Math.max(...rightValues);
-    const minUp = Math.min(...upValues);
-    const maxUp = Math.max(...upValues);
-    const baseWidth = Math.max(maxRight - minRight, getMarkerSize() * 2);
-    const baseHeight = Math.max(maxUp - minUp, getMarkerSize() * 2);
-    const padding = mode === 'fill' ? 1.08 : 1.3;
-    const width = baseWidth * padding;
-    const height = baseHeight * padding;
-    const depth = Math.max(width, height) * 0.75;
-
-    const adjustedCenter = center
-      .clone()
-      .addScaledVector(right, (minRight + maxRight) * 0.5)
-      .addScaledVector(up, (minUp + maxUp) * 0.5)
-      .addScaledVector(forward, -getMarkerSize() * 0.05);
-
-    const xs = screenPoints.map((point) => point.x);
-    const ys = screenPoints.map((point) => point.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const screenWidth = Math.max(maxX - minX, 0.001);
-    const screenHeight = Math.max(maxY - minY, 0.001);
-    const maskPadding = mode === 'fill' ? 0.04 : 0.12;
-
-    const maskPoints = screenPoints.map((point) => ({
-      x: maskPadding + ((point.x - minX) / screenWidth) * (1 - maskPadding * 2),
-      y: maskPadding + ((point.y - minY) / screenHeight) * (1 - maskPadding * 2),
-    }));
-
-    const orientation = new THREE.Euler().setFromQuaternion(camera.quaternion, 'XYZ');
-
-    return {
-      meshIndex,
-      position: vectorToPoint(adjustedCenter),
-      orientation: { x: orientation.x, y: orientation.y, z: orientation.z },
-      size: { x: width, y: height, z: depth },
-      maskPoints,
-      mode,
-      brushWidth: mode === 'stroke' ? 0.055 : undefined,
-    };
-  }
-
-  function createProjectedVisual(annotation: Annotation) {
-    if (!sceneRef.current || !annotation.projectedMask) return null;
-    const sourceMesh = sourceMeshesRef.current[annotation.projectedMask.meshIndex];
-    if (!sourceMesh) return null;
-    const mesh = createProjectedMaskMesh(sourceMesh, annotation);
-    if (!mesh) return null;
-    sceneRef.current.add(mesh);
-    return mesh;
-  }
-
-  function createPointMarker(annotation: Annotation) {
-    if (!sceneRef.current) return;
-    const marker = new THREE.Mesh(
-      new THREE.SphereGeometry(getMarkerSize(), 24, 24),
-      new THREE.MeshBasicMaterial({ color: 0xff1a00 }),
-    );
-    marker.position.set(annotation.position.x, annotation.position.y, annotation.position.z);
-    marker.userData.annotation = annotation;
-    sceneRef.current.add(marker);
-    markersRef.current.push(marker);
-  }
-
-  function createHotspotTexture(
-    number: number,
-    annotation: Annotation,
-  ) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-
-    const context = canvas.getContext('2d');
-
-    if (!context) {
-      return null;
-    }
-
-    context.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Circular marker.
-    context.beginPath();
-    context.arc(128, 128, 100, 0, Math.PI * 2);
-
-    context.fillStyle = annotation.color ?? '#2563eb';
-    context.fill();
-
-    // White outline.
-    context.lineWidth = 12;
-    context.strokeStyle = '#ffffff';
-    context.stroke();
-
-    // Annotation number.
-    context.fillStyle = '#ffffff';
-    context.font = 'bold 110px Arial';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(String(number), 128, 136);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-
-    return texture;
-  }
-
-  function createAnnotationHotspot(
-    annotation: Annotation,
-    number: number,
-  ) {
-    if (!sceneRef.current) return;
-
-    const texture =
-      createHotspotTexture(number, annotation);
-
-    if (!texture) return;
-
-    const material = new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-    });
-    
-    const hotspot = new THREE.Sprite(material);
-
-    const position = new THREE.Vector3(
-      annotation.position.x,
-      annotation.position.y,
-      annotation.position.z,
-    );
-
-    hotspot.position.copy(position);
-
-    const size = getMarkerSize() * 2.0;
-
-    hotspot.scale.set(size, size, 1);
-
-    if (annotation.view) {
-      const outwardDirection = new THREE.Vector3(
-        annotation.view.x,
-        annotation.view.y,
-        annotation.view.z,
-      ).normalize();
-
-      hotspot.position.addScaledVector(
-        outwardDirection,
-        size * 0.75,
-      );
-    }
-
-    hotspot.userData.annotation = annotation;
-    hotspot.userData.annotationNumber = number;
-    hotspot.userData.isAnnotationHotspot = true;
-
-    // Hidden until "Show All" is enabled.
-    hotspot.visible = annotationsVisible;
-
-    sceneRef.current.add(hotspot);
-    hotspotsRef.current.push(hotspot);
-  }
-
-  function createAnnotationHitTarget(
-    annotation: Annotation,
-    visual: THREE.Mesh,
-  ) {
-    if (!sceneRef.current) return;
-
-    const material = new THREE.MeshBasicMaterial({
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      colorWrite: false,
-      side: THREE.DoubleSide,
-    });
-
-    const hitTarget = new THREE.Mesh(
-      visual.geometry,
-      material,
-    );
-
-    hitTarget.position.copy(visual.position);
-    hitTarget.rotation.copy(visual.rotation);
-    hitTarget.scale.copy(visual.scale);
-
-    hitTarget.userData.annotation = annotation;
-    hitTarget.userData.isAnnotationHitTarget = true;
-    hitTarget.userData.maskCanvas = visual.userData.maskCanvas;
-
-    sceneRef.current.add(hitTarget);
-
-    annotationHitTargetsRef.current.push(hitTarget);
-  }
-
-  function handleAnnotationHover(
-    event: PointerEvent,
-  ) {
-    if (
-      !rendererRef.current ||
-      !cameraRef.current
-    ) {
-      return;
-    }
-
-    // Hover functionality only exists while
-    // Show All Annotations is enabled.
-    if (!annotationsVisibleRef.current) {
-      setHoveredAnnotation(null);
-      return;
-    }
-
-    const canvas =
-      rendererRef.current.domElement;
-
-    const rect =
-      canvas.getBoundingClientRect();
-
-    const pointer = new THREE.Vector2(
-      ((event.clientX - rect.left) /
-        rect.width) *
-        2 -
-        1,
-
-      -(
-        (event.clientY - rect.top) /
-        rect.height
-      ) *
-        2 +
-        1,
-    );
-
-    const raycaster =
-      new THREE.Raycaster();
-
-    raycaster.setFromCamera(
-      pointer,
-      cameraRef.current,
-    );
-
-    // First check the numbered hotspots.
-    const hotspotIntersections =
-      raycaster.intersectObjects(
-        hotspotsRef.current,
-        false,
-      );
-
-    if (hotspotIntersections.length > 0) {
-      const annotation =
-        hotspotIntersections[0]
-          .object
-          .userData.annotation as Annotation;
-
-      setHoveredAnnotation(annotation);
-      return;
-    }
-
-    // Then check the invisible annotation geometry.
-    const annotationIntersections =
-      raycaster.intersectObjects(
-        annotationHitTargetsRef.current,
-        false,
-      );
-
-    const acceptedAnnotationHit =
-      annotationIntersections.find((hit) => {
-        const hitTarget =
-          hit.object as THREE.Mesh;
-
-        const canvas =
-          hitTarget.userData
-            .maskCanvas as
-            | HTMLCanvasElement
-            | undefined;
-
-        // Non-masked annotations can use
-        // their complete geometry.
-        if (!canvas) {
-          return true;
-        }
-
-        // Projected annotations only count when
-        // the cursor is actually over a painted
-        // portion of the mask.
-        return Boolean(
-          hit.uv &&
-          maskContainsUv(canvas, hit.uv),
-        );
-      });
-
-    if (acceptedAnnotationHit) {
-      const annotation =
-        acceptedAnnotationHit.object
-          .userData.annotation as Annotation;
-
-      setHoveredAnnotation(annotation);
-      return;
-    }
-
-    setHoveredAnnotation(null);
-  }
-
-  function clearHotspots() {
-    hotspotsRef.current.forEach((hotspot) => {
-      hotspot.removeFromParent();
-
-      const material =
-        hotspot.material as THREE.SpriteMaterial;
-
-      material.map?.dispose();
-      material.dispose();
-    });
-
-    hotspotsRef.current = [];
-  }
-
-  function createLegacyVisual(annotation: Annotation) {
-    if (!sceneRef.current) return;
-
-    if (annotation.kind === 'draw' && annotation.drawPoints) {
-      annotation.drawPoints.forEach((point) => {
-        const marker = new THREE.Mesh(
-          new THREE.SphereGeometry(getMarkerSize() * 0.22, 8, 8),
-          new THREE.MeshBasicMaterial({
-            color: 0xffcc00,
-            transparent: true,
-            opacity: 0.3,
-            depthWrite: false,
-          }),
-        );
-        marker.position.set(point.x, point.y, point.z);
-        marker.userData.annotation = annotation;
-        sceneRef.current?.add(marker);
-        markersRef.current.push(marker);
-      });
-      return;
-    }
-
-    if (annotation.kind === 'region' && annotation.regionTriangles) {
-      const vertices = annotation.regionTriangles.flatMap((point) => [point.x, point.y, point.z]);
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-      const mesh = new THREE.Mesh(
-        geometry,
-        new THREE.MeshBasicMaterial({
-          color: 0x38bdf8,
-          transparent: true,
-          opacity: 0.3,
-          depthWrite: false,
-        }),
-      );
-      mesh.userData.annotation = annotation;
-      sceneRef.current.add(mesh);
-      markersRef.current.push(mesh);
-    }
-  }
-
-  function createAnnotationVisual(annotation: Annotation) {
-    if (
-      annotation.kind === 'projectedDraw' ||
-      annotation.kind === 'projectedRegion'
-    ) {
-      const projected =
-        createProjectedVisual(annotation);
-
-      if (projected) {
-        projected.visible = false;
-
-        markersRef.current.push(projected);
-
-        createAnnotationHitTarget(
-          annotation,
-          projected,
-        );
-      }
-
-      return;
-    }
-
-    if (
-      annotation.kind === 'draw' ||
-      annotation.kind === 'region'
-    ) {
-      createLegacyVisual(annotation);
-
-      markersRef.current.forEach((marker) => {
-        if (
-          marker.userData.annotation?.id ===
-          annotation.id
-        ) {
-          marker.visible = false;
-        }
-      });
-
-      return;
-    }
-
-    createPointMarker(annotation);
-
-    markersRef.current.forEach((marker) => {
-      if (
-        marker.userData.annotation?.id ===
-        annotation.id
-      ) {
-        marker.visible = false;
-      }
-    });
-  }
-
-  function disposeMarker(marker: THREE.Mesh) {
-    if (marker.userData.isProjectedMask) {
-      disposeProjectedMask(marker);
-      return;
-    }
-    marker.removeFromParent();
-    marker.geometry.dispose();
-    if (Array.isArray(marker.material)) marker.material.forEach((material) => material.dispose());
-    else marker.material.dispose();
-  }
-
-  function clearPendingObjects() {
-    pendingObjectsRef.current.forEach(disposeMarker);
-    pendingObjectsRef.current = [];
-  }
-
-  function clearMarkers() {
-    markersRef.current.forEach(disposeMarker);
-    markersRef.current = [];
-    setPopupAnnotation(null);
-  }
-
-  function clearAnnotationHitTargets() {
-    annotationHitTargetsRef.current.forEach(
-      (hitTarget) => {
-        hitTarget.removeFromParent();
-
-        const materials =
-          Array.isArray(hitTarget.material)
-            ? hitTarget.material
-            : [hitTarget.material];
-
-        materials.forEach((material) => {
-          material.dispose();
-        });
-
-        // DO NOT dispose hitTarget.geometry.
-        // It is shared with the actual annotation visual.
-      },
-    );
-
-    annotationHitTargetsRef.current = [];
-  }
-
-  function getCenterOfPoints(points: THREE.Vector3[]) {
-    if (points.length === 0) return new THREE.Vector3();
-    return points
-      .reduce((sum, point) => sum.add(point), new THREE.Vector3())
-      .divideScalar(points.length);
-  }
-
-  function vectorToPoint(vector: THREE.Vector3): DrawPoint {
-    return { x: vector.x, y: vector.y, z: vector.z };
-  }
+  const {
+    createProjectedVisual,
+    createPointMarker,
+    createAnnotationHotspot,
+    createAnnotationHitTarget,
+    handleAnnotationHover,
+    clearHotspots,
+    createAnnotationVisual,
+    disposeMarker,
+    clearPendingObjects,
+    clearMarkers,
+    clearAnnotationHitTargets,
+  } = createAnnotationVisualController({
+    sceneRef,
+    rendererRef,
+    cameraRef,
+    sourceMeshesRef,
+    markersRef,
+    hotspotsRef,
+    annotationHitTargetsRef,
+    pendingObjectsRef,
+    annotationsVisibleRef,
+    getMarkerSize,
+    setHoveredAnnotation,
+    setPopupAnnotation,
+  });
 
   async function saveAnnotation() {
     if (!selectedModel) return;
@@ -1676,25 +1160,10 @@ export default function Viewer() {
       )}
 
       {playingVideo && (
-        <div className="fixed inset-0 bg-slate-900/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h2 className="font-semibold text-slate-900 text-sm">{playingVideo.title}</h2>
-              <button
-                onClick={() => setPlayingVideo(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm"
-              >
-                Close
-              </button>
-            </div>
-            <video
-              src={`http://localhost:5000${playingVideo.video_path}`}
-              controls
-              autoPlay
-              className="w-full"
-            />
-          </div>
-        </div>
+        <VideoPlayerModal
+          video={playingVideo}
+          onClose={() => setPlayingVideo(null)}
+        />
       )}
 
       {isGeneratingRegion && <RegionGeneratingOverlay />}
