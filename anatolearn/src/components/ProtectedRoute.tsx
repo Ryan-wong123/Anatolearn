@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../context/AppContextState';
 
 export default function ProtectedRoute() {
   const { token } = useAppContext();

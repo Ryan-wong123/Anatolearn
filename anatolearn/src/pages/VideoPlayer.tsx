@@ -16,6 +16,7 @@ export default function VideoPlayer() {
   const { videoId } = useParams();
   const navigate = useNavigate();
 
+  const [loadError, setLoadError] = useState('');
   const [video, setVideo] = useState<Video | null>(null);
 
   useEffect(() => {
@@ -23,13 +24,13 @@ export default function VideoPlayer() {
 
     api.getVideo(Number(videoId))
       .then(setVideo)
-      .catch((err) => console.error('Failed to load video:', err));
+      .catch(() => setLoadError('This video is unavailable or could not be loaded.'));
   }, [videoId]);
 
   if (!video) {
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <p className="text-sm text-slate-500 dark:text-slate-400">Loading video...</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{loadError || 'Loading video...'}</p>
       </div>
     );
   }
@@ -44,14 +45,16 @@ export default function VideoPlayer() {
         Back to Videos
       </button>
 
+      {loadError && <p role="alert" className="mb-3 text-red-600 dark:text-red-400">{loadError}</p>}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         <video
+          onError={() => setLoadError('This video could not be played. Check that the media format is valid.')}
           controls
           autoPlay
           className="w-full bg-black"
-          poster={video.thumbnail_path ? `http://localhost:5000${video.thumbnail_path}` : undefined}
+          poster={video.thumbnail_path ? `${video.thumbnail_path}` : undefined}
         >
-          <source src={`http://localhost:5000${video.video_path}`} type="video/mp4" />
+          <source src={`${video.video_path}`} type={video.video_path.toLowerCase().endsWith('.webm') ? 'video/webm' : 'video/mp4'} />
           Your browser does not support the video tag.
         </video>
 

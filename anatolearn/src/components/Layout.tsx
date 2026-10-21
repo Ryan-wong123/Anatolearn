@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
-  GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun, Moon,
+  GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun, Moon, Menu, X,
 } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../context/AppContextState';
 import { api } from '../api/api';
 
 const navItems = [
@@ -25,6 +25,8 @@ export default function Layout() {
   const navigate = useNavigate();
   const { role, setRole, program, setProgram, user, logout, isDevMode, theme, toggleTheme } = useAppContext();
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
   const [programs, setPrograms] = useState<Program[]>([]);
 
   useEffect(() => {
@@ -42,28 +44,30 @@ export default function Layout() {
     if (match) setProgram(match.name);
   }, [user, programs, setProgram]);
 
-  function handleLogout() {
-    logout();
-    navigate('/login');
+  async function handleLogout() {
+    try { await logout(); navigate('/login'); } catch { setLogoutError('Could not sign out. Please try again.'); }
   }
 
   return (
     <div className="bg-slate-50 dark:bg-slate-800 min-h-screen flex flex-col">
       <nav className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 md:gap-6">
+            <button aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
+              {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
             <Link to="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                 <GraduationCap className="w-5 h-5 text-white" />
               </div>
-              <span className="font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight font-display">
+              <span className="hidden lg:inline font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight font-display">
                 AnatoLearn
               </span>
             </Link>
 
             <div className="hidden md:flex space-x-1">
               {navItems.map(({ label, icon: Icon, path }) => {
-                const isActive = location.pathname === path;
+                const isActive = location.pathname === path || location.pathname.startsWith(path + '/');
                 return (
                   <Link
                     key={path}
@@ -83,14 +87,15 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="hidden lg:inline text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Program
             </span>
 
             <select
+              aria-label="Selected programme"
               value={program}
               onChange={(e) => setProgram(e.target.value)}
-              className="text-slate-900 dark:text-slate-100 pl-3 pr-8 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 focus:outline-none"
+              className="text-slate-900 dark:text-slate-100 max-w-[120px] lg:max-w-none pl-2 pr-2 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 focus:outline-none"
             >
               {programs.map((p) => (
                 <option key={p.id} value={p.name}>
@@ -104,7 +109,7 @@ export default function Layout() {
                 render (or do anything) in a production build — role there
                 comes only from the logged-in account. */}
             {isDevMode && (
-              <div className="flex items-center gap-2">
+              <div className="hidden xl:flex items-center gap-2">
                 <button
                   onClick={() => setRole('student')}
                   className={`text-sm transition-colors ${
@@ -141,9 +146,9 @@ export default function Layout() {
                   {user.name}
                 </span>
               )}
-              <button className="p-1">
+              <span className="hidden sm:inline p-1" aria-hidden="true">
                 <UserCircle2 className="w-8 h-8 text-slate-400 dark:text-slate-500" />
-              </button>
+              </span>
               <button
                 onClick={handleLogout}
                 className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -154,7 +159,11 @@ export default function Layout() {
             </div>
           </div>
         </div>
+        {menuOpen && <div className="absolute top-16 inset-x-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-3 md:hidden shadow-lg">
+          {navItems.map(({path,label,icon:Icon}) => <Link key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
+        </div>}
       </nav>
+      {logoutError && <p role="alert" className="p-3 text-red-600">{logoutError}</p>}
 
       <main className="flex-1">
         <Outlet />

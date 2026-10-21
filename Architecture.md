@@ -1,324 +1,231 @@
-# Architecture.md - AnatoLearn Technical Architecture
+# AnatoLearn Technical Architecture
 
-## 1. Architecture Goals
+Implementation reference, updated 22 October 2026. Paths are relative to `anatolearn/` unless stated otherwise. This document describes implemented behavior; PRD.md remains the product requirements reference and coding_guidelines.md contains engineering constraints.
 
-The AnatoLearn codebase must be:
-- Maintainable and easy to extend
-- Cleanly separated between data, state, logic, and UI
-- Driven by authenticated user context: `role` and `program` come from the decoded JWT
-- Protected by auth guards on every app page
-- Role-gated only for pages or workflows that are student-only or teacher-only
-- Aligned with `design.md` for all UI layout, color, spacing, typography, and component visuals
-- Safe for Three.js scene lifecycle management: setup, resize, animation, raycasting, and cleanup
+## 1. System overview
 
----
+AnatoLearn combines a React learning/authoring interface, an Express API, PostgreSQL metadata, and locally stored teaching files. Students explore annotated models, watch videos, take assessments and open programme-specific resources. Teachers manage publication, programme assignment, download permissions, annotations, question banks and grading.
 
-## 2. High-Level Architecture
-
-```
-JWT authentication
-        ↓
-AppContext (role, program)
-        ↓
-React Router (public auth routes + protected app routes)
-        ↓
-Layout shell
-        ↓
-Page Components (Dashboard, Viewer, Videos, Quizzes, Library)
-        ↓
-Shared UI Components
-        ↓
-Three.js Scene (Viewer only, isolated in useEffect)
+```text
+Browser (same origin)
+  AppProvider -> ToastProvider -> ConfirmProvider -> BrowserRouter
+    ProtectedRoute -> Layout -> shared student/teacher pages
+    API client: Bearer JWT + HttpOnly media-session cookie
+    Viewer: local scene/resources + geometry and UI helpers
+         |
+         | /api, /models, /videos/<file>, /resources, /thumbnails
+         v
+Vite development/preview proxy (production requires equivalent reverse proxy)
+         |
+Express
+  access.js: authentication + publication/programme/download policy
+  server.js: content/account endpoints and authenticated file delivery
+  assessments.js: timed sessions, transactional submission/grading
+  quizQuestions.js: locked question mutations and historical-result protection
+  questionBank.js: reusable bank records and independent quiz copies
+  storage.js: local root, safe paths, validation, glTF dependency ownership
+         |
+  pg.Pool -> PostgreSQL 16        filesystem under PUBLIC_DIR
 ```
 
-### Layer Responsibilities
+There is no public static teaching-file middleware. Vite's public directory is disabled so a production build does not copy uploaded files into its output; development filesystem deny rules also block alternate `/public` and `/@fs` paths to teaching files/backend configuration.
 
-| Layer | Responsibility |
+## 2. Stack and runtime
+
+| Area | Manifest/configuration |
 |---|---|
-| Auth | Login, registration, JWT storage, logout, and protected-route access |
-| Context | JWT-derived role + program state; single source of truth for rendering |
-| Router | URL-to-page mapping, public auth routes, and protected app routes |
-| Layout | Persistent app shell for authenticated pages; visual details follow `design.md` |
-| Pages | Page data, local state, and JSX conditionals for role-specific controls |
-| Components | Reusable, typed UI building blocks; visual details follow `design.md` |
-| Three.js | 3D scene inside `Viewer.tsx`, isolated and cleaned up on unmount |
+| UI | React / React DOM ^19.2.6, TypeScript ~6.0.2 |
+| Navigation | react-router-dom ^7.17.0, BrowserRouter |
+| Build | Vite ^8.0.12, React plugin ^6.0.1 |
+| Styling | Tailwind ^3.4.19, PostCSS/Autoprefixer, Google Fonts |
+| Rendering | Three.js ^0.184.0; OrbitControls, GLTFLoader, OBJLoader, USDLoader, DecalGeometry |
+| Icons | lucide-react ^1.18.0; some SVG drawing/legacy icons remain |
+| Backend | Node 22 containers, Express ^4.21.2, cors, dotenv |
+| Authentication | jsonwebtoken ^9.0.2, bcryptjs ^2.4.3 |
+| Persistence | PostgreSQL 16, pg ^8.13.1, Multer ^2.2.0, local files |
 
----
+Versions are declared dependency ranges. `npm run build` runs TypeScript then Vite; `npm run lint` runs ESLint. Frontend tests are `test:viewer` and `test:models`; backend scripts are `test` and `test:integration`. TypeScript uses ES2023, bundler resolution and no emit; strict mode is not enabled.
 
-## 3. Project Structure
+## 3. Source responsibilities
 
-```
-src/
-├── context/
-│   └── AppContext.tsx        # JWT-derived role + program global state
-├── components/
-│   ├── Layout.tsx            # Persistent nav shell + <Outlet />
-│   └── ProtectedRoute.tsx    # Auth guard for protected app pages
-├── pages/
-│   ├── Login.tsx             # Public login page; UI follows design.md
-│   ├── Register.tsx          # Public registration page; UI follows design.md
-│   ├── Dashboard.tsx         # Dashboard page; UI follows design.md
-│   ├── Viewer.tsx            # 3D viewer page; UI follows design.md
-│   ├── Videos.tsx            # Videos page; UI follows design.md
-│   ├── Quizzes.tsx           # Quizzes page; UI follows design.md
-│   └── Library.tsx           # Library, materials, and links page; UI follows design.md
-├── App.tsx                   # BrowserRouter + Routes
-├── index.tsx                 # React root mount
-└── index.css                 # Tailwind imports
-```
-
----
-
-## 4. Dependency Direction
-
-```
-Auth services -> AppContext (set role/program from JWT)
-Pages -> Context (read role/program)
-Pages -> Components (render UI)
-Layout -> Context (render app controls)
-Viewer -> Three.js (isolated, no shared scene state)
-```
-
-**Rules:**
-- Context must not import from pages or components
-- Pages must not import from other page files
-- Shared components must not hardcode role-specific behavior
-- Three.js logic must not leak outside `Viewer.tsx`
-- UI layout and visual specifications must be read from `design.md`
-
----
-
-## 5. Global State - AppContext
-
-```tsx
-type Role = 'student' | 'teacher';
-type Program = 'PT' | 'OT' | 'Radiography' | 'Nursing';
-
-interface AppContextType {
-  role: Role;
-  setRole: (role: Role) => void;
-  program: Program;
-  setProgram: (program: Program) => void;
-}
-```
-
-- `role` and `program` are decoded from the authenticated user's JWT after login
-- `AppProvider` wraps the entire `<BrowserRouter>` tree
-- `useAppContext()` is consumed by pages and layout components
-- All role-specific UI reads only from the context `role`
-- Route authentication is handled by `ProtectedRoute`
-- Role guards are used only for pages or workflows that are exclusively student-only or teacher-only
-
----
-
-## 6. Routing
-
-```tsx
-<AppProvider>
-  <BrowserRouter>
-    <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route element={<ProtectedRoute />}>
-        <Route element={<Layout />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/3dviewer" element={<Viewer />} />
-          <Route path="/videos" element={<Videos />} />
-          <Route path="/quizzes" element={<Quizzes />} />
-          <Route path="/library" element={<Library />} />
-        </Route>
-      </Route>
-    </Routes>
-  </BrowserRouter>
-</AppProvider>
-```
-
-- `Login` and `Register` are public routes outside `Layout`
-- `ProtectedRoute` redirects unauthenticated users to `/login`
-- All app pages are children of `Layout`
-- Active nav link is determined by `useLocation().pathname`
-
----
-
-## 7. Three.js Architecture (Viewer Page)
-
-The 3D viewer is entirely isolated inside a `useEffect` in `Viewer.tsx`.
-
-### Refs (never stored in React state)
-
-```tsx
-const mountRef = useRef<HTMLDivElement>(null);
-const sceneRef = useRef<THREE.Scene | null>(null);
-const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-const controlsRef = useRef<OrbitControls | null>(null);
-const meshesRef = useRef<THREE.Mesh[]>([]);
-```
-
-### Setup (inside useEffect)
-
-1. Guard with `if (!mountRef.current) return`
-2. Create `THREE.Scene`; visual background follows `design.md`
-3. Create `THREE.PerspectiveCamera`
-4. Create `THREE.WebGLRenderer`, then append it to `mountRef.current`
-5. Create `OrbitControls`
-6. Add lighting
-7. Load or create anatomy model and label meshes
-8. Attach click listener for raycasting
-9. Attach window resize listener
-10. Start the `requestAnimationFrame` animation loop
-
-### Cleanup (useEffect return)
-
-- Cancel the animation frame
-- Remove window resize listener
-- Remove click listener from the mount element
-- Remove renderer DOM element from the mount element
-- Dispose all geometries
-- Dispose all materials
-- Dispose controls if available
-- Call `renderer.dispose()`
-
-### Resize Handler
-
-```tsx
-const handleResize = () => {
-  camera.aspect = mount.clientWidth / mount.clientHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(mount.clientWidth, mount.clientHeight);
-};
-window.addEventListener('resize', handleResize);
-```
-
-### Raycasting (click -> selection)
-
-- Use `THREE.Raycaster` to intersect `meshesRef.current`
-- Calculate mouse coordinates relative to the mount element
-- On hit: set `selectedPart` state and highlight the selected mesh
-- On miss while not adding a label: clear selection and reset highlights
-
-### State Managed In React
-
-```tsx
-const [selectedPart, setSelectedPart] = useState<AnatomyPart | null>(null);
-const [isAddingLabel, setIsAddingLabel] = useState(false);
-const [labels, setLabels] = useState<AnatomyPart[]>([]);
-const [showVideo, setShowVideo] = useState(false);
-```
-
----
-
-## 8. Role-Gated Rendering Pattern
-
-Role checks for shared pages belong in JSX conditionals. Auth checks belong in `ProtectedRoute`. Role route guards are only for pages or workflows that are exclusively student-only or teacher-only.
-
-```tsx
-{role === 'teacher' && <TeacherControls />}
-{role === 'student' ? <StudentSummary /> : <TeacherSummary />}
-```
-
----
-
-## 9. Anatomy Parts Data Model
-
-```tsx
-interface AnatomyPart {
-  id: string;
-  name: string;
-  description: string;
-  videoUrl: string;
-  color: number;
-  position: [number, number, number];
-}
-```
-
-In the full MVP, anatomy parts and labels are fetched from the backend. Temporary constants may be used only as mock fallback data during early development.
-
----
-
-## 10. Viewer Import Note
-
-OrbitControls must be imported from the addons path:
-
-```tsx
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-```
-
-Not the legacy `three/examples/` path.
-
----
-
-## 11. Data Flow - Video Play Example
-
-```
-User clicks video card or linked label video
-        ↓
-Local page state opens the video player
-        ↓
-User closes player
-        ↓
-Local state restores the previous view
-```
-
-No global state is needed for video play state.
-
----
-
-## 12. Performance Guidelines
-
-- Three.js animation loop must use `requestAnimationFrame`
-- Do not call `setState` inside the Three.js animation loop
-- Do not start animation loops in React render body
-- Refresh UI only when state changes; no polling for UI state
-- Three.js resize and click listeners must be removed on cleanup
-
----
-
-## 13. Extensibility Notes
-
-| Change | What to edit |
+| Path | Responsibility |
 |---|---|
-| Add new program | Add to `Program` type, backend validation, and Layout selector |
-| Add new nav item | Add entry to `navItems` array in `Layout.tsx` |
-| Add new video category | Add to backend/category data and Videos filter options |
-| Add new quiz type | Add to quiz type mapping |
-| Add new library file type | Add file type handling in `Library.tsx` |
-| Add new anatomy part | Add backend data record or mock fallback entry |
-| Swap mock data for API | Replace constants with authenticated API calls |
+| src/main.tsx | React root, StrictMode and global CSS |
+| src/App.tsx | provider composition and route tree |
+| src/api/api.ts | same-origin JSON/multipart calls, bearer headers, selected-programme header, downloads and session-expiry notification |
+| src/context/AppContext.tsx | identity/session, programme selection and theme provider |
+| src/context/AppContextState.ts | AppContext definition, identity types and useAppContext hook |
+| src/context/ToastContext.tsx / ToastContextState.ts | provider plus separate context/hook definitions for transient notifications |
+| src/context/ConfirmContext.tsx / ConfirmContextState.ts | promise-based confirmation provider plus separate context/hook definitions |
+| src/components/Layout.tsx | authenticated navigation, mobile menu, programme/theme/account controls and Outlet |
+| src/components/ProtectedRoute.tsx | frontend token-presence guard |
+| src/components/ContentSettings.tsx | teacher programme assignment, model download controls and quiz timer settings |
+| src/components/QuestionBank.tsx | searchable bank, body-system category editing, import and removal |
+| src/components/Dialog.tsx | dialog semantics, initial focus, focus trap, Escape and focus restoration |
+| src/components/viewer/ | viewer overlays, data/editor hooks, sampling, serialization and projection helpers |
+| src/types/anatomy.ts | shared model/annotation/payload/geometry types |
+| backend/src/access.js | JWT extraction/verification and content policy predicates |
+| backend/src/server.js | Express setup, content/account routes and asset access checks |
+| backend/src/assessments.js | assessment sessions, validation, transactional submission/grading |
+| backend/src/quizQuestions.js | locked question CRUD, derived quiz type and edit guards |
+| backend/src/questionBank.js | teacher-only reusable bank and copy-to-quiz endpoints |
+| backend/src/storage.js | local root/path resolution, model/resource validation and glTF reference checks |
+| backend/src/db.js | dotenv configuration and pg.Pool |
+| backend/sql/001..008 | initialization, seed data and additive schema changes |
+| backend/tests/ | policy/integration tests and disposable browser-fixture tooling |
+| tests/ | focused viewer-helper and model-parser regressions |
+| docs/ | setup, API, database, storage, formats and verification records |
 
----
+Provider components are separate from context/hook definitions so development hot reload does not replace a context while retaining consumers of the old object. These files share one context per concern. Pages consume contexts and the API client; they do not import other pages.
 
-## 14. Dependencies
+## 4. Routing and shell
 
-```json
-{
-  "react": "^18",
-  "react-dom": "^18",
-  "react-router-dom": "^6",
-  "three": "latest",
-  "lucide-react": "latest",
-  "typescript": "^5",
-  "tailwindcss": "^3",
-  "vite": "^5",
-  "postcss": "latest",
-  "autoprefixer": "latest"
-}
-```
+Provider order is AppProvider -> ToastProvider -> ConfirmProvider -> BrowserRouter. Public routes sit outside Layout; protected routes share its navigation shell.
 
-## Viewer responsibility boundaries (21 Oct 2026)
-On optimizingViewer, Viewer.tsx owns scene refs, marker/hotspot creation, hover/raycast handling, materials, cleanup, and panel-driven camera enable/disable behavior. AnnotationVisuals was reintegrated into this owner rather than exporting scene refs to a controller. Existing geometry utilities remain reusable. projectedMaskData receives plain projection-frame values instead of a live camera. Annotation panels/DraggablePanel receive DOM bounds and a drag-state callback, with no OrbitControls dependency.
-Data-only useViewerContent handles model/linked-video requests and stale-response guards without role/program duplication or Three.js state. Domain types belong to src/types/anatomy.ts so the API layer does not depend on Viewer components; the existing viewer/types path re-exports them. Pure annotationMapping and viewerMode helpers centralize persistence and mutually exclusive interaction transitions. Context remains the role/program source for UI; role props were removed from ViewerToolbar and AnnotationDetailsPanel.
+| Route | Component |
+|---|---|
+| / | redirect to /dashboard |
+| /login, /register | Login, Register |
+| /dashboard | Dashboard |
+| /3dviewer | ModelGallery |
+| /3dviewer/:modelId | Viewer |
+| /videos | Videos |
+| /videos/:videoId | VideoPlayer |
+| /quizzes | Quizzes |
+| /library | Library |
 
-### Viewer entry-point size reduction (21 Oct 2026)
-ViewerOverlay composes the existing controls/panels/dialogs using plain content data, DOM bounds, and callbacks. useAnnotationEditor owns the annotation form draft and API save workflow, receiving plain annotation snapshots and a numeric scene epoch through callbacks. Its onSaved callback hands the saved plain record back to Viewer for scene mutation. createAnnotationBadge produces a canvas image only; CanvasTexture creation remains in Viewer. This separates UI/persistence from scene ownership without extracting a scene controller. Viewer.tsx decreased from 1,413 to 1,167 lines in this step.
+There are no role-specific frontend routes. ProtectedRoute checks token presence; the backend verifies JWT validity and authorizes content. A JSON API 401 clears stored frontend identity and notifies AppProvider, causing protected content to redirect to Login. There is no refresh-token flow.
 
-### Annotation loading orchestration (21 Oct 2026)
-loadViewerAnnotations coordinates plain annotation records through injected repository and view callbacks. Viewer alone creates the visuals and hotspots; the loader persists only newly generated cached geometry and checks scene lifetime before view callbacks. Selection matching is pure data logic. useViewerContent handles neutral-view API persistence, while useAnnotationEditor handles delete persistence. A single mode ref mirrors the exclusive interaction mode for pointer events. This further reduces Viewer.tsx to 972 lines without exporting scene ownership.
+Layout uses pathname equality or a child-path prefix for active navigation. A hamburger menu exposes all five sections below md; account controls adapt to narrow widths. Shared Dialog wrappers trap keyboard focus, close through an explicit callback on Escape, and restore the invoking element's focus.
 
-### Drawing sample and event boundaries (21 Oct 2026)
-drawingSamples stores copied plain screen/world points and mesh indices; useDrawingSamples adds preview state without Three.js refs or global context. Viewer converts world snapshots to vectors only while calculating projections. bindViewerEvents receives a DOM canvas, event callbacks and resize target; its returned disposer detaches all listeners. Projected draft defaults are pure annotation data. Geometry/material creation, raycasting and disposal stay in Viewer.tsx, including ownership-aware disposal of invisible hit targets that share geometry with visible annotations. Latest file size: 859 lines.
+## 5. Identity, global state and session delivery
 
-The Viewer basicAnnotationVisuals helper returns plain sphere/triangle descriptions and material settings only. Viewer.tsx constructs all corresponding Three.js objects, registers them and disposes them; no scene references cross this boundary. Click and drawing model picking share a local raycast implementation.
+Registration accepts name, normalized email, password, student/teacher role and optional programme ID. It stores a bcrypt hash and returns an account, then the UI navigates to Login. Login returns `{ token, user }`; the JWT includes id, name, role and program_id, with a 24-hour expiry. Teacher self-registration remains available; there is no invitation/approval workflow.
 
-Viewer.tsx also centralizes scene-object registration, point-to-Vector3 conversion and camera/controls synchronization through local typed helpers. These helpers do not move scene ownership outside the page; they remove repeated lifecycle bookkeeping while keeping creation and cleanup visible in the Three.js layer.
+Login also sets `anatolearn_session`, an HttpOnly, SameSite=Lax cookie with a 24-hour maximum age and Secure in production. The cookie allows native image/video/document and model dependency requests to authenticate without URL tokens. API callers may use the Bearer header; it takes precedence over the cookie. Logout clears the cookie and frontend session storage. JWTs remain stateless: previously copied bearer tokens are not centrally revoked before expiry.
+
+| State | Ownership/persistence |
+|---|---|
+| token/user | AppProvider; sessionStorage anatolearn_token / anatolearn_user |
+| role | login response/stored user; development-only UI preview can change it |
+| program | selected display name; sessionStorage anatolearn_program, synchronized to account programme when Layout initializes |
+| theme | localStorage anatolearn_theme, initially OS preference or light; HTML root dark class |
+| notifications | ToastProvider, three-second success/error queue |
+| confirmation | ConfirmProvider, one pending choice |
+| filters/forms/assessment/annotation UI | page-local state or viewer hooks |
+
+The frontend still does not decode JWT claims. Identity for presentation comes from the login response; backend authorization uses verified JWT claims. The development role preview never alters backend permissions. The viewer canvas background remains a separate local light/dark option.
+
+## 6. Publication, programme and download policy
+
+`canRead` allows teachers to inspect content and drafts across programmes. Students can read only published records whose program_id matches their authenticated account, or whose program_id is null (shared content). This policy applies to lists, direct model/video reads, annotations, quiz questions/start/submit and asset requests; it is not dependent on a client `published=true` parameter.
+
+The API client sends the selected programme name in an encoded `X-Program-Name` header. List responses additionally filter to that programme plus shared records. A selector change reloads page lists and dashboard counts. Selecting another programme does not grant a student access beyond their account programme. Teachers can use ContentSettings to assign models, videos, quizzes and resources to a programme or to all programmes. Changing this assignment does not change the account's programme.
+
+Models have `is_downloadable`, default false. The download endpoint requires both read access and the flag, for students and teachers. Gallery buttons reflect the permission and teachers can enable/disable it. Viewing and downloading are separate application permissions; allowing WebGL rendering necessarily delivers model bytes to an authenticated browser. This is not DRM and cannot prevent a viewer from extracting received bytes.
+
+Attempt detail/answer reads require the owning student or a teacher. All student history queries use the authenticated user ID. Thumbnail writes are teacher-only. Student favourites accept only accessible content and reads exclude unpublished or other-programme records. Content-deletion triggers remove related favourite rows.
+
+## 7. HTTP and asset delivery
+
+API_BASE is `/api`; assets use relative same-origin paths. apiFetch includes credentials, Bearer headers and selected-programme headers, handles JSON/multipart content types, and surfaces backend messages. Downloads use authenticated blob fetches, Content-Disposition filenames, temporary object URLs and cleanup.
+
+CORS allows configured FRONTEND_ORIGINS, credentials and Content-Disposition exposure. Unsafe requests with an untrusted Origin are rejected. Default development origins are localhost ports 5173 and 4173. Express 4 route registration wraps promise-returning handlers so failures reach the JSON error middleware; upload/validation failures return client errors, unexpected failures a generic 500.
+
+Assets under /models, /videos, /resources and /thumbnails require authentication and a readable owning database record. Legacy glTF companions are permitted only when referenced by an accessible stored glTF model. Path resolution remains inside PUBLIC_DIR. Responses use private/no-store cache controls and nosniff; sendFile retains byte-range support for native media playback. There is no unrestricted static-file fallback.
+
+## 8. Pages and teacher workflows
+
+| Page | Implemented behavior |
+|---|---|
+| Dashboard | student attempt metrics, recent activity and favourites; teacher filtered content counts and management links |
+| ModelGallery | 300ms debounced title/description/system/part search, metadata filters, keyboard-activatable cards, preview, upload/edit/publication/delete, download and annotation export; programme/download settings |
+| Videos | local title search, playback, student favourites; teacher upload/edit/publication/delete, annotation linking and programme assignment |
+| VideoPlayer | dedicated native player, MP4/WebM source types, visible loading failure |
+| Quizzes | student timed/untimed attempts, scores, history and owned answer review; teacher authoring, question-bank copies, timer/programme settings, all student results and manual grading |
+| Library | searchable PDF/document/photo/link resources; teacher upload/metadata editing/publication/delete/programme assignment; authenticated Open and external Visit |
+
+Gallery cards support Enter/Space without intercepting nested controls. Headers and list rows wrap at narrow widths. Inputs and actions have shared focus-visible treatment. Some legacy viewer feedback still uses native alert dialogs; the application does not claim complete accessibility certification.
+
+## 9. Viewer ownership and lifecycle
+
+Viewer.tsx owns scene, camera, renderer, controls, source model/meshes, annotation markers, numbered sprite hotspots, hit targets and pending visuals through refs. React state holds annotations, interaction mode, selection, visibility and form/overlay state. No scene singleton or Three.js object is stored in React state.
+
+| Module | Boundary |
+|---|---|
+| useViewerContent | route validation, model/video API data, stale-response protection, neutral-view persistence |
+| useAnnotationEditor | draft/form state, save lock, create/update/delete calls, scene-epoch/mounted guards |
+| ViewerOverlay / panels | presentational composition, list expansion, linked video and drag callbacks |
+| drawingSamples / useDrawingSamples | plain screen/world/mesh-index samples and preview state |
+| bindViewerEvents | DOM subscriptions and unsubscribe closure |
+| annotationMapping | persisted/runtime kinds, payloads, draft defaults, identity matching |
+| loadViewerAnnotations | ordered loading/render callbacks and newly generated cache persistence |
+| basicAnnotationVisuals | plain descriptions for legacy/point visuals |
+| projectedMaskData | camera snapshot, projector bounds and normalized mask data |
+| projectedMask | alpha canvases, decal geometry/filtering/cache, painted-pixel hit testing and disposal |
+| createAnnotationBadge | badge canvas; Viewer owns resulting sprite texture/material |
+
+Projection helpers contain Three.js operations but no global scene state. Scene/resource ownership remains in Viewer; this differs from the older literal single-file guideline.
+
+The lifecycle effect creates a 75-degree perspective camera, antialiased renderer with pixel ratio capped at 2, damped OrbitControls, ambient/directional lighting and the model loader. GLTFLoader handles GLB/glTF, OBJLoader handles OBJ and USDLoader handles USDZ. The model is framed or restored to its saved neutral view. Reset falls back to computed framing even if no neutral view has been saved. Only teachers generate missing thumbnails.
+
+Drawing modes are view/point/highlight/region. Projection stores normalized mask points, projector orientation/position/size and the dominant source mesh. Decal geometry is filtered to the first visible surface, cached as arrays in JSONB and restored on reload. If filtering rejects every triangle, the helper retains the unfiltered fallback. Students can render old uncached annotations without attempting teacher-only cache writes.
+
+Teachers can move an existing annotation by choosing Move and clicking a new surface position. The anchor and legacy geometry are translated; projected geometry is regenerated against the hit source mesh. Annotation IDs and video links remain intact. Stale save responses are ignored. Selection/hover reveals the corresponding visual; list items and numbered hotspots expose label identity and details/video actions.
+
+Cleanup advances the scene epoch, cancels animation/thumbnail frames and region timers, unsubscribes events, clears hit targets/pending/annotation resources, disposes model geometry/materials/textures and controls/renderer, removes the canvas and clears refs. Late model loads dispose their results. The animation loop updates controls and renders without React state changes. Two existing exhaustive-dependency warning sites remain and are recorded in the test log.
+
+## 10. Assessments and question bank
+
+Teachers configure an optional time_limit_seconds between 30 and 86400. Starting a student attempt creates a UUID quiz_sessions row with student/quiz IDs, server start/deadline and a complete question snapshot. The response omits answer keys. The timer UI counts down to the server deadline and automatically submits on expiry; the backend accepts a ten-second transport grace and rejects later submissions. Untimed sessions have a null deadline. Cancel/navigation closes the session through an authenticated keepalive request when possible.
+
+Submission requires the owner's unused session and exactly one answer per snapshot question. Unknown/duplicate/missing questions and invalid MCQ options are rejected; unanswered questions are represented explicitly and score zero. A transaction locks the session, inserts the attempt and every answer, and consumes the session. Failures roll back everything; duplicate submission is rejected. MCQs grade immediately; open-ended questions set pending_review.
+
+Manual grading accepts only open-ended answers with finite scores from 0 to 100. It locks the parent attempt, updates the answer and recalculates the overall question-weighted percentage in one transaction when all open-ended answers have scores. Student history/review uses owner-authorized endpoints. Teacher View Results lists both graded and pending attempts with student names.
+
+Question mutations use a parent-quiz lock and transaction. Starting an assessment takes a shared parent lock while snapshotting, so concurrent edits cannot invalidate that snapshot. Quizzes with attempts or active sessions reject question edits/deletes/imports with 409; teachers create a new quiz for revised assessments. Quiz type is derived from its question formats.
+
+The teacher-only question bank stores independent MCQ/open-ended questions with body-system categories. Teachers save existing quiz questions to the bank, search/edit/remove bank records and copy them into other quizzes. Editing/deleting a bank item does not change its previously imported quiz copies.
+
+## 11. Database and migration history
+
+| Table | Purpose |
+|---|---|
+| programs, users | programme names and hashed-password role accounts |
+| models | paths, publication, programme/system/part, thumbnail, neutral view and download permission |
+| annotations | model FK, point/highlight/region_fill type, text/color and geometry JSONB |
+| videos | media path, publication/programme, optional annotation FK |
+| quizzes, quiz_questions | assessment metadata/timer and per-quiz questions/category/answer keys |
+| quiz_sessions | UUID, student/quiz, question snapshot, start/deadline/consumption |
+| question_bank | independent reusable questions and body-system categories |
+| quiz_attempts, quiz_attempt_answers | owner, score/status, responses and grading |
+| resources | pdf/document/image/link, path or URL, publication/programme |
+| downloads | best-effort authenticated model-download audit |
+| favorites | unique user/type/item reference, cleaned by content-deletion triggers |
+
+Shared types remain in src/types/anatomy.ts and are re-exported by components/viewer/types.ts. Runtime annotation kinds include point/draw/region/projectedDraw/projectedRegion; database kinds are point/highlight/region_fill. Projection cache, opacity and view data live in annotation_data JSONB.
+
+Fresh PostgreSQL volumes run 001 schema, 002 seed, 003 users, 004 model metadata/download audit, 005 attempt owners, 006 video links, 007 favourites and 008 access/assessments. Existing volumes must apply additive scripts explicitly; 008 has been applied to the local development database. Do not rerun destructive 001/002 initialization scripts against existing content. Existing models begin with downloads disabled; existing quizzes remain untimed. The original seed dataset is unchanged and still differs from PRD prototype fixtures.
+
+## 12. File storage and deployment
+
+| Asset | Directory under PUBLIC_DIR | Upload support | Limit |
+|---|---|---|---|
+| Models | models/anatomy | GLB 2.0, embedded glTF 2.0, OBJ, USDZ | 200 MiB |
+| Videos | videos | MP4/WebM | 200 MiB |
+| Materials | resources | PDF, DOC/DOCX, PNG/JPEG/WebP; HTTP(S) links store URL | 50 MiB |
+| Thumbnails | thumbnails/model-ID.png | teacher PNG-data submission | 10 MB JSON request limit |
+
+Upload filenames use UUIDs. Model validation checks GLB structure headers, glTF version/embedded dependencies, OBJ vertices/faces or USDZ archive signature. Material validation checks selected type, extension and basic file signatures. Legacy local glTF companions can be served through ownership checks; new multi-file glTF uploads must be converted to GLB or embedded glTF. OBJ currently loads geometry without a companion MTL upload workflow. USDZ support depends on the installed USDLoader's format subset; Unreal .uasset is rejected with an export-to-GLB instruction. See docs/3d_model_tools.md.
+
+storage.js centralizes the configured local root, safe resolution and validation, but local Multer/fs operations still remain in server.js. A full cloud storage adapter is future work. Database deletion generally does not delete old uploaded files automatically; backup/recovery and orphan-file maintenance remain separate operational work.
+
+Compose runs PostgreSQL 16 and Node 22 frontend/backend development services on 5432/5173/5000. PUBLIC_DIR=/public points to the mounted frontend public directory; outside Docker the default is backend/public. The frontend uses BACKEND_URL=http://backend:5000; local Vite defaults to localhost:5000. Polling watch modes support Windows bind mounts. DATABASE_URL, JWT_SECRET, PORT and FRONTEND_ORIGINS configure backend behavior. Compose uses development credentials/secrets and no database readiness health check.
+
+Production must serve the SPA/build plus the same-origin authenticated API/asset routes, preserve Range and cookie headers, configure HTTPS/Secure cookies/origins/secrets, and never expose PUBLIC_DIR through a separate static server. Vite preview is a verification server, not the production deployment architecture.
+
+## 13. Verification and remaining limits
+
+Current checks include TypeScript/Vite build, ESLint, 22 viewer helper tests, two OBJ/USDZ parser tests and database-backed policy/assessment integration tests. Browser QA covers teacher/student flows, native media, OBJ viewing/label movement, permissions, programme filtering, timed MCQ submission/history/review and keyboard dialog behavior. Exact evidence, counts and scope are in docs/testing_log.md.
+
+Remaining limits include the large viewer bundle warning, two viewer effect-dependency warnings, incomplete general API response typing, native alert feedback in parts of the viewer, no exhaustive Chrome/Edge/Firefox/Safari sweep, no full four-programme browser matrix, no GPU/concurrency performance certification, no binary USDC/USDZ compatibility matrix, and legacy requirements such as embedded annotation exports/cloud adapters that are outside this change. Documented current behavior does not waive unmet PRD requirements.

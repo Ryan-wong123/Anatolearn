@@ -1,6 +1,6 @@
 import type { AnnotationPayload, AnnotationRecord, ModelRecord } from '../types/anatomy';
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "/api";
 
 // Single source of truth for where the JWT lives in sessionStorage.
 // AppContext.tsx imports this too, so both stay in sync automatically.
@@ -18,15 +18,22 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
     const res = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
+        credentials: "include",
         headers: {
             // FormData sets its own multipart Content-Type + boundary —
             // setting it manually here would break file uploads.
             ...(isFormData ? {} : { "Content-Type": "application/json" }),
             ...getAuthHeaders(),
+            ...(sessionStorage.getItem("anatolearn_program") ? { "X-Program-Name": encodeURIComponent(sessionStorage.getItem("anatolearn_program")!) } : {}),
             ...(options.headers || {}),
         },
     });
 
+    if (res.status === 401 && !endpoint.startsWith('/auth/')) {
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+        sessionStorage.removeItem('anatolearn_user');
+        window.dispatchEvent(new Event('anatolearn-session-expired'));
+    }
     if (!res.ok) {
         // Surface the backend's own error message (e.g. "Invalid email or
         // password") instead of a generic "API error: 401" where possible —
@@ -54,6 +61,7 @@ function request(endpoint: string) {
 // triggers a normal browser save using the filename the server provided.
 async function downloadFile(endpoint: string) {
     const res = await fetch(`${API_BASE}${endpoint}`, {
+        credentials: "include",
         headers: { ...getAuthHeaders() },
     });
 
@@ -84,6 +92,18 @@ async function downloadFile(endpoint: string) {
 }
 
 export const api = {
+    logout: () => apiFetch('/auth/logout', { method: 'POST' }),
+    setProgram: (kind: string, id: number, program_id: number | null) => apiFetch(`/${kind}/${id}/program`, { method: 'PATCH', body: JSON.stringify({ program_id }) }),
+    setDownloadPermission: (id: number, is_downloadable: boolean) => apiFetch(`/models/${id}/download-permission`, { method: 'PATCH', body: JSON.stringify({ is_downloadable }) }),
+    setQuizTimer: (id: number, time_limit_seconds: number | null) => apiFetch(`/quizzes/${id}/timer`, { method: 'PATCH', body: JSON.stringify({ time_limit_seconds }) }),
+    cancelQuizSession: (id: string) => apiFetch(`/quiz-sessions/${id}/cancel`, {method:'POST',keepalive:true}),
+    startQuiz: (id: number) => apiFetch(`/quizzes/${id}/start`, { method: 'POST' }),
+    getAllAttempts: (id: number) => request(`/quizzes/${id}/attempts`),
+    getQuestionBank: () => request('/question-bank'),
+    bankQuestion: (id: number, category: string) => apiFetch(`/question-bank/from-question/${id}`, { method:'POST', body:JSON.stringify({category}) }),
+    importQuestion: (quizId: number, bankId: number) => apiFetch(`/quizzes/${quizId}/bank-questions/${bankId}`, {method:'POST'}),
+    deleteBankQuestion: (id: number) => apiFetch(`/question-bank/${id}`, {method:'DELETE'}),
+    updateBankQuestion: (id: number, data: object) => apiFetch(`/question-bank/${id}`, {method:'PUT',body:JSON.stringify(data)}),
     login: (email: string, password: string) =>
         apiFetch("/auth/login", {
             method: "POST",
@@ -224,7 +244,7 @@ export const api = {
     uploadResource: (data: {
         title: string;
         description?: string;
-        resource_type: 'pdf' | 'document' | 'link';
+        resource_type: 'pdf' | 'document' | 'link' | 'image';
         url?: string;
         file?: File;
         program_id?: number;
@@ -281,7 +301,7 @@ export const api = {
             method: 'PUT',
             body: JSON.stringify(data),
         }),
-    
+
     saveNeutralView: (
         id: number,
         neutralView: {
@@ -301,7 +321,7 @@ export const api = {
             method: 'PATCH',
             body: JSON.stringify(neutralView),
         }),
-        
+
     createQuiz: (data: {
         title: string;
         description?: string;
@@ -367,11 +387,12 @@ export const api = {
 
     submitQuiz: (
         quizId: number,
-        answers: { question_id: number; selected_option?: string; answer_text?: string }[]
+        answers: { question_id: number; selected_option?: string; answer_text?: string }[],
+        sessionId: string
     ) =>
         apiFetch(`/quizzes/${quizId}/submit`, {
             method: 'POST',
-            body: JSON.stringify({ answers }),
+            body: JSON.stringify({ answers, session_id: sessionId }),
         }),
 
     getPendingAttempts: (quizId: number) =>

@@ -168,4 +168,5 @@ export interface ModelRecord {
   file_path: string;
   thumbnail_path: string | null;
   neutral_view: NeutralView | null;
+  is_downloadable?: boolean;
 }

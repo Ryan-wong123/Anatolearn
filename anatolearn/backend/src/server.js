@@ -6,13 +6,27 @@ const pool = require("./db");
 const multer = require("multer");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { randomUUID } = require('crypto');
 
+const { authenticate, canRead, canDownload } = require('./access');
+const storage = require('./storage');
 const app = express();
+// Express 4 does not forward rejected async handlers by default.
+for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
+  const register = app[method].bind(app);
+  app[method] = (route, ...handlers) => register(route, ...handlers.map((handler) =>
+    (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)));
+}
+
+function cleanupFailedUpload(req,res,next) {
+  res.once('finish',()=>{ if (res.statusCode>=400 && req.file) void fs.unlink(req.file.path).catch(()=>{}); });
+  next();
+}
 
 const videoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const videosDir = path.join(
-      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      storage.ROOT,
       "videos"
     );
     fs.mkdir(videosDir, { recursive: true })
@@ -21,7 +35,7 @@ const videoStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const safeName = `video-${Date.now()}${ext}`;
+    const safeName = `video-${randomUUID()}${ext}`;
     cb(null, safeName);
   },
 });
@@ -43,7 +57,7 @@ const uploadVideo = multer({
 const modelStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const modelsDir = path.join(
-      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      storage.ROOT,
       "models/anatomy"
     );
     fs.mkdir(modelsDir, { recursive: true })
@@ -52,7 +66,7 @@ const modelStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const safeName = `model-${Date.now()}${ext}`;
+    const safeName = `model-${randomUUID()}${ext}`;
     cb(null, safeName);
   },
 });
@@ -61,25 +75,35 @@ const uploadModel = multer({
   storage: modelStorage,
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
   fileFilter: (req, file, cb) => {
-    const allowed = [".glb", ".gltf", ".obj"];
+    const allowed = [".glb", ".gltf", ".obj", ".usdz"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error("Only .glb, .gltf, and .obj files are allowed"));
+      cb(new Error("Only GLB, self-contained glTF, OBJ and USDZ files are allowed. Export Unreal .uasset files to GLB first."));
     }
   },
 });
 
 // exposedHeaders is required for the browser's fetch() to see
-// Content-Disposition across origins (frontend:5173 -> backend:5000) —
+// Content-Disposition across origins (frontend:5173 -> backend:5000) â€”
 // without it, the real filename from res.download()/annotation export is
 // invisible to client-side JS and downloads silently fall back to a
 // generic name. Not caught by curl-based testing since CORS is a
 // browser-only enforcement, only surfaced once tested in a real browser.
-app.use(cors({ exposedHeaders: ["Content-Disposition"] }));
+app.use(cors({ origin: (origin, callback) => {
+  const allowed = (process.env.FRONTEND_ORIGINS || 'http://localhost:5173,http://localhost:4173').split(',');
+  callback(null, !origin || allowed.includes(origin));
+}, credentials: true, exposedHeaders: ['Content-Disposition'] }));
+app.use((req, res, next) => {
+  if (!['GET','HEAD','OPTIONS'].includes(req.method) && req.headers.origin &&
+      !(process.env.FRONTEND_ORIGINS || 'http://localhost:5173,http://localhost:4173').split(',').includes(req.headers.origin)) {
+    return res.status(403).json({ message: 'Untrusted request origin' });
+  }
+  next();
+});
 app.use(express.json({ limit: "10mb" }));
-app.use(express.static(process.env.PUBLIC_DIR || path.join(__dirname, "../../public")));
+
 
 app.get("/api/health", async (req, res) => {
   try {
@@ -103,23 +127,6 @@ if (!JWT_SECRET) {
     "WARNING: JWT_SECRET is not set. /api/auth/login will fail until it's provided " +
       "(see docker-compose.yml's backend.environment block)."
   );
-}
-
-function authenticate(req, res, next) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-
-  const token = authHeader.slice("Bearer ".length);
-
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid or expired token" });
-  }
 }
 
 function requireTeacher(req, res, next) {
@@ -203,7 +210,7 @@ app.post("/api/auth/login", async (req, res) => {
       [normalizedEmail]
     );
 
-    // Same generic message whether the email doesn't exist or the password is wrong —
+    // Same generic message whether the email doesn't exist or the password is wrong â€”
     // don't reveal which one it was, that would let someone enumerate registered emails.
     const invalidCredentials = () =>
       res.status(401).json({ message: "Invalid email or password" });
@@ -225,6 +232,8 @@ app.post("/api/auth/login", async (req, res) => {
       { expiresIn: "24h" }
     );
 
+    res.cookie('anatolearn_session', token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 86400000, path: '/' });
+    res.setHeader('Cache-Control', 'no-store');
     res.json({
       token,
       user: {
@@ -241,13 +250,92 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('anatolearn_session', { path: '/' });
+  res.json({ message: 'Logged out' });
+});
+
+async function visibleRows(req, rows) {
+  const selected = req.headers['x-program-name'];
+  let selectedId;
+  if (selected) selectedId = (await pool.query('SELECT id FROM programs WHERE name = $1', [decodeURIComponent(selected)])).rows[0]?.id;
+  return rows.filter((row) => canRead(req.user, row) &&
+    (!selected || row.program_id == null || row.program_id === selectedId));
+}
+
+// Authorize direct reads, annotation reads and quiz sessions independently of list filters.
+app.use('/api', authenticate, (req, res, next) => {
+  (async () => {
+    const content = req.path.match(/^\/(models|videos|quizzes|resources)\/(\d+)(?:\/|$)/);
+    if (content && (req.method === 'GET' || /\/(submit|start)$/.test(req.path))) {
+      const row = (await pool.query(`SELECT * FROM ${content[1]} WHERE id = $1`, [content[2]])).rows[0];
+      if (!row || !canRead(req.user, row)) return res.status(404).json({ message: 'Content not found or unavailable' });
+    }
+    const attempt = req.path.match(/^\/attempts\/(\d+)(?:\/|$)/);
+    if (attempt) {
+      const row = (await pool.query('SELECT student_id FROM quiz_attempts WHERE id = $1', [attempt[1]])).rows[0];
+      if (!row || (req.user.role !== 'teacher' && row.student_id !== req.user.id)) return res.status(404).json({ message: 'Attempt not found' });
+    }
+    next();
+  })().catch(next);
+});
+
+// No public static fallback: every teaching file must belong to an accessible record.
+app.get(['/models/*', '/videos/*', '/resources/*', '/thumbnails/*'], authenticate, async (req, res) => {
+  const assetPath = decodeURIComponent(req.path);
+  const candidates = await pool.query(`SELECT program_id, is_published FROM models WHERE file_path = $1 OR thumbnail_path = $1
+    UNION ALL SELECT program_id, is_published FROM videos WHERE video_path = $1 OR thumbnail_path = $1
+    UNION ALL SELECT program_id, is_published FROM resources WHERE file_path = $1`, [assetPath]);
+  let allowed = candidates.rows.some((row) => canRead(req.user,row));
+  if (!allowed && assetPath.startsWith('/models/')) {
+    const models=(await pool.query("SELECT * FROM models WHERE file_path ILIKE '%.gltf'")).rows;
+    for (const model of models) if (canRead(req.user,model) && await storage.referencesAsset(model,assetPath)) { allowed=true; break; }
+  }
+  if (!allowed) return res.status(404).json({ message: 'Asset not found' });
+  const root = path.resolve(storage.ROOT);
+  const absolute = path.resolve(root, '.' + assetPath);
+  if (!absolute.startsWith(root + path.sep)) return res.status(400).json({ message: 'Invalid asset path' });
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.sendFile(absolute);
+});
+
+app.patch('/api/models/:id/download-permission', authenticate, requireTeacher, async (req, res) => {
+  if (typeof req.body.is_downloadable !== 'boolean') return res.status(400).json({ message: 'is_downloadable must be boolean' });
+  const result = await pool.query('UPDATE models SET is_downloadable=$1 WHERE id=$2 RETURNING *', [req.body.is_downloadable, req.params.id]);
+  if (!result.rows.length) return res.status(404).json({ message: 'Model not found' });
+  res.json(result.rows[0]);
+});
+
+app.patch('/api/:kind/:id/program', authenticate, requireTeacher, async (req, res) => {
+  if (!['models','videos','quizzes','resources'].includes(req.params.kind)) return res.sendStatus(404);
+  const id = req.body.program_id;
+  if (id !== null && (!Number.isSafeInteger(id) || id <= 0)) return res.status(400).json({ message: 'Invalid program ID' });
+  if (id !== null && !(await pool.query('SELECT id FROM programs WHERE id=$1',[id])).rows.length) return res.status(400).json({message:'Programme not found'});
+  const result = await pool.query(`UPDATE ${req.params.kind} SET program_id=$1 WHERE id=$2 RETURNING *`, [id, req.params.id]);
+  if (!result.rows.length) return res.status(404).json({ message: 'Content not found' });
+  res.json(result.rows[0]);
+});
+
+require('./assessments').registerAssessments(app, pool, authenticate, requireTeacher);
+require('./questionBank').registerQuestionBank(app, pool, authenticate, requireTeacher);
+require('./quizQuestions').registerQuizQuestions(app, pool, authenticate, requireTeacher);
+
+app.patch('/api/quizzes/:id/timer', authenticate, requireTeacher, async (req, res) => {
+  const seconds = req.body.time_limit_seconds;
+  if (seconds !== null && (!Number.isInteger(seconds) || seconds < 30 || seconds > 86400)) return res.status(400).json({ message: 'Timer must be 30–86400 seconds, or null' });
+  const quiz = (await pool.query('UPDATE quizzes SET time_limit_seconds=$1 WHERE id=$2 RETURNING *', [seconds,req.params.id])).rows[0];
+  if (!quiz) return res.sendStatus(404);
+  res.json(quiz);
+});
+
 app.get("/api/models", authenticate, async (req, res) => {
   const { published, system, part, q } = req.query;
 
   const conditions = [];
   const values = [];
 
-  if (published === "true") {
+  if (published === "true" || req.user.role === "student") {
     conditions.push("is_published = true");
   }
   if (system) {
@@ -260,7 +348,7 @@ app.get("/api/models", authenticate, async (req, res) => {
   }
   if (q) {
     values.push(`%${q}%`);
-    conditions.push(`(title ILIKE $${values.length} OR description ILIKE $${values.length})`);
+    conditions.push(`(title ILIKE $${values.length} OR description ILIKE $${values.length} OR body_system ILIKE $${values.length} OR body_part ILIKE $${values.length})`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -268,7 +356,7 @@ app.get("/api/models", authenticate, async (req, res) => {
     `SELECT * FROM models ${whereClause} ORDER BY id`,
     values
   );
-  res.json(result.rows);
+  res.json(await visibleRows(req, result.rows));
 });
 
 app.get("/api/models/:id", authenticate, async (req, res) => {
@@ -283,12 +371,14 @@ app.get("/api/models/:id", authenticate, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.post("/api/models/upload", authenticate, requireTeacher, uploadModel.single("model"), async (req, res) => {
+app.post("/api/models/upload", authenticate, requireTeacher, uploadModel.single("model"), cleanupFailedUpload, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No model file uploaded" });
     }
 
+    try { await storage.validateModel(req.file); }
+    catch (error) { await fs.unlink(req.file.path).catch(()=>{}); throw error; }
     const { title, description, program_id, body_system, body_part } = req.body;
 
     if (!title) {
@@ -307,7 +397,7 @@ app.post("/api/models/upload", authenticate, requireTeacher, uploadModel.single(
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error("Failed to upload model:", err);
-    res.status(500).json({ message: err.message || "Failed to upload model" });
+    res.status(err.status || 500).json({ message: err.message || "Failed to upload model" });
   }
 });
 
@@ -430,17 +520,17 @@ app.get("/api/models/:id/download", authenticate, async (req, res) => {
     const model = result.rows[0];
 
     // Teachers can download any model; students only published ones.
-    if (req.user.role !== "teacher" && !model.is_published) {
+    if (!canDownload(req.user, model)) {
       return res.status(403).json({ message: "This model is not available for download" });
     }
 
-    const publicDir = process.env.PUBLIC_DIR || path.join(__dirname, "../../public");
+    const publicDir = storage.ROOT;
     const absolutePath = path.join(publicDir, model.file_path);
     const ext = path.extname(model.file_path);
     const safeTitle = model.title.replace(/[^a-z0-9_-]+/gi, "_");
     const downloadName = `${safeTitle}${ext}`;
 
-    // Best-effort logging — a failed insert shouldn't block the actual download.
+    // Best-effort logging â€” a failed insert shouldn't block the actual download.
     try {
       await pool.query(
         "INSERT INTO downloads (model_id, downloaded_by) VALUES ($1, $2)",
@@ -462,7 +552,7 @@ app.get("/api/models/:id/download", authenticate, async (req, res) => {
   }
 });
 
-app.patch("/api/models/:id/thumbnail", authenticate, async (req, res) => {
+app.patch("/api/models/:id/thumbnail", authenticate, requireTeacher, async (req, res) => {
   try {
     const { thumbnailDataUrl } = req.body;
 
@@ -473,7 +563,7 @@ app.patch("/api/models/:id/thumbnail", authenticate, async (req, res) => {
     const base64Data = thumbnailDataUrl.replace(/^data:image\/png;base64,/, "");
 
     const thumbnailsDir = path.join(
-      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      storage.ROOT,
       "thumbnails"
     );
     await fs.mkdir(thumbnailsDir, { recursive: true });
@@ -514,7 +604,7 @@ app.get("/api/models/:id/annotations", authenticate, async (req, res) => {
   res.json(result.rows);
 });
 
-// Task 10.2 — exports from `annotations`, not a `labels` table (see
+// Task 10.2 â€” exports from `annotations`, not a `labels` table (see
 // docs/database_schema.md for why). Route path uses /annotations/export
 // rather than the originally-specified /labels/export to match the real
 // data model.
@@ -535,7 +625,7 @@ app.get("/api/models/:id/annotations/export", authenticate, requireTeacher, asyn
     }
 
     // CSV: common fields are flattened into columns; annotation_data (which
-    // varies by annotation_type — point/highlight/region) is stringified
+    // varies by annotation_type â€” point/highlight/region) is stringified
     // into its own column rather than split out, since a single flat
     // schema doesn't fit all three annotation shapes cleanly.
     const escapeCsv = (value) => {
@@ -570,7 +660,7 @@ app.post("/api/models/:id/annotations", authenticate, requireTeacher, async (req
   const { annotation_type, label, description, color, annotation_data } = req.body;
 
   const result = await pool.query(
-    `INSERT INTO annotations 
+    `INSERT INTO annotations
       (model_id, annotation_type, label, description, color, annotation_data)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
@@ -626,20 +716,20 @@ app.put("/api/annotations/:id", authenticate, requireTeacher, async (req, res) =
 app.get("/api/videos", authenticate, async (req, res) => {
   const { published } = req.query;
 
-  if (published === "true") {
+  if (published === "true" || req.user.role === "student") {
     const result = await pool.query(
       "SELECT * FROM videos WHERE is_published = true ORDER BY id"
     );
-    return res.json(result.rows);
+    return res.json(await visibleRows(req, result.rows));
   }
 
   const result = await pool.query("SELECT * FROM videos ORDER BY id");
-  res.json(result.rows);
+  res.json(await visibleRows(req, result.rows));
 });
 
-// Task 7.6 — list every annotation across every model, with its model's
+// Task 7.6 â€” list every annotation across every model, with its model's
 // title joined in, so the video edit form can offer a meaningful picker
-// ("Aortic Valve — Heart Cross Section") rather than a bare list of ids.
+// ("Aortic Valve â€” Heart Cross Section") rather than a bare list of ids.
 // Teacher-only: this is only ever used from the video edit form.
 app.get("/api/annotations", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
@@ -663,7 +753,7 @@ app.get("/api/videos/:id", authenticate, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideo.single("video"), async (req, res) => {
+app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideo.single("video"), cleanupFailedUpload, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No video file uploaded" });
@@ -741,15 +831,15 @@ app.put("/api/videos/:id", authenticate, requireTeacher, async (req, res) => {
 app.get("/api/quizzes", authenticate, async (req, res) => {
   const { published } = req.query;
 
-  if (published === "true") {
+  if (published === "true" || req.user.role === "student") {
     const result = await pool.query(
       "SELECT * FROM quizzes WHERE is_published = true ORDER BY id"
     );
-    return res.json(result.rows);
+    return res.json(await visibleRows(req, result.rows));
   }
 
   const result = await pool.query("SELECT * FROM quizzes ORDER BY id");
-  res.json(result.rows);
+  res.json(await visibleRows(req, result.rows));
 });
 
 app.get("/api/quizzes/:id/questions", authenticate, async (req, res) => {
@@ -766,96 +856,6 @@ app.get("/api/quizzes/:id/questions", authenticate, async (req, res) => {
   );
 
   res.json(result.rows);
-});
-
-app.post("/api/quizzes/:id/submit", authenticate, async (req, res) => {
-  if (req.user.role !== "student") {
-    return res.status(403).json({ message: "Only students can submit quiz attempts" });
-  }
-  const { answers } = req.body;
-
-  if (!Array.isArray(answers)) {
-    return res.status(400).json({ message: "answers must be an array" });
-  }
-
-  try {
-    const questionsResult = await pool.query(
-      "SELECT id, format, correct_option FROM quiz_questions WHERE quiz_id = $1",
-      [req.params.id]
-    );
-
-    const questionMap = {};
-    questionsResult.rows.forEach((q) => {
-      questionMap[q.id] = q;
-    });
-
-    const total = questionsResult.rows.length;
-    let correctCount = 0;
-    let mcqCount = 0;
-    let hasOpenEnded = false;
-
-    const gradedAnswers = answers.map(({ question_id, selected_option, answer_text }) => {
-      const q = questionMap[question_id];
-
-      if (!q) {
-        return { question_id, selected_option: selected_option || null, answer_text: answer_text || null, is_correct: null };
-      }
-
-      if (q.format === "mcq") {
-        mcqCount++;
-        const isCorrect = q.correct_option === selected_option;
-        if (isCorrect) correctCount++;
-        return { question_id, selected_option: selected_option || null, answer_text: null, is_correct: isCorrect };
-      } else {
-        hasOpenEnded = true;
-        return { question_id, selected_option: null, answer_text: answer_text || null, is_correct: null };
-      }
-    });
-
-    const status = hasOpenEnded ? "pending_review" : "graded";
-    const score = status === "graded" && total > 0 ? Math.round((correctCount / total) * 100) : null;
-
-    const attemptResult = await pool.query(
-      `INSERT INTO quiz_attempts (quiz_id, student_id, score, total_questions, correct_count, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [req.params.id, req.user.id, score, total, status === "graded" ? correctCount : null, status]
-    );
-
-    const attempt = attemptResult.rows[0];
-
-    for (const ans of gradedAnswers) {
-      await pool.query(
-        `INSERT INTO quiz_attempt_answers (attempt_id, question_id, selected_option, answer_text, is_correct)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [attempt.id, ans.question_id, ans.selected_option, ans.answer_text, ans.is_correct]
-      );
-    }
-
-    const feedback = gradedAnswers
-      .filter((a) => questionMap[a.question_id]?.format === "mcq")
-      .map((a) => ({
-        question_id: a.question_id,
-        selected_option: a.selected_option,
-        correct_option: questionMap[a.question_id].correct_option,
-        is_correct: a.is_correct,
-      }));
-
-    res.json({
-      attempt,
-      status,
-      score,
-      total,
-      correct: status === "graded" ? correctCount : null,
-      incorrect: status === "graded" ? total - correctCount : null,
-      mcq_count: mcqCount,
-      open_ended_count: total - mcqCount,
-      feedback,
-    });
-  } catch (err) {
-    console.error("Failed to submit quiz:", err);
-    res.status(500).json({ message: "Failed to submit quiz" });
-  }
 });
 
 app.post("/api/quizzes", authenticate, requireTeacher, async (req, res) => {
@@ -877,54 +877,6 @@ app.post("/api/quizzes", authenticate, requireTeacher, async (req, res) => {
   } catch (err) {
     console.error("Failed to create quiz:", err);
     res.status(500).json({ message: "Failed to create quiz" });
-  }
-});
-
-app.post("/api/quizzes/:id/questions", authenticate, requireTeacher, async (req, res) => {
-  const { question, format, option_a, option_b, option_c, option_d, correct_option, model_answer } = req.body;
-
-  if (!question) {
-    return res.status(400).json({ message: "question is required" });
-  }
-
-  const questionFormat = format === "open_ended" ? "open_ended" : "mcq";
-
-  if (questionFormat === "mcq") {
-    if (!option_a || !option_b || !option_c || !option_d || !correct_option) {
-      return res.status(400).json({ message: "MCQ questions require all 4 options and a correct_option" });
-    }
-    if (!["A", "B", "C", "D"].includes(correct_option)) {
-      return res.status(400).json({ message: "correct_option must be A, B, C, or D" });
-    }
-  } else {
-    if (!model_answer) {
-      return res.status(400).json({ message: "Open-ended questions require a model_answer" });
-    }
-  }
-
-  try {
-    const result = await pool.query(
-      `INSERT INTO quiz_questions
-        (quiz_id, question, format, option_a, option_b, option_c, option_d, correct_option, model_answer)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
-      [
-        req.params.id,
-        question,
-        questionFormat,
-        questionFormat === "mcq" ? option_a : null,
-        questionFormat === "mcq" ? option_b : null,
-        questionFormat === "mcq" ? option_c : null,
-        questionFormat === "mcq" ? option_d : null,
-        questionFormat === "mcq" ? correct_option : null,
-        questionFormat === "open_ended" ? model_answer : null,
-      ]
-    );
-
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error("Failed to create question:", err);
-    res.status(500).json({ message: "Failed to create question" });
   }
 });
 
@@ -994,6 +946,11 @@ app.patch("/api/quizzes/:id/publish", authenticate, requireTeacher, async (req, 
   res.json(result.rows[0]);
 });
 
+app.get('/api/quizzes/:id/attempts', authenticate, requireTeacher, async (req, res) => {
+  const result = await pool.query(`SELECT qa.*, u.name AS student_name FROM quiz_attempts qa LEFT JOIN users u ON u.id=qa.student_id WHERE quiz_id=$1 ORDER BY attempted_at DESC`, [req.params.id]);
+  res.json(result.rows);
+});
+
 app.get("/api/quizzes/:id/attempts/pending", authenticate, requireTeacher, async (req, res) => {
   const result = await pool.query(
     `SELECT * FROM quiz_attempts WHERE quiz_id = $1 AND status = 'pending_review' ORDER BY attempted_at`,
@@ -1002,9 +959,9 @@ app.get("/api/quizzes/:id/attempts/pending", authenticate, requireTeacher, async
   res.json(result.rows);
 });
 
-// Task 8.8 — real student attempt history, now possible since auth exists.
+// Task 8.8 â€” real student attempt history, now possible since auth exists.
 // Scoped to req.user.id, not a :studentId param, so a student can only ever
-// see their own attempts — there's no way to pass someone else's id here.
+// see their own attempts â€” there's no way to pass someone else's id here.
 app.get("/api/students/me/attempts", authenticate, async (req, res) => {
   const result = await pool.query(
     `SELECT qa.id, qa.quiz_id, q.title AS quiz_title, qa.score, qa.status, qa.attempted_at
@@ -1019,7 +976,7 @@ app.get("/api/students/me/attempts", authenticate, async (req, res) => {
 
 app.get("/api/attempts/:id/answers", authenticate, async (req, res) => {
   const result = await pool.query(
-    `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option
+    `SELECT qaa.*, qq.question, qq.format, qq.model_answer, qq.correct_option, qq.option_a, qq.option_b, qq.option_c, qq.option_d
      FROM quiz_attempt_answers qaa
      JOIN quiz_questions qq ON qq.id = qaa.question_id
      WHERE qaa.attempt_id = $1
@@ -1042,149 +999,24 @@ app.get("/api/attempts/:id", authenticate, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.patch("/api/attempt-answers/:id/grade", authenticate, requireTeacher, async (req, res) => {
-  const { teacher_score } = req.body;
-
-  if (typeof teacher_score !== "number" || teacher_score < 0 || teacher_score > 100) {
-    return res.status(400).json({ message: "teacher_score must be a number between 0 and 100" });
-  }
-
-  try {
-    const updateResult = await pool.query(
-      `UPDATE quiz_attempt_answers SET teacher_score = $1, is_correct = $2 WHERE id = $3 RETURNING *`,
-      [teacher_score, teacher_score >= 50, req.params.id]
-    );
-
-    if (updateResult.rows.length === 0) {
-      return res.status(404).json({ message: "Answer not found" });
-    }
-
-    const answer = updateResult.rows[0];
-
-    const allAnswers = await pool.query(
-      `SELECT qaa.*, qq.format
-       FROM quiz_attempt_answers qaa
-       JOIN quiz_questions qq ON qq.id = qaa.question_id
-       WHERE qaa.attempt_id = $1`,
-      [answer.attempt_id]
-    );
-
-    const stillPending = allAnswers.rows.some(
-      (a) => a.format === "open_ended" && a.teacher_score === null
-    );
-
-    if (!stillPending) {
-      const mcqCorrect = allAnswers.rows.filter((a) => a.format === "mcq" && a.is_correct).length;
-      const mcqCount = allAnswers.rows.filter((a) => a.format === "mcq").length;
-      const openEndedTotal = allAnswers.rows
-        .filter((a) => a.format === "open_ended")
-        .reduce((sum, a) => sum + (a.teacher_score || 0), 0);
-      const openEndedCount = allAnswers.rows.filter((a) => a.format === "open_ended").length;
-      const totalQuestions = allAnswers.rows.length;
-
-      const mcqPercent = mcqCount > 0 ? (mcqCorrect / mcqCount) * 100 : 0;
-      const openEndedPercent = openEndedCount > 0 ? openEndedTotal / openEndedCount : 0;
-      const openEndedWeight = totalQuestions > 0 ? openEndedCount / totalQuestions : 0;
-      const mcqWeight = 1 - openEndedWeight;
-
-      const finalScore = Math.round(mcqPercent * mcqWeight + openEndedPercent * openEndedWeight);
-
-      await pool.query(
-        `UPDATE quiz_attempts SET score = $1, correct_count = $2, status = 'graded' WHERE id = $3`,
-        [finalScore, mcqCorrect, answer.attempt_id]
-      );
-    }
-
-    res.json(answer);
-  } catch (err) {
-    console.error("Failed to grade answer:", err);
-    res.status(500).json({ message: "Failed to grade answer" });
-  }
-});
-
-app.delete("/api/questions/:id", authenticate, requireTeacher, async (req, res) => {
-  const result = await pool.query(
-    "DELETE FROM quiz_questions WHERE id = $1 RETURNING *",
-    [req.params.id]
-  );
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ message: "Question not found" });
-  }
-
-  res.json({ message: "Question deleted" });
-});
-
-app.put("/api/questions/:id", authenticate, requireTeacher, async (req, res) => {
-  const { question, format, option_a, option_b, option_c, option_d, correct_option, model_answer } = req.body;
-
-  if (!question) {
-    return res.status(400).json({ message: "question is required" });
-  }
-
-  const questionFormat = format === "open_ended" ? "open_ended" : "mcq";
-
-  if (questionFormat === "mcq") {
-    if (!option_a || !option_b || !option_c || !option_d || !correct_option) {
-      return res.status(400).json({ message: "MCQ questions require all 4 options and a correct_option" });
-    }
-    if (!["A", "B", "C", "D"].includes(correct_option)) {
-      return res.status(400).json({ message: "correct_option must be A, B, C, or D" });
-    }
-  } else {
-    if (!model_answer) {
-      return res.status(400).json({ message: "Open-ended questions require a model_answer" });
-    }
-  }
-
-  try {
-    const result = await pool.query(
-      `UPDATE quiz_questions
-       SET question = $1, format = $2, option_a = $3, option_b = $4, option_c = $5, option_d = $6, correct_option = $7, model_answer = $8
-       WHERE id = $9
-       RETURNING *`,
-      [
-        question,
-        questionFormat,
-        questionFormat === "mcq" ? option_a : null,
-        questionFormat === "mcq" ? option_b : null,
-        questionFormat === "mcq" ? option_c : null,
-        questionFormat === "mcq" ? option_d : null,
-        questionFormat === "mcq" ? correct_option : null,
-        questionFormat === "open_ended" ? model_answer : null,
-        req.params.id,
-      ]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Question not found" });
-    }
-
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error("Failed to update question:", err);
-    res.status(500).json({ message: "Failed to update question" });
-  }
-});
-
 app.get("/api/resources", authenticate, async (req, res) => {
   const { published } = req.query;
 
-  if (published === "true") {
+  if (published === "true" || req.user.role === "student") {
     const result = await pool.query(
       "SELECT * FROM resources WHERE is_published = true ORDER BY id"
     );
-    return res.json(result.rows);
+    return res.json(await visibleRows(req, result.rows));
   }
 
   const result = await pool.query("SELECT * FROM resources ORDER BY id");
-  res.json(result.rows);
+  res.json(await visibleRows(req, result.rows));
 });
 
 const resourceStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const resourcesDir = path.join(
-      process.env.PUBLIC_DIR || path.join(__dirname, "../../public"),
+      storage.ROOT,
       "resources"
     );
     fs.mkdir(resourcesDir, { recursive: true })
@@ -1193,7 +1025,7 @@ const resourceStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const safeName = `resource-${Date.now()}${ext}`;
+    const safeName = `resource-${randomUUID()}${ext}`;
     cb(null, safeName);
   },
 });
@@ -1202,25 +1034,25 @@ const uploadResource = multer({
   storage: resourceStorage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
-    const allowed = [".pdf", ".doc", ".docx"];
+    const allowed = [".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".webp"];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowed.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error("Only .pdf, .doc, and .docx files are allowed"));
+      cb(new Error("Only PDF, DOC/DOCX, PNG, JPEG and WebP files are allowed"));
     }
   },
 });
 
-app.post("/api/resources/upload", authenticate, requireTeacher, uploadResource.single("file"), async (req, res) => {
+app.post("/api/resources/upload", authenticate, requireTeacher, uploadResource.single("file"), cleanupFailedUpload, async (req, res) => {
   try {
     const { title, description, resource_type, url, program_id } = req.body;
 
     if (!title) {
       return res.status(400).json({ message: "title is required" });
     }
-    if (!resource_type || !["pdf", "document", "link"].includes(resource_type)) {
-      return res.status(400).json({ message: "resource_type must be pdf, document, or link" });
+    if (!resource_type || !["pdf", "document", "link", "image"].includes(resource_type)) {
+      return res.status(400).json({ message: "resource_type must be pdf, document, image, or link" });
     }
 
     let filePath;
@@ -1228,11 +1060,14 @@ app.post("/api/resources/upload", authenticate, requireTeacher, uploadResource.s
       if (!url) {
         return res.status(400).json({ message: "url is required for link resources" });
       }
+      try { if (!['http:','https:'].includes(new URL(url).protocol)) throw new Error(); } catch { return res.status(400).json({message:'Use an HTTP or HTTPS reference URL'}); }
       filePath = url;
     } else {
       if (!req.file) {
         return res.status(400).json({ message: "file is required for pdf/document resources" });
       }
+      try { await storage.validateResource(req.file,resource_type); }
+      catch(error) { await fs.unlink(req.file.path).catch(()=>{}); return res.status(400).json({message:error.message}); }
       filePath = `/resources/${req.file.filename}`;
     }
 
@@ -1278,7 +1113,7 @@ app.put("/api/resources/:id", authenticate, requireTeacher, async (req, res) => 
 
     const resource = existing.rows[0];
 
-    // Only link-type resources can have their URL edited here — pdf/document
+    // Only link-type resources can have their URL edited here â€” pdf/document
     // resources are tied to an uploaded file and would need a re-upload flow,
     // which is out of scope for this edit action.
     let filePath = resource.file_path;
@@ -1286,6 +1121,7 @@ app.put("/api/resources/:id", authenticate, requireTeacher, async (req, res) => 
       if (!url || !url.trim()) {
         return res.status(400).json({ message: "url is required for link resources" });
       }
+      try { if (!['http:','https:'].includes(new URL(url).protocol)) throw new Error(); } catch { return res.status(400).json({message:'Use an HTTP or HTTPS reference URL'}); }
       filePath = url;
     }
 
@@ -1316,7 +1152,7 @@ app.patch("/api/resources/:id/publish", authenticate, requireTeacher, async (req
   res.json(result.rows[0]);
 });
 
-// Favorites — students can save videos or quizzes for quick access from
+// Favorites â€” students can save videos or quizzes for quick access from
 // the Dashboard. Teachers don't get this (they manage content, they don't
 // consume it), so every route here is student-only.
 
@@ -1326,9 +1162,9 @@ app.get("/api/favorites", authenticate, requireStudent, async (req, res) => {
             v.id, v.title, v.description, v.thumbnail_path, v.is_published
      FROM favorites f
      JOIN videos v ON v.id = f.item_id
-     WHERE f.user_id = $1 AND f.item_type = 'video'
+     WHERE f.user_id = $1 AND f.item_type = 'video' AND v.is_published AND (v.program_id IS NULL OR v.program_id = $2)
      ORDER BY f.created_at DESC`,
-    [req.user.id]
+    [req.user.id, req.user.program_id]
   );
 
   const quizFavorites = await pool.query(
@@ -1336,9 +1172,9 @@ app.get("/api/favorites", authenticate, requireStudent, async (req, res) => {
             q.id, q.title, q.description, q.type, q.category, q.is_published
      FROM favorites f
      JOIN quizzes q ON q.id = f.item_id
-     WHERE f.user_id = $1 AND f.item_type = 'quiz'
+     WHERE f.user_id = $1 AND f.item_type = 'quiz' AND q.is_published AND (q.program_id IS NULL OR q.program_id = $2)
      ORDER BY f.created_at DESC`,
-    [req.user.id]
+    [req.user.id, req.user.program_id]
   );
 
   res.json({
@@ -1355,6 +1191,9 @@ app.post("/api/favorites", authenticate, requireStudent, async (req, res) => {
   }
 
   try {
+    const table = item_type === 'video' ? 'videos' : 'quizzes';
+    const row = (await pool.query(`SELECT * FROM ${table} WHERE id=$1`, [item_id])).rows[0];
+    if (!row || !canRead(req.user, row)) return res.status(404).json({ message: 'Content unavailable' });
     const result = await pool.query(
       `INSERT INTO favorites (user_id, item_type, item_id)
        VALUES ($1, $2, $3)
@@ -1363,7 +1202,7 @@ app.post("/api/favorites", authenticate, requireStudent, async (req, res) => {
       [req.user.id, item_type, item_id]
     );
 
-    // Already favorited (ON CONFLICT DO NOTHING returned no row) — not an
+    // Already favorited (ON CONFLICT DO NOTHING returned no row) â€” not an
     // error, just nothing new to report.
     res.status(201).json(result.rows[0] || { message: "Already favorited" });
   } catch (err) {
@@ -1387,8 +1226,16 @@ app.delete("/api/favorites/:item_type/:item_id", authenticate, requireStudent, a
   res.json(result.rows[0] || { message: "Not favorited" });
 });
 
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (res.headersSent) return next(err);
+  const status = err instanceof multer.MulterError || /Only .*allowed/.test(err.message) ? 400 : (err.status || 500);
+  res.status(status).json({ message: status === 500 ? 'The request could not be completed' : err.message });
+});
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+if (require.main === module) app.listen(PORT, () => {
   console.log(`AnatoLearn backend running on port ${PORT}`);
-}); 
+});
+module.exports = app;

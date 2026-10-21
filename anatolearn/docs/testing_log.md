@@ -615,3 +615,46 @@ Reduced Viewer.tsx from 859 to 810 lines. Production TypeScript/Vite build passe
 
 ### Final Viewer consolidation - 21 Oct 2026
 Reduced Viewer.tsx from 810 to 760 physical lines by consolidating scene registration, hotspot/hit-target construction, point conversion and camera synchronization. Production build and all 22 Viewer tests pass. Focused ESLint reports zero errors and the same two effect-dependency warnings; the existing large-bundle warning remains. Docker images rebuilt and all three services started. Browser verification used a temporary teacher and point annotation to confirm model loading, numbered annotation rendering, list selection, camera focus and details rendering with no console warnings/errors. Both temporary records were deleted afterward. Responsive and four-program checks were not repeated. No API, schema or storage changes.
+
+## Architecture and design documentation audit - 21 October 2026
+
+Rewrote repository-root Architecture.md against the current frontend, viewer modules, API client, Express server, SQL scripts, manifests and Docker configuration. Replaced the earlier design specification with the implemented light/dark palette, typography, page layouts, role controls, viewer panels, dialogs and breakpoint behavior. Added current-reference guidance to docs/README.md. No application, API, schema or asset behavior changed.
+
+Verification for this pass:
+- Cross-checked route paths/provider order, session/theme persistence, role/program behavior, API authorization, storage formats/limits, annotation mappings/cache/disposal and quiz grading against source.
+- Cross-checked UI classes, page grids, theme variants and modal/panel structure against source; documented limitations rather than claiming browser-verified responsive/accessibility coverage.
+- Attempted npm run build: could not run TypeScript because tsc is not installed in this checkout.
+- Attempted npm run test:viewer: stopped at module loading because package three is not installed. The 22 source-defined cases were not executed successfully in this pass; prior passing records above are historical.
+- No browser, API, database or GPU checks performed for this documentation-only change.
+- tasks.md was already deleted in the incoming working tree; preserved that deletion instead of restoring or replacing the user's task file.
+
+## Main-agent instruction and requirement reorganisation - 21 October 2026
+
+Replaced the multi-role Agents.md with a main-agent role, reference map, workflow, documentation responsibilities and task-status rules. Moved product/role, prototype-content, visual and QA acceptance obligations into PRD.md section 13. Preserved the former Agents.md engineering sections (architecture layers, implementation rules, development order, naming, expected types and viewer checklist) in coding_guidelines.md section 17, with additional boundary guidance and no relaxation of existing requirements. Updated docs/README.md with document ownership.
+
+Verification: compared the original Agents.md sections against their new destinations, checked local Markdown links in the revised agent instructions, and ran git diff --check. No runtime code changed; build, browser, API and regression tests were not rerun for this documentation reorganisation. Existing implementation/requirement differences remain. The incoming tasks.md deletion was preserved.
+
+## Access, programme, assessment and usability implementation — 22 October 2026
+
+Implemented the seven requested work areas: authenticated teaching files; publication/programme/attempt ownership and thumbnail permissions; teacher-controlled downloads; programme assignment/filtering; transactional assessment submission/grading and complete teacher results; label movement/question bank/timers/photo materials; model-format and keyboard/mobile/error-feedback improvements. Updated root Architecture.md/design.md plus README/API/schema/storage/model-format documentation. Migration 008 was applied additively to the local PostgreSQL database; existing models begin with downloads disabled and existing quizzes remain untimed. Incoming task-file deletion and unrelated documentation work were retained.
+
+### Automated verification
+
+- Production TypeScript/Vite build passes in the existing Node 22 frontend container. The existing large-bundle warning remains (about 1.12 MB minified after adding USDLoader).
+- ESLint: zero errors, two existing Viewer effect-dependency warning sites. Provider/context/hook definitions were separated instead of suppressing refresh rules; development hot-reload context identity errors observed while editing were resolved. Final clean-load browser checks captured no warnings/errors.
+- `npm run test:viewer`: 22/22 pass.
+- `npm run test:models`: 2/2 pass, real OBJ triangle and embedded USDA-in-USDZ archive parsing.
+- Backend `node --test tests/access.test.js tests/integration.test.js`: 17/17 pass (four policy/validation cases plus the integration parent and twelve workflow subtests). Tests exercise all four programme IDs at policy level, cookie/bearer asset access and byte ranges, publication enforcement, forbidden thumbnail writes, explicit download flags, programme reassignment, timer sessions/hidden keys, duplicate/malformed submissions, owned results, grading/final scores, expiry, question-bank copies/category/edit/delete, active-session question locks/cancellation, favourite-deletion triggers and photo delivery/logout.
+- Injected an answer-insert foreign-key failure: response 500, attempt/answer writes rolled back and session remained unconsumed. The expected database-error log is part of that test. A guarded question edit returns the expected 409, also logged by error middleware.
+- Actual frontend proxy checks from its localhost origin: unauthenticated video/model URLs returned 401; authenticated cookie requests returned 200. `/public/videos/s.mp4`, `/@fs/app/public/videos/s.mp4`, backend source and compose-file aliases returned 403. Earlier requests using the Docker service hostname were rejected by Vite's Host allowlist and were not counted as authorization evidence.
+- Local host npm install failed; verification used the already-installed container dependencies rather than claiming a successful host installation.
+
+### Browser verification
+
+Used isolated temporary teacher/student accounts, a triangle OBJ, point annotation/linked existing sample video and a timed MCQ quiz. Verified mobile navigation expansion, authenticated OBJ rendering, annotation selection and Move placement, linked native video controls, programme selection filtering, teacher download permission persistence/enabled action, student timer/countdown, 100% score, persisted history and owned answer review after a clean reload. Verified Escape closes a result dialog and restores the invoking control's focus. Teacher View Results displayed the graded student's score; Edit Questions saved the temporary question to the bank with its category; saved timer/programme settings were visible. Narrow-viewer overlap found during QA was corrected by moving instructions down and reserving toolbar/list space.
+
+Evidence: [access-assessment.png](verification/access-assessment.png). Model position update and assessment results persisted through API/database-backed workflows. Logged out of both test accounts and removed recorded QA users/model/video/quiz/annotations/bank copies/generated OBJ/thumbnail afterward; pre-existing content retained. Integration tests independently remove their temporary records/files.
+
+### Scope limits
+
+Browser checks used the in-app Chromium browser at its narrow viewport. A full desktop/tablet/four-programme browser sweep, Chrome/Edge/Firefox/Safari matrix, GPU leak profiling, concurrent teaching-session load tests and complex/binary USDZ exporter coverage were not performed. USDLoader's USDA parser requires compatible formatting in the tested fixture; UASSET still requires export to GLB and multi-file glTF needs embedding/conversion. Basic upload signatures are not antivirus scanning. Download flags govern the attachment feature and cannot stop an authorised viewer extracting model bytes delivered for rendering. Cloud storage adapters, embedded model annotation exports, backup automation, old orphan-file cleanup and complete accessibility certification remain separate PRD/operational work. No claim of full PRD compliance is made.

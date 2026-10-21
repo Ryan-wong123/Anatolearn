@@ -25,7 +25,7 @@ AnatoLearn lets students explore labelled 3D anatomical models directly in the b
 - **Routing:** react-router-dom v7
 - **3D Rendering:** Three.js (see rationale below)
 - **Icons:** lucide-react
-- **Backend:** *(to be documented once implemented — see Task 1.3)*
+- **Backend:** Express 4, PostgreSQL 16 through pg, JWT/bcrypt authentication, Multer uploads and local static-file storage
 
 ## Getting Started (Local Setup)
 
@@ -63,6 +63,7 @@ The PostgreSQL service creates the `anatolearn` database automatically and runs 
 
 - `001_schema.sql`
 - `002_seed.sql`
+- `003_add_users.sql` through `008_access_and_assessments.sql`
 
 These scripts are mounted read-only into `/docker-entrypoint-initdb.d`, which the official PostgreSQL image runs only when the database volume is empty. If a local `postgres_data` volume already exists, Docker keeps the existing database and does not rerun the init scripts. For a clean development reset:
 
@@ -134,3 +135,42 @@ Viewer.tsx is now 810 lines, down from 859 (49 fewer). basicAnnotationVisuals re
 
 ### Final Viewer consolidation (21 Oct 2026)
 Viewer.tsx is now 760 physical lines, down from 810 (50 fewer). Scene insertion and collection registration share one typed local helper; annotation hotspots and hit targets use consolidated construction and metadata assignment; plain anatomy points use one Vector3 conversion path; annotation focus and neutral-view restoration share camera synchronization. Every Three.js object is still created, owned and disposed inside Viewer.tsx.
+
+## Current architecture and design reference (21 October 2026)
+
+The repository-root [Architecture.md](../../Architecture.md) now documents the implemented React/Express/PostgreSQL system, routes, contexts, authentication, API/storage boundaries, quiz grading and modular viewer. [design.md](../../design.md) records the current light/dark slate-and-blue theme, page layouts, viewer overlays and source-defined responsive behavior. Both explicitly distinguish current limitations from original requirements; the historical viewer refactor entries below describe earlier snapshots.
+
+The backend is implemented in `backend/src/server.js` with `pg`, JWT/bcrypt authentication and Multer uploads. Docker runs PostgreSQL 16 and Node 22 development services. Registration returns an account and redirects to Login; Login returns the bearer token and user. Frontend role comes from that user response, and programme selection filters lists; backend student access remains scoped to the authenticated account programme and shared content. `npm run test:viewer` currently defines 22 focused cases; earlier test counts in this document are historical.
+
+## Documentation ownership (21 October 2026)
+
+Root Agents.md now defines one main coding agent and its workflow. Product/role, visual and QA acceptance obligations moved into PRD.md section 13; detailed engineering rules, core type contracts and the initial-build sequence moved into coding_guidelines.md section 17. Architecture.md remains a description of the current implementation. This reorganisation does not change product scope or resolve existing differences between requirements and code.
+
+
+## Access, assessments and materials update — 22 October 2026
+
+Apply the additive migration to an existing local database without resetting its volume:
+
+```powershell
+Get-Content backend/sql/008_access_and_assessments.sql | docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U anatolearn -d anatolearn
+docker compose up -d frontend backend
+```
+
+The migration has already been applied in this workspace. Existing models begin with downloads disabled. Teachers open a card/row's **Content permissions and settings** to assign its programme, enable model downloads or set a quiz timer (seconds; blank is untimed). Students can access published content for their account programme and shared content. The selected programme further filters lists and counts; it does not grant cross-programme access.
+
+Login now sets an HttpOnly media cookie as well as returning the existing bearer token. Sign in again if an older browser session cannot load images/videos/models. Logout clears the cookie. API and assets use same-origin paths; local Vite proxies to localhost:5000 and Docker uses BACKEND_URL=http://backend:5000. FRONTEND_ORIGINS configures allowed credentialed origins. Polling watchers handle Windows Docker bind mounts. Teaching files are not served/copied by Vite's public directory; production must proxy authenticated asset routes and must never expose the storage directory directly.
+
+Supported uploads: GLB, embedded glTF, OBJ geometry and USDZ models; MP4/WebM video; PDF/DOC/DOCX and PNG/JPEG/WebP materials. Convert multi-file glTF or Unreal UASSET to GLB before upload. Model parser coverage and limitations are documented in [3d_model_tools.md](3d_model_tools.md); storage policy is in [storage_structure.md](storage_structure.md).
+
+Teachers save a quiz question to the bank, search/edit its body-system category and import copies into new quizzes. Timed student attempts use server-created sessions; submission/grading are transactional. Existing attempts/active sessions protect quiz questions from modification; create a revised quiz instead. View Results includes graded and pending attempts, and students can review their own answers from history.
+
+```powershell
+docker compose exec -T frontend npm run build
+docker compose exec -T frontend npm run lint
+docker compose exec -T frontend npm run test:viewer
+docker compose exec -T frontend npm run test:models
+docker compose exec -T backend npm test
+docker compose exec -T backend npm run test:integration
+```
+
+Integration tests create and clean only isolated temporary records/files; they require the migrated local database. Historical viewer test counts and architecture notes earlier in this file describe older snapshots. Current behavior is documented in root Architecture.md/design.md and the latest testing_log.md entry.

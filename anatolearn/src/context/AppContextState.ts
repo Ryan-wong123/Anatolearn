@@ -1,0 +1,40 @@
+import { createContext, useContext } from 'react';
+type Role = 'student' | 'teacher';
+type Program = string;
+type Theme = 'light' | 'dark';
+
+// What the backend's /api/auth/login and /api/auth/register return as `user`.
+interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  role: Role;
+  program_id: number | null;
+}
+
+interface AppContextType {
+  role: Role;
+  setRole: (role: Role) => void;
+  program: Program;
+  setProgram: (program: Program) => void;
+  token: string | null;
+  user: AuthUser | null;
+  login: (token: string, user: AuthUser) => void;
+  logout: () => Promise<void>;
+  // True only in `npm run dev` (Vite's built-in dev flag) — false in a
+  // production build. The Student|Teacher nav toggle checks this so it
+  // cannot appear (or do anything) outside of local development.
+  isDevMode: boolean;
+  theme: Theme;
+  toggleTheme: () => void;
+}
+
+export const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export function useAppContext() {
+  const context = useContext(AppContext);
+  if (!context) throw new Error('useAppContext must be used within AppProvider');
+  return context;
+}
+
+export type { Role, Program, Theme, AuthUser };

@@ -30,6 +30,7 @@ interface ViewerOverlayProps {
   onHover: (annotation: Annotation | null) => void;
   onClose: () => void;
   onEdit: () => void;
+  onReposition: () => void;
   onDelete: () => void;
   onToggleAnnotations: () => void;
   onToggleBackground: () => void;
@@ -44,7 +45,7 @@ export default function ViewerOverlay(props: ViewerOverlayProps) {
   const regionMode = props.mode === 'region';
 
   return <>
-    {!props.model && (
+    {(!props.model || props.loadError) && (
       <p className="absolute inset-x-4 top-20 z-30 rounded-lg bg-white p-4 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200" role={props.loadError ? 'alert' : 'status'}>
         {props.loadError ?? 'Loading model...'}
       </p>
@@ -81,7 +82,7 @@ export default function ViewerOverlay(props: ViewerOverlayProps) {
       <AnnotationDetailsPanel
         boundaryRef={props.boundaryRef} onDragStateChange={props.onDragStateChange} annotation={props.selectedAnnotation}
         linkedVideo={props.videos.find((video) => video.annotation_id === props.selectedAnnotation?.id) ?? null}
-        onPlayVideo={setPlayingVideo} onEdit={props.onEdit} onDelete={props.onDelete} onClose={props.onClose}
+        onPlayVideo={setPlayingVideo} onReposition={props.onReposition} onEdit={props.onEdit} onDelete={props.onDelete} onClose={props.onClose}
       />
     )}
     {playingVideo && <VideoPlayerModal video={playingVideo} onClose={() => setPlayingVideo(null)} />}

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { USDLoader } from 'three/addons/loaders/USDLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { useAppContext } from '../context/AppContextState';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/api';
@@ -17,6 +20,7 @@ import {
 } from '../components/viewer/projectedMask';
 import {
   isAnnotationActive,
+  toAnnotationPayload, fromDbAnnotation,
   createProjectedAnnotation,
 } from '../components/viewer/annotationMapping';
 import {
@@ -37,6 +41,8 @@ import type { ViewerMode } from '../components/viewer/viewerMode';
 
 export default function Viewer() {
   const { modelId } = useParams();
+  const { role } = useAppContext();
+  const [assetError, setAssetError] = useState<string | null>(null);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -55,6 +61,7 @@ export default function Viewer() {
   const hotspotsRef = useRef<THREE.Sprite[]>([]);
   const annotationHitTargetsRef = useRef<THREE.Mesh[]>([]);
   const pendingObjectsRef = useRef<THREE.Mesh[]>([]);
+  const repositionRef = useRef<Annotation | null>(null);
   const pendingPointRef = useRef<THREE.Vector3 | null>(null);
   const pendingAnnotationRef = useRef<Annotation | null>(null);
   const editingAnnotationRef = useRef<Annotation | null>(null);
@@ -65,6 +72,8 @@ export default function Viewer() {
 
   const { selectedModel, modelVideos, loadError, saveNeutralView } = useViewerContent(modelId);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const annotationsRef = useRef(annotations);
+  useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
   const [mode, setMode] = useState<ViewerMode>('view');
   const modeRef = useRef<ViewerMode>(mode);
   const [popupAnnotation, setPopupAnnotation] = useState<Annotation | null>(null);
@@ -86,7 +95,7 @@ export default function Viewer() {
     onCancel: cancelForm,
   });
 
-  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { modeRef.current = mode; if (mode !== 'point') repositionRef.current = null; }, [mode]);
 
   useEffect(() => {
     annotationsVisibleRef.current = annotationsVisible;
@@ -137,9 +146,13 @@ export default function Viewer() {
     light.position.set(5, 10, 5);
     scene.add(light);
 
-    const loader = new GLTFLoader();
+    setAssetError(null);
+    const objectLoader = selectedModel.file_path.toLowerCase().endsWith('.usdz') ? new USDLoader() : new OBJLoader();
+    const loader = /\.(obj|usdz)$/i.test(selectedModel.file_path)
+      ? { load: (url: string, onLoad: (result: {scene:THREE.Object3D}) => void, progress: undefined, onError: (error: unknown) => void) => objectLoader.load(url, (scene) => onLoad({scene}), progress, onError) }
+      : new GLTFLoader();
     loader.load(
-      `http://localhost:5000${selectedModel.file_path}`,
+      `${selectedModel.file_path}`,
       (gltf) => {
         if (disposed) {
           disposeModelResources(gltf.scene);
@@ -165,6 +178,7 @@ export default function Viewer() {
         });
 
         scene.add(model);
+        modelCenterRef.current.copy(new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3()));
 
         if (selectedModel.neutral_view) {
           applyNeutralView(selectedModel.neutral_view);
@@ -172,7 +186,7 @@ export default function Viewer() {
           centerCamera(model);
         }
 
-        void loadViewerAnnotations(selectedModel.id, api, {
+        void loadViewerAnnotations(selectedModel.id, { getAnnotations: api.getAnnotations, updateAnnotation: role === 'teacher' ? api.updateAnnotation : async (id, payload) => ({id,...payload}) }, {
           isActive: () => !disposed,
           replace: (loaded) => {
             clearAnnotationHitTargets();
@@ -186,7 +200,7 @@ export default function Viewer() {
           },
           onError: console.error,
         });
-        if (!selectedModel.thumbnail_path) {
+        if (!selectedModel.thumbnail_path && role === 'teacher') {
           thumbnailFrame = requestAnimationFrame(() => {
             if (disposed) return;
             renderer.render(scene, camera);
@@ -196,7 +210,7 @@ export default function Viewer() {
         }
       },
       undefined,
-      (error) => console.error('Model loading failed:', error),
+      () => { if (!disposed) setAssetError('Could not load this model. Verify the format and any required companion files.'); },
     );
 
     const raycaster = new THREE.Raycaster();
@@ -214,6 +228,31 @@ export default function Viewer() {
       if (modeRef.current === 'point') {
         const hit = getModelHit(event);
         if (!hit) return;
+        if (repositionRef.current) {
+          const original = repositionRef.current;
+          repositionRef.current = null;
+          const moved = { ...original, position: vectorToPoint(hit.point), view: getViewData() };
+          // Translate projected/legacy geometry together with its label anchor.
+          const delta = { x: moved.position.x-original.position.x, y:moved.position.y-original.position.y, z:moved.position.z-original.position.z };
+          const translate = (point: DrawPoint) => ({x:point.x+delta.x,y:point.y+delta.y,z:point.z+delta.z});
+          if (moved.drawPoints) moved.drawPoints=moved.drawPoints.map(translate);
+          if (moved.regionTriangles) moved.regionTriangles=moved.regionTriangles.map(translate);
+          if (moved.projectedMask) moved.projectedMask={...moved.projectedMask,position:translate(moved.projectedMask.position),meshIndex:hit.object.userData.viewerMeshIndex as number,cachedGeometry:undefined};
+          const epoch=sceneEpochRef.current;
+          void api.updateAnnotation(original.id!,toAnnotationPayload(moved)).then((record)=>{
+            if (disposed || sceneEpochRef.current!==epoch) return;
+            const saved=fromDbAnnotation(record);
+            clearAnnotationHitTargets((target)=>target.userData.annotation?.id===saved.id);
+            markersRef.current=markersRef.current.filter((marker)=>{if(marker.userData.annotation?.id!==saved.id)return true;disposeMarker(marker);return false;});
+            createAnnotationVisual(saved);
+            setAnnotations((previous)=>previous.map((item)=>item.id===saved.id?saved:item));
+            clearHotspots();
+            annotationsRef.current.map((item)=>item.id===saved.id?saved:item).forEach((item,index)=>createAnnotationHotspot(item,index+1));
+            setPopupAnnotation(saved);
+          }).catch(()=>setAssetError('Could not move the annotation. Please try again.'));
+          setMode('view');
+          return;
+        }
         pendingPointRef.current = hit.point.clone();
         editor.openForm();
         return;
@@ -276,7 +315,7 @@ export default function Viewer() {
     let animationId = 0;
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-      
+
       controls.update();
 
       renderer.render(scene, camera);
@@ -294,6 +333,7 @@ export default function Viewer() {
       clearMarkers();
       clearHotspots();
       clearPendingObjects();
+      repositionRef.current = null;
       pendingPointRef.current = null;
       pendingAnnotationRef.current = null;
       editingAnnotationRef.current = null;
@@ -736,6 +776,7 @@ export default function Viewer() {
 
   function returnToNeutralView() {
     if (selectedModel?.neutral_view) applyNeutralView(selectedModel.neutral_view);
+    else if (modelRef.current) centerCamera(modelRef.current);
   }
 
   return (
@@ -744,11 +785,12 @@ export default function Viewer() {
       <ViewerOverlay
         key={selectedModel?.id ?? modelId}
         boundaryRef={viewerRef} onDragStateChange={handlePanelDrag}
-        model={selectedModel} loadError={loadError} mode={mode} onModeChange={setMode}
+        model={selectedModel} loadError={assetError || loadError} mode={mode} onModeChange={setMode}
         annotations={annotations} selectedAnnotation={popupAnnotation} videos={modelVideos}
         annotationsVisible={annotationsVisible} darkBackground={darkBackground}
         generatingRegion={isGeneratingRegion} boundaryPreview={drawing.preview}
         form={editor.form} onSelect={focusAnnotation} onHover={setHoveredAnnotation}
+        onReposition={() => { repositionRef.current = popupAnnotation; setPopupAnnotation(null); setMode('point'); }}
         onClose={() => setPopupAnnotation(null)} onEdit={editSelectedAnnotation} onDelete={deleteSelectedAnnotation}
         onToggleAnnotations={() => setAnnotationsVisible((visible) => !visible)}
         onToggleBackground={() => setDarkBackground((dark) => !dark)}

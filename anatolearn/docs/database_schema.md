@@ -285,3 +285,17 @@ No `position_x`/`position_y`/`position_z` or `created_by` columns — position d
 `annotation_type` mapping to the frontend's internal `AnnotationKind`: `'point'` ↔ simple point marker, `'highlight'` ↔ freehand draw (a connected line of surface dots), `'region_fill'` ↔ closed-boundary filled surface region (computed via raycasting a screen-space polygon onto the model's actual mesh faces).
 
 **No `video_id`/linked-video field exists on this table** — this is the crux of the open architecture question flagged for Tasks 7.5/7.6 in `tasks.md`: since `annotations` (not `labels`) is what actually exists, "linking a video to a label" has no current home in the schema and needs a decision before any code is written for it.
+
+## Migration 008 — access and assessments (22 October 2026)
+
+Apply `backend/sql/008_access_and_assessments.sql` after 001–007. It is additive and has been applied to the local development database. Existing models default to downloads disabled; existing quizzes remain untimed. Existing content/attempts are retained.
+
+- `models.is_downloadable BOOLEAN NOT NULL DEFAULT false`: explicit teacher-managed download policy.
+- `quizzes.time_limit_seconds INTEGER NULL`: 30–86400 when configured; null means untimed.
+- `quiz_questions.category VARCHAR(100)`: per-question body-system category, including imported bank copies.
+- `resource_type` enum adds `image`.
+- `quiz_sessions`: UUID primary key; quiz_id/student_id cascade FKs; started_at TIMESTAMPTZ default NOW; nullable expires_at/submitted_at; questions JSONB NOT NULL containing the server snapshot and answer keys.
+- `question_bank`: SERIAL id; question TEXT; question_format enum; category; nullable option_a..d/correct_option/model_answer; created_at TIMESTAMPTZ. Bank records are independent of their source/imported questions.
+- `remove_content_favorites` deletion triggers on videos/quizzes clean polymorphic favourite references when content is deleted.
+
+Submission transactions lock the session, insert attempt/answers and consume the session atomically. Manual grading locks the attempt and commits its answer/final score together. Question mutations lock their quiz and refuse changes after attempts or while sessions are active; starting a session takes a shared quiz lock while snapshotting. This preserves the existing question FK/history model instead of allowing edits to rewrite old results. Backup/restore and cleanup of old closed sessions remain operational considerations.

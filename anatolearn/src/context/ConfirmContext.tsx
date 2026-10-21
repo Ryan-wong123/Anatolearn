@@ -1,18 +1,8 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { ConfirmContext } from './ConfirmContextState';
+import type { ConfirmOptions } from './ConfirmContextState';
+import Dialog from '../components/Dialog';
+import { useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-
-interface ConfirmOptions {
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  danger?: boolean;
-}
-
-interface ConfirmContextType {
-  confirm: (options: ConfirmOptions) => Promise<boolean>;
-}
-
-const ConfirmContext = createContext<ConfirmContextType | undefined>(undefined);
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<{
@@ -40,7 +30,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmContext.Provider value={{ confirm }}>
       {children}
       {pending && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[90] p-4">
+        <Dialog onClose={handleCancel} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[90] p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-sm p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
               {pending.options.title}
@@ -67,14 +57,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </ConfirmContext.Provider>
   );
-}
-
-export function useConfirm() {
-  const context = useContext(ConfirmContext);
-  if (!context) throw new Error('useConfirm must be used within ConfirmProvider');
-  return context;
 }

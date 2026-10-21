@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import Dialog from '../components/Dialog';
+import QuestionBank from '../components/QuestionBank';
+import ContentSettings from '../components/ContentSettings';
+import { useEffect, useState, useRef } from 'react';
 import { Clock, BookOpen, Search, Heart } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../context/AppContextState';
 import { api } from '../api/api';
 
 interface Quiz {
   id: number;
+  program_id: number | null;
+  time_limit_seconds?: number | null;
   title: string;
   description: string | null;
   type: 'MCQ' | 'Practical' | 'Mixed';
@@ -64,6 +69,10 @@ interface QuizAttemptSummary {
   attempted_at: string;
 }
 
+interface TeacherAttempt { id:number; student_id:number; student_name?:string; status:string; score:number|null; attempted_at:string; }
+interface AttemptAnswer { id:number; question_id:number; question:string; format:'mcq'|'open_ended'; model_answer:string|null; correct_option:string|null; selected_option:string|null; answer_text:string|null; teacher_score:number|null; is_correct:boolean|null; }
+interface OpenEndedResult { question_id:number; question:string; answer_text:string|null; teacher_score:number|null; }
+
 const optionLetters = ['A', 'B', 'C', 'D'] as const;
 
 const quizTypeBadgeClasses: Record<Quiz['type'], string> = {
@@ -82,10 +91,14 @@ function deriveQuizType(questions: CreatedQuizQuestion[]): 'MCQ' | 'Practical' |
 }
 
 export default function Quizzes() {
-  const { role } = useAppContext();
+  const { role, program } = useAppContext();
 
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [quizSearchTerm, setQuizSearchTerm] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const submitRef = useRef<() => void>(() => {});
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -117,14 +130,14 @@ export default function Quizzes() {
   const [newModelAnswer, setNewModelAnswer] = useState('');
 
   const [showResultsQuiz, setShowResultsQuiz] = useState<Quiz | null>(null);
-  const [pendingAttempts, setPendingAttempts] = useState<any[]>([]);
+  const [pendingAttempts, setPendingAttempts] = useState<TeacherAttempt[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
   const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null);
-  const [attemptAnswers, setAttemptAnswers] = useState<any[]>([]);
+  const [attemptAnswers, setAttemptAnswers] = useState<AttemptAnswer[]>([]);
   const [gradeInputs, setGradeInputs] = useState<Record<number, string>>({});
   const [gradingError, setGradingError] = useState<string | null>(null);
   const [gradingAnswerId, setGradingAnswerId] = useState<number | null>(null);
-  const [openEndedResults, setOpenEndedResults] = useState<any[]>([]);
+  const [openEndedResults, setOpenEndedResults] = useState<OpenEndedResult[]>([]);
 
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
   const [editQuizTitle, setEditQuizTitle] = useState('');
@@ -142,15 +155,15 @@ export default function Quizzes() {
   useEffect(() => {
     api.getQuizzes(role === 'student')
       .then(setQuizzes)
-      .catch((err) => console.error('Failed to load quizzes:', err));
-  }, [role]);
+      .catch(() => setSubmitError('Could not load quizzes. Please try again.'));
+  }, [role, program]);
 
   useEffect(() => {
     if (role !== 'student') return;
     api.getMyAttempts()
       .then(setAttemptHistory)
       .catch((err) => console.error('Failed to load attempt history:', err));
-  }, [role]);
+  }, [role, program]);
 
   useEffect(() => {
     if (role !== 'student') return;
@@ -159,7 +172,7 @@ export default function Quizzes() {
         setFavoritedQuizIds(new Set(data.quizzes.map((q) => q.id)));
       })
       .catch((err) => console.error('Failed to load favorites:', err));
-  }, [role]);
+  }, [role, program]);
 
   const toggleFavorite = async (quiz: Quiz) => {
     const isFavorited = favoritedQuizIds.has(quiz.id);
@@ -183,52 +196,11 @@ export default function Quizzes() {
 
   const handleStartQuiz = async (quiz: Quiz) => {
     try {
-      const storedAttemptId = sessionStorage.getItem(`quiz-attempt-${quiz.id}`);
+      const session = await api.startQuiz(quiz.id);
+      setSessionId(session.session_id);
+      setExpiresAt(session.expires_at);
+      const loadedQuestions = session.questions;
 
-      if (storedAttemptId) {
-        const attempt = await api.getAttempt(Number(storedAttemptId));
-        const answers = await api.getAttemptAnswers(Number(storedAttemptId));
-        const loadedQuestions = await api.getQuizQuestions(quiz.id);
-
-        setActiveQuiz(quiz);
-        setQuestions(loadedQuestions);
-        setCurrentQuestion(0);
-        setSelectedAnswers({});
-        setSubmitError(null);
-
-        const feedback = answers
-          .filter((a: any) => a.format === 'mcq')
-          .map((a: any) => ({
-            question_id: a.question_id,
-            selected_option: a.selected_option,
-            correct_option: a.correct_option,
-            is_correct: a.is_correct,
-          }));
-
-        const openEnded = answers
-          .filter((a: any) => a.format === 'open_ended')
-          .map((a: any) => ({
-            question_id: a.question_id,
-            question: a.question,
-            answer_text: a.answer_text,
-            teacher_score: a.teacher_score,
-          }));
-        setOpenEndedResults(openEnded);
-
-        setSubmitResult({
-          status: attempt.status,
-          score: attempt.score,
-          total: attempt.total_questions,
-          correct: attempt.correct_count,
-          incorrect: attempt.status === 'graded' ? attempt.total_questions - attempt.correct_count : null,
-          mcq_count: feedback.length,
-          open_ended_count: attempt.total_questions - feedback.length,
-          feedback,
-        });
-        return;
-      }
-
-      const loadedQuestions = await api.getQuizQuestions(quiz.id);
 
       setActiveQuiz(quiz);
       setQuestions(loadedQuestions);
@@ -237,9 +209,22 @@ export default function Quizzes() {
       setSubmitResult(null);
       setSubmitError(null);
     } catch (err) {
-      console.error('Failed to load quiz questions:', err);
+      setSubmitError(err instanceof Error ? err.message : 'Could not start quiz');
     }
   };
+
+  async function reviewAttempt(summary: QuizAttemptSummary) {
+    try {
+      const attempt = await api.getAttempt(summary.id);
+      const answers: (AttemptAnswer & {option_a:string|null;option_b:string|null;option_c:string|null;option_d:string|null})[] = await api.getAttemptAnswers(summary.id);
+      setQuestions(answers.map((a)=>({id:a.question_id,quiz_id:summary.quiz_id,question:a.question,format:a.format,option_a:a.option_a,option_b:a.option_b,option_c:a.option_c,option_d:a.option_d})));
+      setActiveQuiz(quizzes.find((q)=>q.id===summary.quiz_id) || {id:summary.quiz_id,program_id:null,title:summary.quiz_title,description:null,type:'Mixed',category:null,is_published:false,created_at:''});
+      const feedback = answers.filter((a)=>a.format==='mcq').map((a)=>({question_id:a.question_id,selected_option:a.selected_option||'',correct_option:a.correct_option||'',is_correct:a.is_correct===true}));
+      setSubmitResult({status:attempt.status,score:attempt.score,total:attempt.total_questions,correct:attempt.correct_count,incorrect:attempt.status==='graded'?attempt.total_questions-attempt.correct_count:null,mcq_count:feedback.length,open_ended_count:answers.length-feedback.length,feedback});
+      setOpenEndedResults(answers.filter((a)=>a.format==='open_ended'));
+      setExpiresAt(null);setSessionId('');setSubmitError(null);
+    } catch { setSubmitError('Could not load this attempt.'); }
+  }
 
   const handleSelectAnswer = (questionId: number, value: string) => {
     setSelectedAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -262,7 +247,7 @@ export default function Quizzes() {
     try {
       setSubmitting(true);
       setSubmitError(null);
-      const result = await api.submitQuiz(activeQuiz.id, answers);
+      const result = await api.submitQuiz(activeQuiz.id, answers, sessionId);
       setSubmitResult(result);
       sessionStorage.setItem(`quiz-attempt-${activeQuiz.id}`, String(result.attempt.id));
 
@@ -287,7 +272,27 @@ export default function Quizzes() {
     }
   };
 
-  const handleRetry = () => {
+  useEffect(() => { submitRef.current = () => { if (!submitting && !submitResult) void handleSubmit(); }; });
+  useEffect(() => {
+    if (!expiresAt || !activeQuiz || submitResult) return;
+    const tick = () => {
+      const seconds = Math.max(0, Math.ceil((Date.parse(expiresAt)-Date.now())/1000));
+      setRemaining(seconds);
+      if (seconds === 0) { clearInterval(timer); submitRef.current(); }
+    };
+    const timer = setInterval(tick,1000);
+    return () => clearInterval(timer);
+  }, [expiresAt, activeQuiz, submitResult]);
+
+  useEffect(() => {
+    if (!sessionId || submitResult) return;
+    const cancel = () => { void api.cancelQuizSession(sessionId).catch(() => {}); };
+    window.addEventListener('pagehide',cancel);
+    return () => { window.removeEventListener('pagehide',cancel); cancel(); };
+  }, [sessionId, submitResult]);
+
+  const handleRetry = async () => {
+    if (activeQuiz) { const session = await api.startQuiz(activeQuiz.id); setSessionId(session.session_id); setExpiresAt(session.expires_at); }
     if (activeQuiz) {
       sessionStorage.removeItem(`quiz-attempt-${activeQuiz.id}`);
     }
@@ -299,6 +304,8 @@ export default function Quizzes() {
   };
 
   const handleBackToList = () => {
+    if (sessionId && !submitResult) void api.cancelQuizSession(sessionId).catch(() => {});
+    setExpiresAt(null);
     setActiveQuiz(null);
     setQuestions([]);
     setSubmitResult(null);
@@ -509,7 +516,7 @@ export default function Quizzes() {
     setGradingError(null);
     setLoadingPending(true);
     try {
-      const attempts = await api.getPendingAttempts(quiz.id);
+      const attempts = await api.getAllAttempts(quiz.id);
       setPendingAttempts(attempts);
     } catch (err) {
       console.error('Failed to load pending attempts:', err);
@@ -537,7 +544,7 @@ export default function Quizzes() {
       setShowCreateQuiz(true);
       setCreateQuizError(null);
     } catch (err) {
-      console.error('Failed to load quiz questions:', err);
+      setSubmitError(err instanceof Error ? err.message : 'Could not start quiz');
       setCreateQuizError('Failed to load questions for this quiz. Please try again.');
     }
   };
@@ -587,7 +594,7 @@ export default function Quizzes() {
       const answers = await api.getAttemptAnswers(attemptId);
       setAttemptAnswers(answers);
       const initialInputs: Record<number, string> = {};
-      answers.forEach((a: any) => {
+      answers.forEach((a: AttemptAnswer) => {
         if (a.format === 'open_ended') {
           initialInputs[a.id] = a.teacher_score !== null ? String(a.teacher_score) : '';
         }
@@ -619,7 +626,7 @@ export default function Quizzes() {
       );
 
       if (!stillPending && showResultsQuiz) {
-        const attempts = await api.getPendingAttempts(showResultsQuiz.id);
+        const attempts = await api.getAllAttempts(showResultsQuiz.id);
         setPendingAttempts(attempts);
         setSelectedAttemptId(null);
         setAttemptAnswers([]);
@@ -650,7 +657,7 @@ export default function Quizzes() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 font-display">
             Self-Assessment
@@ -671,6 +678,7 @@ export default function Quizzes() {
         )}
       </div>
 
+      {submitError && !activeQuiz && <p role="alert" className="mt-4 text-red-600">{submitError}</p>}
       <div className="mt-4 relative">
         <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
         <input
@@ -691,7 +699,7 @@ export default function Quizzes() {
         {filteredQuizzes.map((quiz) => (
           <div
             key={quiz.id}
-            className="px-5 py-4 flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="px-5 py-4 flex flex-wrap items-center gap-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             <BookOpen className="w-5 h-5 flex-shrink-0 text-blue-400 dark:text-blue-300" />
             <div className="flex-1 min-w-0">
@@ -730,6 +738,7 @@ export default function Quizzes() {
                 </div>
               )}
 
+              <ContentSettings kind="quizzes" id={quiz.id} programId={quiz.program_id} timer={quiz.time_limit_seconds} onSaved={() => api.getQuizzes().then(setQuizzes)} />
               {role === 'teacher' && (
                 <div className="flex items-center gap-3">
                   <button
@@ -795,6 +804,7 @@ export default function Quizzes() {
                       })}
                     </p>
                   </div>
+                  <button onClick={() => { void reviewAttempt(attempt); }} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Review answers</button>
                   {attempt.status === 'graded' ? (
                     <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                       {attempt.score}%
@@ -812,11 +822,12 @@ export default function Quizzes() {
       )}
 
       {activeQuiz && !submitResult && current && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={handleBackToList} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl p-6">
             <div className="mb-6">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
                 Question {currentQuestion + 1} of {questions.length}
+                {remaining !== null && <span className="ml-3 text-amber-600" role="timer">{Math.floor(remaining/60)}:{String(remaining%60).padStart(2,'0')} remaining</span>}
               </p>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
                 {current.question}
@@ -869,7 +880,7 @@ export default function Quizzes() {
               </p>
             )}
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 onClick={handleBackToList}
                 className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
@@ -896,11 +907,11 @@ export default function Quizzes() {
               )}
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {activeQuiz && submitResult && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={handleBackToList} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl p-6">
             {submitResult.status === 'pending_review' ? (
               <div className="text-center mb-6">
@@ -993,7 +1004,7 @@ export default function Quizzes() {
               </div>
             )}
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 onClick={handleBackToList}
                 className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
@@ -1002,7 +1013,7 @@ export default function Quizzes() {
               </button>
               {submitResult.status === 'graded' && (
                 <button
-                  onClick={handleRetry}
+                  onClick={() => { void handleRetry().catch(() => setSubmitError('Could not start a new attempt.')); }}
                   className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
                 >
                   Retry
@@ -1010,11 +1021,11 @@ export default function Quizzes() {
               )}
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {showCreateQuiz && !createdQuiz && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={handleCancelCreateQuiz} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
               Create Quiz
@@ -1086,11 +1097,11 @@ export default function Quizzes() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {showCreateQuiz && createdQuiz && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={handleCancelCreateQuiz} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-1">
               {isEditMode ? 'Edit Questions' : 'Add Questions'}
@@ -1098,6 +1109,7 @@ export default function Quizzes() {
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">
               Quiz: <span className="font-medium text-slate-700 dark:text-slate-300">{createdQuiz.title}</span>
             </p>
+            <QuestionBank quizId={createdQuiz.id} onImported={() => { void api.getQuizQuestions(createdQuiz.id).then(setCreatedQuestions); }} />
             {createdQuestions.length > 0 && (
               <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
                 Current type (auto-detected):{' '}
@@ -1127,6 +1139,7 @@ export default function Quizzes() {
                       </p>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
+                      <button onClick={() => { void api.bankQuestion(q.id,createdQuiz.category || '').catch((e: Error) => setCreateQuizError(e.message)); }} className="text-xs text-blue-600 hover:underline">Save to bank</button>
                       <button
                         onClick={() => handleEditCreatedQuestion(q)}
                         className="text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
@@ -1264,15 +1277,15 @@ export default function Quizzes() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
       {showResultsQuiz && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={handleCloseResults} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             {selectedAttemptId === null ? (
               <>
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-1">
-                  Pending Reviews
+                  Student Results
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
                   Quiz: <span className="font-medium text-slate-700 dark:text-slate-300">{showResultsQuiz.title}</span>
@@ -1284,7 +1297,7 @@ export default function Quizzes() {
 
                 {!loadingPending && pendingAttempts.length === 0 && (
                   <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">
-                    No attempts are currently pending review for this quiz.
+                    No students have submitted this quiz yet.
                   </p>
                 )}
 
@@ -1297,7 +1310,7 @@ export default function Quizzes() {
                         className="text-slate-900 dark:text-slate-100 w-full text-left px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-between"
                       >
                         <span className="text-sm text-slate-700 dark:text-slate-300">
-                          Attempt #{attempt.id}
+                          {attempt.student_name || `Student ${attempt.student_id}`} — {attempt.score == null ? attempt.status : `${attempt.score}%`} — Attempt #{attempt.id}
                         </span>
                         <span className="text-xs text-slate-400 dark:text-slate-500">
                           {new Date(attempt.attempted_at).toLocaleString()}
@@ -1420,10 +1433,10 @@ export default function Quizzes() {
               </>
             )}
           </div>
-        </div>
+        </Dialog>
       )}
       {editingQuiz && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={closeEditQuiz} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
               Edit Quiz
@@ -1488,7 +1501,7 @@ export default function Quizzes() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

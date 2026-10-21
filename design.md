@@ -1,633 +1,252 @@
-# design.md — AnatoLearn UI & Visual Design Specification
+# AnatoLearn Design Reference
 
-> **Image references** — every page section links to the wireframe screenshot it was derived from.
-> All images live in `images/` relative to this file.
-> Student view → `images/student<PageName>.png`
-> Teacher view → `images/teacher<PageName>.png`
+Current implementation, updated 22 October 2026. This document records the visual theme and interactions in `anatolearn/src`, rather than the earlier wireframe specification. Paths below are relative to `anatolearn/`. Dimensions and breakpoints are derived from source classes; browser verification scope is recorded in anatolearn/docs/testing_log.md.
 
----
+## 1. Visual direction
 
-## 1. Design Philosophy
+The interface uses restrained educational dashboard styling: slate backgrounds, white or deep-slate surfaces, blue actions, rounded bordered cards, compact outline icons and clear headings. Content pages share a sticky top navigation; the model viewer replaces the normal padded page with an immersive canvas and floating translucent controls. The app supports light and dark UI themes. It does not use a sidebar or a gradient dashboard hero.
 
-**Tone:** Clinical precision meets modern learning — clean, focused, and trustworthy. Medical-grade UI with cool slate tones as the base and a confident blue accent system. Structured without being sterile.
+Styling is mainly inline Tailwind class lists. `tailwind.config.js` extends only font families and enables class-based dark mode. `src/index.css` imports fonts, includes Tailwind directives and adds the toast slide-up animation. There is a shared Dialog component, ContentSettings and QuestionBank; there is no shared Button/Card component or custom semantic color-token layer: the patterns below recur directly in page markup.
 
-**Typography:**
-- Display / Headings: `DM Sans` (bold, geometric warmth) — modern and approachable
-- Body / UI labels: `IBM Plex Sans` (technical clarity) — legible and professional
+## 2. Theme behavior
 
----
+AppContext initializes theme from localStorage key `anatolearn_theme`; absent a saved light/dark value, it checks the OS preference. It toggles `dark` on the HTML root and persists changes. Layout provides a Moon button in light mode and Sun in dark mode, with a title describing the destination theme. Auth pages inherit theme but have no separate toggle.
 
-## 2. Color System
+The viewer canvas has its own Light Background / Dark Background control. It starts light regardless of the app theme. Its scene colors are `#f8fafc` and `#0f172a`; changing that control does not change the app theme or persist it.
 
-| Token | Hex | Use |
+## 3. Color system
+
+These are Tailwind's default palette values used in the code, not custom CSS variables.
+
+| Purpose | Light | Dark |
 |---|---|---|
-| `--color-bg` | `#F8FAFC` | Page background (slate-50) |
-| `--color-surface` | `#FFFFFF` | Cards, panels |
-| `--color-surface-muted` | `#F1F5F9` | Subtle secondary backgrounds |
-| `--color-border` | `#E2E8F0` | Dividers, card edges |
-| `--color-text-primary` | `#0F172A` | Headings, key content |
-| `--color-text-secondary` | `#475569` | Body copy, labels |
-| `--color-text-muted` | `#94A3B8` | Placeholders, disabled states |
-| `--color-brand` | `#2563EB` | Primary actions, active nav, active role indicator text |
-| `--color-brand-light` | `#EFF6FF` | Brand hover/active backgrounds |
-| `--color-brand-hover` | `#1D4ED8` | Button hover |
-| `--color-success` | `#10B981` | Completed states, CheckCircle icon |
-| `--color-warning` | `#F59E0B` | Pending states, Clock icon |
-| `--color-purple` | `#7C3AED` | Video category accents |
+| App/auth background | slate-50 `#f8fafc` | slate-800 `#1e293b` |
+| Nav, cards, forms, dialogs | white `#ffffff` | slate-900 `#0f172a` |
+| Muted surfaces and row hover | slate-50 / slate-100 | slate-800 |
+| Primary text | slate-900 `#0f172a` | slate-100 `#f1f5f9` |
+| Secondary strong text | slate-700 `#334155` | slate-300 `#cbd5e1` |
+| Supporting text | slate-500 / slate-600 | slate-400 `#94a3b8` |
+| Muted text/icons | slate-400 `#94a3b8` | slate-500 `#64748b` |
+| Surface border | slate-200 `#e2e8f0` | slate-700 `#334155` |
+| Inner divider | slate-100 `#f1f5f9` | slate-800 `#1e293b` |
+| Primary button | blue-600 `#2563eb`, hover blue-700 | same solid blue |
+| Link/action text | blue-600 | blue-400 `#60a5fa` |
+| Active navigation | blue-50 with blue-700 text | blue-950/40 with blue-400 text |
+| Error/destructive | red-600; red-50/red-200 panels | red-400; red-950/40/red-800 panels |
+| Pending/unpublished | amber-50 or amber-100; amber-600/700 | amber-950/40 or amber-900/40; amber-400 |
+| Favourited heart | red-500 fill and stroke | same |
+| Success toast | green-600 with white text | same |
+| Error toast | red-600 with white text | same |
 
----
+Quiz type pills use purple for MCQ, indigo for Practical and blue for Mixed, with pale 100 backgrounds and 700 text in light mode, translucent 900 backgrounds and 400 text in dark mode. The viewer uses yellow for projected highlights and cyan for projected regions.
 
-## 3. Typography Scale
+## 4. Typography
 
-| Role | Font | Weight | Size |
-|---|---|---|---|
-| Page heading | DM Sans | 700 | 30px (`text-3xl`) |
-| Section heading | DM Sans | 600 | 18px (`text-lg`) |
-| Card title | DM Sans | 600 | 16px (`text-base`) |
-| Body | IBM Plex Sans | 400 | 14px (`text-sm`) |
-| Label / badge | IBM Plex Sans | 500 | 12px (`text-xs`) |
-| Stat value | DM Sans | 700 | 24px (`text-2xl`) |
-| Nav link | IBM Plex Sans | 500 | 14px (`text-sm`) |
+Google Fonts are imported in `src/index.css`: DM Sans weights 400/600/700 and IBM Plex Sans weights 400/500. Tailwind maps `font-display` to DM Sans and its default sans family to IBM Plex Sans, each with a sans-serif fallback.
 
----
-
-## 4. Global Layout Shell
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  TOP NAVIGATION BAR  (sticky, h-16, bg-white, border-b)          │
-│  [Logo] [AnatoLearn]  [Nav Links...]   [PROGRAM ▾][Student|Teacher][👤] │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  MAIN CONTENT AREA  (flex-1, renders active page)                │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-Page background: `bg-slate-50 min-h-screen flex flex-col`.
-
----
-
-## 5. Top Navigation Bar
-
-> Visible in all 10 wireframes. Role indicator active state differs between student and teacher views.
-
-**Height:** 64px (`h-16`), `bg-white`, `border-b border-slate-200`, `sticky top-0 z-50`.
-
-### Left Side
-- **Logo mark:** 32×32px `bg-blue-600 rounded-lg` with white `GraduationCap` icon inside
-- **Brand name:** `AnatoLearn` — `font-bold text-xl text-slate-900 tracking-tight font-display`
-- **Desktop nav links** (hidden on mobile, `md:flex space-x-1`):
-  - Each link: `px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors`
-  - **Active state:** `bg-blue-50 text-blue-700` (matches active page in all wireframes)
-  - **Inactive state:** `text-slate-600 hover:bg-slate-100 hover:text-slate-900`
-  - Icons: `w-4 h-4`
-
-| Nav Item | Icon | Path |
-|---|---|---|
-| Dashboard | `GraduationCap` | `/dashboard` |
-| 3D Viewer | `Box` | `/3dviewer` |
-| Videos | `Video` | `/videos` |
-| Quizzes | `BookOpen` | `/quizzes` |
-| Library | `Library` | `/library` |
-
-### Right Side (left → right)
-1. **Program label:** `text-xs font-medium text-slate-500 uppercase tracking-wider` — text `PROGRAM`
-2. **Program `<select>`:** `pl-3 pr-8 py-1.5 text-sm border border-slate-300 rounded-md bg-white` — options: Physiotherapy, Occupational Therapy, Radiography, Nursing
-3. **Role indicator** (decoded from JWT, not locally editable; no pill background, plain label pair):
-   - **Student button:** active = `font-semibold text-slate-900`, inactive = `text-slate-400`
-   - **Teacher button:** active = `font-semibold text-slate-900`, inactive = `text-slate-400`
-   - From images: the active role label is bold/dark, inactive is muted — **no coloured pill background**, unlike the earlier implementation
-4. **User avatar:** `UserCircle2` icon `w-8 h-8 text-slate-400`, ghost button
-
-### Role Indicator — Visual Difference by Role
-
-| State | Student active | Teacher active |
-|---|---|---|
-| Student button | Bold, `text-slate-900` | Muted, `text-slate-400` |
-| Teacher button | Muted, `text-slate-400` | Bold, `text-slate-900` |
-
-> **Images:** `images/studentDashboard.png` (Student selected), `images/teacherDashboard.png` (Teacher selected)
-
----
-
-## 6. Page: Dashboard
-
-### 6.1 Student Dashboard
-
-> **Reference image:** `images/studentDashboard.png`
-
-**Container:** `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full`
-
-**Page header:**
-- Heading: `text-3xl font-bold text-slate-900 font-display` — `Welcome back, Student`
-- Subheading: `mt-1 text-slate-500 text-sm` — `PT Program Overview`
-
-**Stat cards row** — 3-column responsive grid (`grid grid-cols-1 gap-5 sm:grid-cols-3`):
-
-| Card | Icon | Icon colour | Value |
-|---|---|---|---|
-| Study Time | `Clock` | `text-blue-500` | `12.5h` |
-| Quiz Average | `Trophy` | `text-yellow-500` | `85%` |
-| Models Explored | `Activity` | `text-green-500` | `24` |
-
-Card shell: `bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4`
-- Icon: `w-6 h-6 flex-shrink-0`
-- Label: `text-sm text-slate-500`
-- Value: `text-2xl font-bold text-slate-900 font-display`
-
-**"Continue Learning" section:**
-- Section heading: `text-lg font-semibold text-slate-900 font-display mb-4` — `Continue Learning`
-- Grid: `grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3`
-
-| Card | Link | Gradient | Icon | Title | Subtitle |
-|---|---|---|---|---|---|
-| 1 | `/3dviewer` | `from-blue-50 to-indigo-100` | `Box` (blue) | `Muscular System` | `Resume 3D exploration` |
-| 2 | `/videos` | `from-purple-50 to-pink-100` | `Video` (purple) | `Cardiovascular Basics` | `Next video in playlist` |
-| 3 | `/quizzes` | `from-green-50 to-emerald-100` | `BookOpen` (green) | `Respiratory Quiz` | `Due in 2 days` |
-
-Card: `group block bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow`
-- Image header `h-32`: gradient background + centered icon, icon scales on `group-hover:scale-110`
-- Body `p-4`: title (`text-base font-semibold text-slate-900 font-display`) + subtitle (`text-sm text-slate-500 mt-0.5`)
-
----
-
-### 6.2 Teacher Dashboard
-
-> **Reference image:** `images/teacherDashboard.png`
-
-**Page header:**
-- Heading: `Welcome back, Instructor`
-- Subheading: `PT Program Overview`
-
-**Stat cards row** — same 3-column grid and card shell:
-
-| Card | Icon | Icon colour | Value |
-|---|---|---|---|
-| Models Uploaded | `Box` | `text-blue-500` | `12` |
-| Videos Linked | `Video` | `text-purple-500` | `45` |
-| Student Engagement | `Activity` | `text-green-500` | `High` |
-
-> Note from image: teacher stat cards have **no left icon** visible on Models Uploaded — it appears the icon is absent or very faint. Implement `Box` icon consistently with the student pattern.
-
-**"Quick Actions" section:**
-- Section heading: `text-lg font-semibold text-slate-900 font-display mb-4` — `Quick Actions`
-- Grid: `grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4`
-- 4 flat bordered buttons, text only, centred:
-
-| Button label | Links to |
+| Element | Common implementation |
 |---|---|
-| Upload New Model | `/library` |
-| Manage Labels | `/3dviewer` |
-| Add Educational Video | `/videos` |
-| Create Quiz | `/quizzes` |
+| Main content title | text-3xl (30px), bold, font-display |
+| Auth brand / video title | text-2xl (24px), bold, font-display |
+| Section/dialog heading | text-lg (18px), semibold, usually font-display |
+| Navigation brand | text-xl (20px), bold, tracking-tight, font-display |
+| Card title | text-sm or default size, semibold, often font-display |
+| Body, forms, actions | text-sm (14px) |
+| Metadata, small actions, pills | text-xs (12px) |
+| Form section labels | text-xs, semibold, uppercase, tracking-wider |
+| Dashboard metrics | text-2xl, bold, font-display |
 
-Button: `flex items-center justify-center px-4 py-4 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors`
+## 5. Authenticated shell
 
----
+`components/Layout.tsx` wraps protected routes in `min-h-screen flex flex-col`, with a flex-1 main Outlet. The nav is 64px tall (`h-16`), sticky at top, z-50, with a bottom border and theme-aware surface.
 
-## 7. Page: 3D Viewer
+Its inner row is `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`, horizontally distributing:
 
-### 7.1 Student 3D Viewer
+- Brand: 32px blue rounded-lg square, white 20px GraduationCap, AnatoLearn text.
+- Five icon/text links: Dashboard, 3D Viewer, Videos, Quizzes, Library; hidden below md, with 16px icons and compact rounded-md hit areas.
+- Program label and API-populated select, development role toggle, theme toggle, truncated account name, avatar icon and logout.
 
-> **Reference image:** `images/student3DViewer.png`
+Program selects use a white/deep-slate background, slate-300/slate-600 border, rounded-md and 14px text. The user name is hidden below sm and capped at 140px; the brand wordmark is hidden below lg and the programme selector narrows on small screens. The Student | Teacher control appears only in Vite development builds. The avatar is a UserCircle2 button without a profile workflow.
 
-**Layout:** `flex-1 flex flex-col md:flex-row h-[calc(100vh-64px)] overflow-hidden`
-- **Canvas area:** `flex-1 relative bg-slate-50`
-- **Side panel (right):** `w-80 bg-white border-l border-slate-200 flex flex-col` (narrower than 384px — approximately 320px based on image proportion)
+Active links match their exact route or child-route prefix. Below md a Menu/X toggle opens a themed dropdown containing all five navigation links; selecting a link closes it. Programme controls, theme and logout remain available in the compact header. The development role toggle is hidden below xl.
 
-**Viewer toolbar (left edge, vertical stack):**
-`absolute top-4 left-4 z-10 flex flex-col gap-1 bg-white p-2 rounded-xl shadow-sm border border-slate-200`
+## 6. Page geometry and spacing
 
-Icon buttons top → bottom: `RotateCcw`, `ZoomIn`, `ZoomOut`, `Move`
-- Each: `p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors w-9 h-9`
+Normal content pages use `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full`. The video player uses max-w-5xl. Headers commonly align title/subtitle on the left and a teacher action on the right without a mobile stacking variant.
 
-**System selector (top-right of canvas):**
-`absolute top-4 right-4 z-10` — white card with dropdown
-- `bg-white rounded-xl border border-slate-200 shadow-sm px-3 py-2`
-- `<select>`: `text-sm text-slate-700 bg-transparent focus:outline-none pr-6`
-- Default: `Muscular System`
-
-**Side panel — empty state (student, no structure selected):**
-- Centred vertically: `flex-1 flex flex-col items-center justify-center p-6 text-center`
-- Icon circle: `w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mb-3`
-- `Move` icon: `w-7 h-7 text-slate-400`
-- Heading: `text-base font-semibold text-slate-800 font-display` — `Select a structure`
-- Body: `text-sm text-slate-500 mt-1 max-w-[200px]` — `Click on any highlighted anatomical part in the 3D viewer to see its details and related videos.`
-
-**Side panel — selected state (student):**
-- Part name: `text-2xl font-bold text-slate-900 font-display`
-- Program badge: `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700` — `{program} Module`
-- Section label `DESCRIPTION`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-1`
-- Description body: `text-sm text-slate-600 leading-relaxed`
-- Section label `EDUCATIONAL VIDEO`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-2`
-- Video thumbnail: `w-full aspect-video rounded-lg overflow-hidden relative cursor-pointer border border-slate-200`
-  - Full-bleed image with centred white play button circle (`w-10 h-10 bg-white/90 rounded-full flex items-center justify-center`)
-  - `Play` icon: `w-4 h-4 text-blue-600 ml-0.5`
-
-Student interaction requirements:
-- Student can click a label or anatomy part
-- Selected part is highlighted in the 3D viewer
-- Side panel shows the selected name, description, and linked video
-- No teacher controls are visible for student role
-
----
-
-### 7.2 Teacher 3D Viewer
-
-> **Reference image:** `images/teacher3DViewer.png`
-
-**All student viewer elements are present**, plus teacher-only controls:
-
-**Side panel — selected state (teacher):**
-- Part name: `text-2xl font-bold text-slate-900 font-display` — e.g. `Biceps Brachii`
-- Program badge: `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700` — `PT Module`
-- Section label `DESCRIPTION`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-4 mb-1`
-- Description body: `text-sm text-slate-600 leading-relaxed`
-- Section label `EDUCATIONAL VIDEO`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-2`
-- Video thumbnail: `w-full aspect-video rounded-lg overflow-hidden relative cursor-pointer border border-slate-200`
-  - Full-bleed image with centred white play button circle (`w-10 h-10 bg-white/90 rounded-full flex items-center justify-center`)
-  - `Play` icon: `w-4 h-4 text-blue-600 ml-0.5`
-- Section label `TEACHER CONTROLS`: `text-xs font-semibold text-slate-500 uppercase tracking-wider mt-5 mb-2`
-- `Edit Description` button: full-width secondary button
-- `Change Linked Video` button: full-width secondary button
-
-**Add Label button (bottom-left of canvas, teacher only):**
-`absolute bottom-4 left-4 z-10`
-- Default: `bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm hover:bg-blue-700`
-- Label: `+ Add Label`
-- Active state (label placement mode): `bg-amber-500 text-white` — label becomes `Cancel Labelling`
-
-**Key difference from student view:**
-- Student: selected panel shows name, badge, description, highlight, and linked video only
-- Teacher: selected panel adds teacher controls; Add Label button appears at canvas bottom-left
-
----
-
-## 8. Page: Videos (Educational Videos)
-
-### 8.1 Student Videos
-
-> **Reference image:** `images/studentLearningVideos.png`
-
-**Container:** `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full`
-
-**Page header (no action button):**
-- Heading: `text-3xl font-bold text-slate-900 font-display` — `Educational Videos`
-- Subheading: `mt-1 text-sm text-slate-500` — `Bite-sized visual explanations of anatomical structures.`
-
-**Search + filter bar** (`mt-6 mb-6 flex gap-3`):
-- Search input: `relative flex-1 max-w-sm`, `Search` icon prefix `w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2`, input `pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white`
-- Category `<select>`: `px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white`
-- Default: `All Systems`
-
-**Video grid:** `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`
-
-**Video card:** `bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer`
-- Thumbnail: `w-full h-44 object-cover relative` — full-bleed image
-- Play button overlay: centred white circle `w-10 h-10 bg-white/90 rounded-full shadow`, `Play` icon `w-5 h-5 text-blue-600`
-- Duration badge: `absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded`
-- Card body `p-3`:
-  - Category: `text-xs font-semibold text-blue-600 uppercase tracking-wider`
-  - Title: `text-sm font-semibold text-slate-900 font-display mt-0.5`
-- **No edit or link controls** — student sees title and category only
-
----
-
-### 8.2 Teacher Videos
-
-> **Reference image:** `images/teacherLearningVideos.png`
-
-**All student video elements present**, plus:
-
-**Page header — action button (top-right):**
-- `+ Upload Video` primary button: `bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700`
-
-**Video card body — teacher additions (below title):**
-- `Edit` ghost link: `text-sm text-slate-500 hover:text-blue-600`
-- `Link to Model` ghost link: `text-sm text-slate-500 hover:text-blue-600`
-- Visibility status control and delete action are exposed in the teacher management action row or overflow menu using the reusable ghost/icon action patterns in section 13.
-- Actions sit on the same row or overflow menu depending on available width, following the responsive rules in section 16.
-
-**Key differences from student view:**
-
-| Element | Student | Teacher |
-|---|---|---|
-| Header upload button | ✗ not shown | ✓ `+ Upload Video` (blue) |
-| Card: Edit link | ✗ | ✓ |
-| Card: Link to Model link | ✗ | ✓ |
-| Card: Visibility / Delete | ✗ | ✓ via management action row or overflow menu |
-
----
-
-## 9. Page: Quizzes (Self-Assessment)
-
-### 9.1 Student Quizzes
-
-> **Reference image:** `images/studentQuizzes.png`
-
-**Container:** `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full`
-
-**Page header (no action button):**
-- Heading: `text-3xl font-bold text-slate-900 font-display` — `Self-Assessment`
-- Subheading: `mt-1 text-sm text-slate-500` — `Test your knowledge with MCQ and practical quizzes.`
-
-**Quiz list shell:** `mt-6 bg-white rounded-xl border border-slate-200 overflow-hidden`
-
-**Quiz row:** `px-5 py-4 flex items-center gap-3 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors cursor-pointer`
-
-**Row layout (left → right):**
-- Status icon: `w-5 h-5 flex-shrink-0`
-  - Completed: `CheckCircle` `text-green-500`
-  - Pending: `Clock` `text-amber-400`
-- Quiz title: `text-sm font-semibold text-blue-600 flex-1`
-- Meta row below title: `text-xs text-slate-400 mt-0.5` — `{N} questions   {X} mins`
-- **Right side** (flex-end):
-  - Type badge pill: `px-2 py-0.5 rounded-full text-xs font-medium`
-    - MCQ: `bg-purple-100 text-purple-700`
-    - Practical: `bg-indigo-100 text-indigo-700`
-    - Mixed: `bg-blue-100 text-blue-700`
-  - Student completed: `text-sm font-semibold text-slate-900` — `Score: 85%`
-  - Student pending: `text-sm font-semibold text-blue-600 hover:text-blue-800` — `Start Quiz`
-
-> From image: status icon + title + meta are grouped in a left column; badge + action are right-aligned on the same row as the title, with meta below on its own line.
-
----
-
-### 9.2 Teacher Quizzes
-
-> **Reference image:** `images/teacherQuizzes.png`
-
-**All student quiz list elements present**, plus:
-
-**Page header — action button (top-right):**
-- `+ Create Quiz` primary button: `bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700`
-
-**Each quiz row — right side (teacher):**
-- Type badge pill (same as student)
-- `Edit` ghost text: `text-sm text-slate-500 hover:text-blue-600`
-- `View Results` ghost text: `text-sm text-slate-500 hover:text-blue-600`
-- Visibility status control and delete action are exposed in the teacher management action row or overflow menu using the reusable ghost/icon action patterns in section 13.
-- Actions sit on one row or overflow menu depending on available width, following the responsive rules in section 16.
-
-> No `Score` or `Start Quiz` visible — teacher sees management controls only.
-
-**Key differences from student view:**
-
-| Element | Student | Teacher |
-|---|---|---|
-| Header action button | ✗ | ✓ `+ Create Quiz` (blue) |
-| Row: Score / Start Quiz | ✓ (role-dependent) | ✗ |
-| Row: Edit | ✗ | ✓ |
-| Row: View Results | ✗ | ✓ |
-| Row: Visibility / Delete | ✗ | ✓ via management action row or overflow menu |
-
----
-
-## 10. Page: Library (Content Library)
-
-### 10.1 Student Library
-
-> **Reference image:** `images/studentContentLibrary.png`
-
-**Container:** `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full`
-
-**Page header (no action button):**
-- Heading: `text-3xl font-bold text-slate-900 font-display` — `Content Library`
-- Subheading: `mt-1 text-sm text-slate-500` — `Manage and download models, videos, and metadata.`
-
-**File list shell:** `mt-6 bg-white rounded-xl border border-slate-200 overflow-hidden`
-
-Library content includes 3D models, videos, metadata files, learning materials, and teacher-curated external links.
-
-**File row:** `px-5 py-4 flex items-center gap-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors`
-
-**Row layout:**
-- File type icon: `w-8 h-8 flex-shrink-0`
-  - `.glb` / `.obj` → `FileBox` `text-blue-500`
-  - `.mp4` → `FileVideo` `text-purple-500`
-  - `.json` → `FileText` `text-slate-400`
-  - Learning materials such as `.pdf` / notes / photos → `FileText` `text-green-500`
-  - External links → `ExternalLink` `text-blue-500`
-- File info (flex-1):
-  - Name: `text-sm font-medium text-slate-900`
-  - Meta: `text-xs text-slate-400 mt-0.5` — `{size} • Uploaded {date}`
-- **Right side — download only:**
-  - Download icon button: `p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors`
-  - Icon: `Download w-4 h-4`
-  - **No options (⋮) button** — student sees download only
-
-**No upload drop zone** — student sees the file list only.
-
----
-
-### 10.2 Teacher Library
-
-> **Reference image:** `images/teacherContentLibrary.png`
-
-**Page header — action button (top-right):**
-- `⬆ Upload Content` primary button: `bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700`
-
-**Upload drop zone (teacher only — appears above file list):**
-`mt-6 mb-4 border-2 border-dashed border-slate-200 rounded-xl p-10 text-center bg-white hover:bg-slate-50 transition-colors cursor-pointer`
-- `Upload` icon: `mx-auto w-8 h-8 text-slate-400 mb-3`
-- Heading: `text-sm font-semibold text-slate-700` — `Upload new content`
-- Format note: `text-xs text-slate-400 mt-1` — `Support for .obj, .gltf, .glb, .usdz, .uasset, .mp4, .json, .pdf, images, and links`
-
-**File list shell:** same as student — `bg-white rounded-xl border border-slate-200 overflow-hidden`
-
-**Each file row — right side (teacher additions):**
-- Download icon button (same as student)
-- **Options button:** `p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors`
-  - Icon: `MoreVertical w-4 h-4`
-
-**Key differences from student view:**
-
-| Element | Student | Teacher |
-|---|---|---|
-| Header upload button | ✗ | ✓ `⬆ Upload Content` (blue) |
-| Upload drop zone | ✗ | ✓ dashed box above file list |
-| Row: Download button | ✓ | ✓ |
-| Row: Options (⋮) button | ✗ | ✓ |
-
----
-
-## 11. Page: Login
-
-**Container:** `min-h-screen bg-slate-50 flex items-center justify-center px-4`
-
-**Card:** `bg-white rounded-xl border border-slate-200 shadow-sm w-full max-w-md p-8`
-
-**Header (centred):**
-- Logo mark: `w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mb-3 mx-auto`
-- Brand name: `text-2xl font-bold text-slate-900 font-display text-center`
-- Subheading: `text-sm text-slate-500 text-center mt-1`
-
-**Form:**
-- Email field: label + input (full-width, standard input style)
-- Password field: label + input with show/hide toggle
-- Submit: full-width primary button — `Sign in`
-- Error message: `text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2`
-- Wireframe hint: `text-xs text-slate-400 text-center mt-3`
-
-**Footer:** `text-sm text-slate-500 text-center mt-6` — `Don't have an account?` + register link
-
----
-
-## 12. Page: Register
-
-**Container:** same as Login — centred card layout
-
-**Card:** `max-w-md` — same shell
-
-**Form fields:**
-- Full name input
-- Email input
-- Password input
-- Role `<select>`: Student / Teacher
-- Program `<select>`: Physiotherapy / Occupational Therapy / Radiography / Nursing
-- Submit: full-width primary button — `Create account`
-
-**Footer:** `Already have an account?` + login link
-
----
-
-## 13. Reusable Component Patterns
-
-### Button Variants
-
-| Variant | Tailwind classes |
+| Item | Current sizes |
 |---|---|
-| Primary | `bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium` |
-| Secondary | `border border-slate-200 text-sm font-medium rounded-lg text-slate-700 bg-white hover:bg-slate-50 transition-colors px-4 py-2` |
-| Ghost text | `text-sm text-slate-500 hover:text-blue-600 transition-colors` |
-| Icon action (blue) | `p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors` |
-| Icon action (muted) | `p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors` |
+| Page maximum width | max-w-7xl = 1280px; player max-w-5xl = 1024px |
+| Horizontal padding | 16px; 24px at sm; 32px at lg |
+| Vertical page padding | 32px |
+| Section spacing | mt-6 (24px), mt-8 (32px) |
+| Card corners | rounded-xl (12px) |
+| Button/input corners | rounded-lg (8px), some nav/select rounded-md (6px) |
+| Dashboard stat padding/gap | p-5 / gap-5 (20px) |
+| Card grid gap | 16px or 20px |
+| Content/list rows | px-5 py-4; compact history rows py-3 |
+| Model/video thumbnail height | h-44 (176px) |
+| Typical modal | max-w-md (448px), p-6; auth card p-8 |
+| Viewer floating panels | w-80 (320px), max-width calc(100% - 3rem) |
 
-### Cards
+## 7. Dashboard
 
+The greeting reads “Welcome back” with the account name, followed by the selected program and “Program Overview”. Changing the programme updates text and reloads the filtered content counts/lists. Students retain access only to their assigned programme and shared content.
+
+Teacher layout has three white/deep-slate statistic cards: Models Uploaded (blue Box), Videos Uploaded (purple Video), Quizzes Created (green Activity). Values show an em dash until fetched. Quick Actions has four bordered tiles linking to Upload New Model, Manage Annotations, Add Educational Video and Create Quiz. They navigate to management pages rather than opening forms directly.
+
+Student layout has two metric cards: Quizzes Taken and Average Score, using BookOpen and yellow Trophy. The grid still declares three columns at sm. Recent Activity displays up to three attempts with dates, score or amber Pending Review pills. Favourites are compact video/quiz cards, up to two columns at sm, with 48px icon/thumbnail squares, truncated titles and filled red hearts. Empty activity/favourites show centered explanatory text in bordered panels. Three lower tiles link to models, videos and quizzes.
+
+There are no implemented Study Time, Models Explored or Student Engagement metrics, and no large illustrated Continue Learning cards.
+
+## 8. Model gallery
+
+`/3dviewer` is the model gallery; it is not the canvas route. The header has a teacher upload action. A search input with leading Search icon and All Systems / All Body Parts selects forms a vertical filter stack below sm and a row from sm. Search is debounced 300ms. Select options derive from returned model metadata.
+
+Cards use `grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5`, p-5, rounded-xl, a slate border, blue hover border and medium hover shadow. Each card contains a 176px thumbnail or blue-tinted Box fallback, optional amber Unpublished badge, model title, system/body-part metadata, description clamped to three lines, Open Viewer text and download icon action.
+
+Teacher footers add Edit, Publish/Unpublish, Delete, an Export Annotations dropdown for JSON/CSV and an expandable Content permissions and settings panel. This panel assigns a programme/all programmes and enables/disables downloads; download buttons reflect the saved permission for both roles. Card actions stop click propagation; the remaining card supports click/Enter/Space and navigates to `/3dviewer/:modelId`. Upload/edit use centered themed dialogs with title, description and body metadata; upload has a model file selector. Empty results render a bordered centered message.
+
+## 9. Viewer composition
+
+The canvas route uses a relative, full-width, overflow-hidden container with height `calc(100vh - 4rem)`, leaving room for the nav. The renderer fills an absolutely positioned mount. This differs from the old padded viewer card and fixed right sidebar.
+
+### Floating controls
+
+| Element | Position and appearance |
+|---|---|
+| Instructions | bottom/left 16px on narrow screens, top/left from md, z-20, max-width 240px, rounded-xl, border, translucent themed surface, blur, p-3 |
+| Toolbar | top/right 16px (also left 16px below md), z-20, wrapping right-aligned buttons, gap-2, max-height 160px with scrolling, compact text below md |
+| Annotation list | draggable, z-30, initially clamped toward right at y=190; translucent rounded-xl surface, shadow-xl and blur |
+| Selected details | separate draggable panel initially toward right at y=390, same surface treatment |
+| Drawing preview | pointer-transparent full-canvas SVG, z-10, cyan polyline |
+| Region generation | canvas overlay, z-40, pale/dark translucent background, spinner and progress copy |
+
+Instructions explicitly list Left Mouse: Rotate, Right Mouse: Pan, Scroll: Zoom, and current mode. Highlight/region modes add yellow/cyan guidance. There are no separate zoom/pan icon buttons in the current toolbar.
+
+Teacher tools are Add Annotation, Draw Highlight, Region Fill and Set/Update Neutral View. Point mode switches its button to a pale red cancel state; highlight uses yellow-300; region uses cyan-300. Shared controls return to saved neutral view or automatic framing when none is saved, show/hide annotations and switch canvas background. Tool text toggles to the cancel action while active.
+
+### Annotation panels and visuals
+
+The list title shows model name and annotation count, a Drag hint and +/- expand control. Its scroll area is capped at 45vh. Each item is a full-width bordered button with a color dot and numbered label; selected items use a blue surface/border. Hovering items highlights the corresponding annotation. Details show label, uppercase type, scrollable description (max-h-40), optional linked-video button, Close, and teacher Move/Edit/Delete. Move enters a surface-placement mode and preserves the annotation identity and linked video.
+
+Panels use pointer capture and dynamic left/top positioning clamped with a 12px boundary margin; dragging temporarily disables camera controls. Dynamic panel coordinates and annotation swatch colors use inline styles because they are runtime values.
+
+Numbered canvas hotspots identify annotations. On selection/hover, the visual annotation is shown and its corresponding hotspot is hidden. New projected highlights default to yellow `#facc15` at opacity 0.32; regions default to cyan `#22d3ee` at opacity 0.24. Basic point meshes are red `#ff1a00`; legacy drawings use yellow `#ffcc00`, legacy region meshes sky `#38bdf8`, both at opacity 0.3. Badge/swatch color and a basic point's actual red mesh are separate render choices.
+
+The form contains label and description; projected region forms include a native fill color picker, and both projection forms include an opacity slider (5–100%, 5% steps). Save/Cancel disable during saving. Some viewer validation/persistence feedback uses native alert dialogs rather than themed toast/confirmation UI.
+
+Linked videos open in a centered max-w-2xl modal over an 80% slate backdrop, with native controls and autoplay. The header/body now use the app’s light/dark surface and text variants. Invalid IDs and model API failures have visible status/error messages; model asset-load failures display an error message. The viewer loads GLB/glTF, OBJ and USDZ; unsupported Unreal assets require export before upload.
+
+## 10. Videos and playback
+
+Videos has the title “Educational Videos”, supporting copy and teacher Upload Video button. A leading-icon search field (max-w-sm) filters by title. Cards use `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4`, rounded bordered surfaces, hover shadow and cursor-pointer.
+
+The thumbnail region is 176px tall. Missing artwork shows a white circular play button on a slate background. Student cards have a top-right circular favourite button with an outline or filled red Heart. Teacher draft cards show Unpublished at top-left; the footer provides Edit, Publish/Unpublish, Delete and expandable programme settings. Title, two-line description and Watch Video link text sit in p-3 content.
+
+Upload accepts MP4/WebM in a dashed bordered file area within a modal. Editing includes a linked-annotation dropdown, formatted as model title — annotation label. There is no video category filter in the current page.
+
+`/videos/:videoId` uses a max-w-5xl layout with Back to Videos, a rounded bordered player card, black native video surface, autoplay, and p-6 title/description. Both direct playback and viewer-modal playback use native browser controls rather than a custom control bar.
+
+## 11. Quizzes
+
+“Self-Assessment” heads the page with supporting copy, teacher Create Quiz and a full-width leading-icon search. Search covers title/category/description. Quizzes render as compact rows in one rounded bordered list, with blue BookOpen icon/title, muted description, type pill and role actions.
+
+Students see favourite hearts and Start Quiz. My Quiz History appears below, with dates, percentage scores or pending status and result review. Teachers see Edit Details, Edit Questions, Publish/Unpublish and View Results; the latter lists both graded and pending student attempts, including student names. The API's quiz delete method does not imply a visible delete control in these rows.
+
+Attempt dialogs show question progress, an optional server-deadline countdown, MCQ radio-option rows or an open-ended textarea, navigation and submit controls. Time expiry automatically submits the answers. Students can reopen owned history through Review answers. Results distinguish graded and pending review; feedback uses green/red/amber surfaces. Graded results display a percentage headline; open-ended submissions show Pending Review until grading completes.
+
+Teacher authoring uses a details dialog followed by a scrollable question editor. Per-quiz Content settings expose a 30–86400 second timer or untimed mode and programme assignment. The question editor includes a searchable reusable bank with body-system categories, independent editing/removal and Add to quiz; each existing question has Save to bank. Assessments with attempts/active sessions protect their questions from changes and display a server error if an edit is attempted. MCQ/Open-ended buttons select question format; MCQ has four options and correct-option radios, while open-ended has a model-answer textarea. Type is derived from question formats. Review dialogs list all attempts and show student/model answers with numeric grading controls. Wider editors use max-w-xl/max-w-2xl and max-h-[90vh] overflow-y-auto.
+
+## 12. Content library
+
+“Content Library” includes descriptive copy, teacher Upload Content and full-width search. Resources use a single bordered list, not a model/video file grid. Rows have 32px green FileText for PDF/document or blue ExternalLink for URLs, truncated title, description and optional amber draft badge.
+
+Both roles use Visit for external URLs or Open for files, with an ExternalLink icon; these open a new tab. There is no generic Download action per library row. Teachers also have Edit, Publish/Unpublish and Delete, separated by a left border, plus expandable programme assignment settings.
+
+The upload modal switches between file and link modes, collects title/description and either PDF/document/photo file type plus file, or an HTTP(S) URL. Photos accept PNG, JPEG and WebP. The dashed file area belongs inside the modal, not permanently above the resource list. Editing changes metadata and, for links, the URL; it does not replace an existing document.
+
+## 13. Login and registration
+
+Both pages use min-h-screen centered auth cards on the themed background: max-w-md, p-8, rounded-xl, border and shadow-sm. A 48px blue logo tile with white GraduationCap, centered AnatoLearn heading and short subtitle precede the form. Fields are stacked with space-y-4; submit is full-width blue.
+
+Login has email/password and a generic inline error panel. There is no show/hide password control or wireframe hint. Registration has full name, email, password, confirmation, role and API-populated program selectors, password guidance, inline validation and a Create account button. It returns to Login after success. Footer links connect the two pages.
+
+## 14. Reused interaction patterns
+
+These class recipes describe common usage; actual files include small variations.
+
+```text
+Primary action
+  bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium
+  hover:bg-blue-700 transition-colors
+
+Surface/card
+  bg-white dark:bg-slate-900 rounded-xl
+  border border-slate-200 dark:border-slate-700
+
+Secondary action
+  border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2
+  bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300
+  hover:bg-slate-50 dark:hover:bg-slate-800
+
+Input
+  w-full px-3 py-2 rounded-lg text-sm
+  bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100
+  border border-slate-200 dark:border-slate-700
+  focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500
+
+List row
+  px-5 py-4 flex items-center gap-3 or gap-4
+  border-b border-slate-100 dark:border-slate-800 last:border-b-0
+  hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors
 ```
-bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow
-```
 
-### Stat Cards
+Primary buttons sometimes have icon/text gaps. Secondary page links use color transitions; media cards use shadow transitions; model cards also change border color. Busy buttons reduce opacity and change cursor, with labels such as Uploading…, Signing in… and Saving…. Focus rings are present on many inputs and the annotation form, and global button/link/select focus-visible rings supplement page-specific states.
 
-```
-bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-4
-```
+## 15. Dialogs, notifications and stacking
 
-### Form Inputs
+Standard page dialogs are fixed inset-0, z-50, centered with p-4 over bg-slate-900/50. Panels are themed, rounded-xl and bordered, usually max-w-md/p-6. Wider quiz dialogs scroll within 90vh. Dialog is the shared wrapper for these overlays: role=dialog, aria-modal, heading labelling, initial focus, Tab trapping, Escape closing and return focus. Annotation saving can prevent dismissal while busy.
 
-```
-w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400
-focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors
-```
+ConfirmProvider renders a max-w-sm, p-6 shadow-xl dialog at z-90, with Cancel and either blue or destructive red confirmation. ToastProvider renders a bottom-right stack 16px from both edges at z-100; toasts use px-4 py-3, rounded-lg, shadow-lg and white 14px medium text. They disappear after three seconds. The custom slide-up animation lasts 0.2s, moving 12px while fading in.
 
-### Badges / Pills
+Within the viewer: preview z-10, instructions/toolbar z-20, panels/status z-30, generation z-40 and dialogs z-50. Layout nav is also z-50, so standard dialogs share its stack level; this is not a dedicated modal stacking system.
 
-```
-px-2 py-0.5 rounded-full text-xs font-medium inline-flex items-center
-```
+## 16. Responsive breakpoints
 
-### File List Shell
+Tailwind defaults apply: sm 640px, md 768px, lg 1024px, xl 1280px, 2xl 1536px.
 
-```
-bg-white rounded-xl border border-slate-200 overflow-hidden
-```
+| Area | Below sm | sm | md | lg / xl |
+|---|---|---|---|---|
+| Page horizontal padding | 16px | 24px | 24px | 32px at lg |
+| Nav links | mobile dropdown | mobile dropdown | desktop links visible | desktop links visible |
+| User name | hidden | visible | visible | visible |
+| Dashboard metrics | 1 column | 3 columns, even for two student cards | same | same |
+| Teacher quick actions | 1 column | 2 columns | same | 4 columns at lg |
+| Student favourites | 1 column | 2 columns | same | same |
+| Student study links | 1 column | 3 columns | same | same |
+| Model cards | 1 column | 1 column | 2 columns | 3 columns at xl |
+| Video cards | 1 column | 2 columns | same | 3 columns at lg |
+| Model filters | vertical | horizontal | horizontal | horizontal |
+| Viewer panels | floating, width-constrained and clamped at every size | same | same | same |
 
-### File List Row
+The former mobile slide-over/fixed-desktop viewer panel distinction is not implemented. The toolbar wraps/scrolls, instructions move to the bottom-left on narrow screens and the annotation list starts lower to leave room for tools. Panels remain draggable and can still overlap after user positioning. Quiz/library rows and header actions wrap at small widths. Video empty-state markup uses col-span-3 even when the nominal grid has fewer columns. These are implementation limits requiring browser checks, not guarantees of complete responsive support.
 
-```
-px-5 py-4 flex items-center gap-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors
-```
+## 17. Role presentation reference
 
-### Quiz List Shell
-
-Same as File List Shell.
-
-### Quiz List Row
-
-```
-px-5 py-4 flex items-center gap-3 border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors cursor-pointer
-```
-
----
-
-## 14. Icon Library
-
-All icons from `lucide-react`.
-
-| Icon | Size | Usage |
+| Surface | Student | Teacher |
 |---|---|---|
-| `GraduationCap` | `w-4 h-4` (nav), `w-5 h-5` (logo inner) | Dashboard nav, logo |
-| `Box` | `w-4 h-4` (nav), `w-6 h-6` (stat), `w-12 h-12` (card) | 3D Viewer nav, stat card, learning card |
-| `Video` | `w-4 h-4` (nav), `w-6 h-6` (stat) | Videos nav, Videos Linked stat |
-| `BookOpen` | `w-4 h-4` (nav), `w-12 h-12` (card) | Quizzes nav, learning card |
-| `Library` | `w-4 h-4` | Library nav |
-| `UserCircle2` | `w-8 h-8` | User avatar |
-| `Clock` | `w-5 h-5` (quiz row), `w-6 h-6` (stat) | Study Time stat, pending quiz |
-| `Trophy` | `w-6 h-6` | Quiz Average stat |
-| `Activity` | `w-6 h-6` | Models Explored / Student Engagement stat |
-| `Play` | `w-5 h-5` | Video play button |
-| `Plus` | `w-4 h-4` | Upload / Create action buttons |
-| `Search` | `w-4 h-4` | Search input prefix |
-| `CheckCircle` | `w-5 h-5` | Completed quiz status |
-| `Upload` | `w-8 h-8` (drop zone), `w-4 h-4` (button) | Upload drop zone, Upload Content button |
-| `Download` | `w-4 h-4` | File download button |
-| `FileBox` | `w-8 h-8` | 3D model file type |
-| `FileVideo` | `w-8 h-8` | Video file type |
-| `FileText` | `w-8 h-8` | Data / JSON file type |
-| `ExternalLink` | `w-8 h-8` | Teacher-curated external links |
-| `MoreVertical` | `w-4 h-4` | File options menu (teacher only) |
-| `RotateCcw` | `w-4 h-4` | Reset view (3D toolbar) |
-| `ZoomIn` | `w-4 h-4` | Zoom in (3D toolbar) |
-| `ZoomOut` | `w-4 h-4` | Zoom out (3D toolbar) |
-| `Move` | `w-4 h-4` (toolbar), `w-7 h-7` (panel) | Pan toolbar, empty state panel |
-| `X` | `w-4 h-4` | Close panel / close video player |
-| `LogOut` | `w-4 h-4` | Logout button |
+| Dashboard | quiz metrics, activity, favourites, study links | content counts, four management links |
+| Model gallery | published-list request, view, download | programme-filtered teacher list, upload/edit/publish/delete/export, programme/download settings and permitted download |
+| Viewer | navigate, inspect annotations, linked video, visibility/background, neutral return | same plus annotation tools/movement/edit/delete and neutral-view save |
+| Videos | published-list request, play, favourites | upload/edit/link/publish/delete/play |
+| Quizzes | published-list request, attempt/history/results/favourites | create/edit/questions/bank/publish/timer/programme/all results/grading |
+| Library | published-list request, Open/Visit | upload/edit/publish/delete plus Open/Visit |
 
----
+These controls read AppContext role; the development role preview does not grant backend permissions. Programme names are dynamic filter/assignment data; they do not select different visual themes.
 
-## 15. Role Difference Summary — All Pages
+## 18. Icons and current design limits
 
-Quick reference for implementing conditional rendering per role.
+Lucide provides most icons: GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun/Moon, Search, Upload/Download, FileJson/FileText, ExternalLink, Heart, Play, Trophy, Activity, Clock and X. Common sizes are 16px for actions/navigation, 20px for controls, 24px for metrics, and 32–40px for resource/model fallbacks. The viewer also contains an inline SVG play mark, SVG drawing preview and text +/- controls.
 
-| Page | Student only | Teacher only |
-|---|---|---|
-| **Dashboard** | Study Time, Quiz Average, Models Explored stats; Continue Learning cards | Models Uploaded, Videos Linked, Student Engagement stats; Quick Actions buttons |
-| **3D Viewer** | Empty state when no structure is selected; selected-state panel with name, description, highlight, and linked video | Add Label button (bottom-left canvas); Teacher Controls section in detail panel (Edit Description, Change Linked Video) |
-| **Videos** | Video grid only (no controls below title) | `+ Upload Video` button in header; Edit + Link to Model links below each video title |
-| **Quizzes** | Start Quiz / Score per row | `+ Create Quiz` button in header; Edit + View Results per row (no scores shown) |
-| **Library** | Download button per row only; no upload drop zone | `⬆ Upload Content` button in header; upload drop zone above file list; Options (⋮) button per row |
-
----
-
-## 16. Responsive Breakpoints
-
-| Breakpoint | Nav | Grid columns | Viewer panel |
-|---|---|---|---|
-| Mobile (`< md`) | Nav links hidden (hamburger deferred) | 1 col | Panel slides over canvas on selection |
-| Tablet (`md`) | Nav links visible | 2 col | Panel fixed at right, always visible |
-| Desktop (`lg`) | Full nav | 3 col | Panel fixed at right, always visible |
-
----
-
-## 17. Spacing & Sizing Reference
-
-| Token | Value | Usage |
-|---|---|---|
-| Page horizontal padding | `px-4 sm:px-6 lg:px-8` | All page containers |
-| Page vertical padding | `py-8` | All page containers |
-| Page max-width | `max-w-7xl` | All page containers |
-| Nav height | `h-16` (64px) | Top navigation |
-| Stat card gap | `gap-5` | Stat card grid |
-| Content card gap | `gap-4` to `gap-6` | Video / learning card grid |
-| Section spacing | `mt-6` to `mt-8` | Between page sections |
-| Stat card padding | `p-5` | Inside stat cards |
-| Content card padding | `p-3` to `p-4` | Inside video / quiz cards |
-| File/quiz row padding | `px-5 py-4` | Inside list rows |
-| Video thumbnail height | `h-44` | Video card image |
-| Learning card header | `h-32` | Dashboard quick-link card |
-| Viewer side panel width | `w-80` (320px) | 3D viewer detail panel |
-| Upload drop zone | `p-10` | Teacher library drop zone |
-| Logo mark | `w-8 h-8` (nav), `w-12 h-12` (auth pages) | Logo sizes |
+Keyboard-activatable model/video cards, shared focus rings, mobile navigation and Dialog focus/Escape/return-focus behavior are implemented. Some legacy field labels and native alerts still need broader accessibility review; no certification or complete cross-browser/mobile matrix is claimed. SVG drawing previews and a few legacy inline icons remain. Full implementation/verification details are in Architecture.md and anatolearn/docs/testing_log.md.

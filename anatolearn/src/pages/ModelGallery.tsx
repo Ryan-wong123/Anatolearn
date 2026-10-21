@@ -1,24 +1,28 @@
+import Dialog from '../components/Dialog';
+import ContentSettings from '../components/ContentSettings';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Upload, X, Search, Download, FileJson, FileText } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
-import { useToast } from '../context/ToastContext';
-import { useConfirm } from '../context/ConfirmContext';
+import { useAppContext } from '../context/AppContextState';
+import { useToast } from '../context/ToastContextState';
+import { useConfirm } from '../context/ConfirmContextState';
 import { api } from '../api/api';
 
 interface ModelRecord {
   id: number;
+  program_id: number | null;
   title: string;
   description: string | null;
   file_path: string;
   thumbnail_path: string | null;
   is_published: boolean;
+  is_downloadable: boolean;
   body_system: string | null;
   body_part: string | null;
 }
 
 export default function ModelGallery() {
-  const { role } = useAppContext();
+  const { role, program } = useAppContext();
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const navigate = useNavigate();
@@ -65,13 +69,13 @@ export default function ModelGallery() {
         part: partFilter || undefined,
       })
       .then(setModels)
-      .catch((err) => console.error('Failed to load models:', err));
+      .catch(() => toast('Could not load models. Please try again.', 'error'));
   };
 
   useEffect(() => {
     loadModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, debouncedSearch, systemFilter, partFilter]);
+  }, [role, program, debouncedSearch, systemFilter, partFilter]);
 
   // Task 4.4: system/part dropdowns are populated from unique values
   // actually present in the current model list, not a fixed hardcoded set.
@@ -135,6 +139,7 @@ export default function ModelGallery() {
       toast(model.is_published ? 'Model unpublished' : 'Model published');
     } catch (err) {
       console.error('Failed to update publish state:', err);
+      toast('The change could not be saved. Please try again.', 'error');
     }
   };
 
@@ -154,6 +159,7 @@ export default function ModelGallery() {
       toast('Model deleted');
     } catch (err) {
       console.error('Failed to delete model:', err);
+      toast('The change could not be saved. Please try again.', 'error');
     }
   };
 
@@ -303,13 +309,14 @@ export default function ModelGallery() {
           {models.map((model) => (
             <div
               key={model.id}
-              onClick={() => navigate(`/3dviewer/${model.id}`)}
+              role="link" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); navigate(`/3dviewer/${model.id}`); } }}
+            onClick={() => navigate(`/3dviewer/${model.id}`)}
               className="text-left bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all cursor-pointer"
             >
               <div className="relative">
                 {model.thumbnail_path ? (
                   <img
-                    src={`http://localhost:5000${model.thumbnail_path}`}
+                    src={`${model.thumbnail_path}`}
                     alt={model.title}
                     className="w-full h-44 object-cover rounded-lg mb-4"
                   />
@@ -347,14 +354,15 @@ export default function ModelGallery() {
 
                 <button
                   onClick={(e) => handleDownload(model, e)}
-                  disabled={downloadingId === model.id}
-                  title="Download model file"
+                  disabled={!model.is_downloadable || downloadingId === model.id}
+                  title={model.is_downloadable ? "Download model file" : "Downloads disabled by teacher"}
                   className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-40"
                 >
                   <Download className="w-4 h-4" />
                 </button>
               </div>
 
+              <ContentSettings kind="models" id={model.id} programId={model.program_id} downloadable={model.is_downloadable} onSaved={loadModels} />
               {role === 'teacher' && (
                 <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 relative">
                   <button
@@ -413,7 +421,7 @@ export default function ModelGallery() {
       )}
 
       {showUpload && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={closeUploadModal} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
@@ -488,12 +496,12 @@ export default function ModelGallery() {
                 <div className="mt-1 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <input
                     type="file"
-                    accept=".glb,.gltf,.obj"
+                    accept=".glb,.gltf,.obj,.usdz"
                     onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                     className="bg-white dark:bg-slate-900 w-full text-sm text-slate-600 dark:text-slate-400"
                   />
                   <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
-                    Supported formats: .glb, .gltf, .obj
+                    Supported: GLB, embedded glTF, OBJ, USDZ. Export Unreal assets to GLB before uploading.
                   </p>
                   {uploadFile && (
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 font-medium">
@@ -526,11 +534,11 @@ export default function ModelGallery() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {editingModel && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={closeEdit} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
               Edit Model
@@ -608,7 +616,7 @@ export default function ModelGallery() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

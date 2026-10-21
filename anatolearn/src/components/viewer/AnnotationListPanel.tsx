@@ -31,7 +31,7 @@ export default function AnnotationListPanel({
     <DraggablePanel
       boundaryRef={boundaryRef}
       onDragStateChange={onDragStateChange}
-      initialPosition={{ x: 9999, y: 88 }}
+      initialPosition={{ x: 9999, y: 190 }}
       className="w-80 max-w-[calc(100%-3rem)]"
     >
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95">        <div className="flex cursor-move items-center justify-between gap-3 px-4 py-3">

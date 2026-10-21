@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { useAppContext } from '../../context/AppContext';
+import { useAppContext } from '../../context/AppContextState';
 import DraggablePanel from './DraggablePanel';
 import type { Annotation, LinkedVideo } from './types';
 
@@ -10,6 +10,7 @@ interface AnnotationDetailsPanelProps {
   linkedVideo?: LinkedVideo | null;
   onPlayVideo?: (video: LinkedVideo) => void;
   onEdit: () => void;
+  onReposition: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -29,6 +30,7 @@ export default function AnnotationDetailsPanel({
   linkedVideo,
   onPlayVideo,
   onEdit,
+  onReposition,
   onDelete,
   onClose,
 }: AnnotationDetailsPanelProps) {
@@ -70,6 +72,7 @@ export default function AnnotationDetailsPanel({
         <div className="mt-4 flex gap-2">
           {role === 'teacher' && (
             <>
+              <button onClick={onReposition} className="flex-1 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Move</button>
               <button onClick={onEdit} className="text-slate-900 dark:text-slate-100 flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
                 Edit
               </button>

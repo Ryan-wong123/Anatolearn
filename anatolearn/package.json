@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test:viewer": "node --experimental-strip-types --test tests/viewer.test.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:models": "node --test tests/model-formats.test.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.18.0",

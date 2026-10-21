@@ -10,3 +10,5 @@
 .animate-slide-up {
   animation: slide-up 0.2s ease-out;
 }
+
+@layer base { button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible { @apply outline-none ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900; } }

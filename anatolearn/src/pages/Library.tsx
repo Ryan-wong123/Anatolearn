@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import Dialog from '../components/Dialog';
+import ContentSettings from '../components/ContentSettings';
+import { useEffect, useState, useCallback } from 'react';
 import { FileText, ExternalLink, Upload, X, Search } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
-import { useToast } from '../context/ToastContext';
-import { useConfirm } from '../context/ConfirmContext';
+import { useAppContext } from '../context/AppContextState';
+import { useToast } from '../context/ToastContextState';
+import { useConfirm } from '../context/ConfirmContextState';
 import { api } from '../api/api';
 
-type ResourceType = 'pdf' | 'document' | 'link';
+type ResourceType = 'pdf' | 'document' | 'link' | 'image';
 
 interface Resource {
   id: number;
+  program_id: number | null;
   title: string;
   description: string | null;
   resource_type: ResourceType;
@@ -23,7 +26,7 @@ function ResourceIcon({ type }: { type: ResourceType }) {
 }
 
 export default function Library() {
-  const { role } = useAppContext();
+  const { role, program } = useAppContext();
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const [resources, setResources] = useState<Resource[]>([]);
@@ -33,7 +36,7 @@ export default function Library() {
   const [uploadMode, setUploadMode] = useState<'file' | 'link'>('file');
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
-  const [uploadFileType, setUploadFileType] = useState<'pdf' | 'document'>('pdf');
+  const [uploadFileType, setUploadFileType] = useState<'pdf' | 'document' | 'image'>('pdf');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadUrl, setUploadUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -46,15 +49,12 @@ export default function Library() {
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadResources();
-  }, [role]);
-
-  const loadResources = () => {
+  const loadResources = useCallback(() => {
     api.getResources(role === 'student')
       .then(setResources)
-      .catch((err) => console.error('Failed to load resources:', err));
-  };
+      .catch(() => toast('Could not load resources. Please try again.', 'error'));
+  }, [role, toast]);
+  useEffect(() => { loadResources(); }, [loadResources, program]);
 
   const handleUpload = async () => {
     if (!uploadTitle.trim()) {
@@ -160,6 +160,7 @@ export default function Library() {
       toast(resource.is_published ? 'Resource unpublished' : 'Resource published');
     } catch (err) {
       console.error('Failed to update publish state:', err);
+      toast('The change could not be saved. Please try again.', 'error');
     }
   };
 
@@ -178,6 +179,7 @@ export default function Library() {
       toast('Resource deleted');
     } catch (err) {
       console.error('Failed to delete resource:', err);
+      toast('The change could not be saved. Please try again.', 'error');
     }
   };
 
@@ -192,7 +194,7 @@ export default function Library() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 font-display">
             Content Library
@@ -233,7 +235,7 @@ export default function Library() {
           filteredResources.map((resource) => (
             <div
               key={resource.id}
-              className="px-5 py-4 flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              className="px-5 py-4 flex flex-wrap items-center gap-4 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <div className="flex-shrink-0">
                 <ResourceIcon type={resource.resource_type} />
@@ -257,7 +259,7 @@ export default function Library() {
 
               {/*  Added "<a" below */}
               <a
-                href={resource.resource_type === 'link' ? resource.file_path : `http://localhost:5000${resource.file_path}`}
+                href={resource.resource_type === 'link' ? resource.file_path : `${resource.file_path}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-400 flex items-center gap-1 flex-shrink-0"
@@ -266,6 +268,7 @@ export default function Library() {
                 <ExternalLink className="w-4 h-4" />
               </a>
 
+              <ContentSettings kind="resources" id={resource.id} programId={resource.program_id} onSaved={loadResources} />
               {role === 'teacher' && (
                 <div className="flex items-center gap-3 flex-shrink-0 pl-4 border-l border-slate-100 dark:border-slate-800">
                   <button
@@ -294,7 +297,7 @@ export default function Library() {
       </div>
 
       {showUpload && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={closeUploadModal} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
@@ -380,6 +383,7 @@ export default function Library() {
                       >
                         PDF
                       </button>
+                      <button type="button" onClick={() => setUploadFileType('image')} className={`flex-1 rounded-lg border p-2 text-sm ${uploadFileType==='image' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>Photo</button>
                       <button
                         type="button"
                         onClick={() => setUploadFileType('document')}
@@ -400,12 +404,12 @@ export default function Library() {
                     <div className="mt-1 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                       <input
                         type="file"
-                        accept=".pdf,.doc,.docx"
+                        accept={uploadFileType === 'pdf' ? '.pdf' : uploadFileType === 'image' ? '.png,.jpg,.jpeg,.webp' : '.doc,.docx'}
                         onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                         className="bg-white dark:bg-slate-900 w-full text-sm text-slate-600 dark:text-slate-400"
                       />
                       <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
-                        Supported formats: .pdf, .doc, .docx
+                        Supported formats: PDF, DOC/DOCX, PNG, JPEG, WebP
                       </p>
                       {uploadFile && (
                         <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 font-medium">
@@ -453,11 +457,11 @@ export default function Library() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {editingResource && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={closeEditResource} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
@@ -532,7 +536,7 @@ export default function Library() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

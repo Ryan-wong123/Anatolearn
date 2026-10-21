@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Trophy, Activity, Box, Video, BookOpen, Heart, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useAppContext } from '../context/AppContext';
+import { useAppContext } from '../context/AppContextState';
 import { api } from '../api/api';
 
 const quickActions = [
@@ -83,7 +83,7 @@ export default function Dashboard() {
         })
         .catch((err) => console.error('Failed to load favorites:', err));
     }
-  }, [role]);
+  }, [role, program]);
 
   const teacherStats = [
     { label: 'Models Uploaded', value: modelCount === null ? '—' : String(modelCount), icon: Box, iconColor: 'text-blue-500 dark:text-blue-400' },

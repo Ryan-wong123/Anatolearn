@@ -1,3 +1,4 @@
+import Dialog from '../Dialog';
 interface AnnotationFormModalProps {
   isSaving: boolean;
   title: string;
@@ -32,7 +33,7 @@ export default function AnnotationFormModal({
   onSave,
 }: AnnotationFormModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <Dialog onClose={() => { if (!isSaving) onCancel(); }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div aria-busy={isSaving} className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
         <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
         <div className="mt-4">
@@ -115,6 +116,6 @@ export default function AnnotationFormModal({
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
