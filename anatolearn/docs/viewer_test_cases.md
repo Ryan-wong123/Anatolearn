@@ -7,7 +7,7 @@ These cases describe what the app does today, derived from the source code. Run 
 - **M** = manual (needs a person or a canvas drag; add automation later)
 
 **Gate for each refactor step**
-1. `npm run build` shows no errors beyond the two known unused-variable errors in Viewer.tsx.
+1. `npm run build` succeeds with no TypeScript errors.
 2. All **A** cases pass.
 3. The **M** cases for the touched area are checked by hand.
 4. No new browser console errors.
@@ -148,9 +148,9 @@ These cases describe what the app does today, derived from the source code. Run 
 
 | ID | Case | Expected result | Status |
 |---|---|---|---|
-| QA-01 | Production build | Only the two known errors (`isolateSelected`, `clampCameraOutsideModel`) | A |
+| QA-01 | Production build | No TypeScript errors | A |
 | QA-02 | Browser console during full sweep | No errors | A |
-| QA-03 | Viewer.tsx line count | Lower than the previous step | M |
+| QA-03 | Viewer ownership | Scene-mutating code stays in Viewer; data/state boundaries remain typed | M |
 | QA-04 | Initial viewer load of a model | Loads in a similar time before and after the change | M |
 | QA-05 | Memory after repeated viewer open/close | No steady growth | M |
 
@@ -158,9 +158,25 @@ These cases describe what the app does today, derived from the source code. Run 
 
 ## Known issues (tracked, not gates)
 
-- `isolateSelected` and `clampCameraOutsideModel` are unused; the build fails on them.
+- Two inherited Viewer effect dependency warnings remain in focused lint.
 - Model load failures are only logged to the console.
 - `alert()` is used for several errors; the app has a toast system to use instead.
-- `LinkedVideo` is declared in both `types.ts` (shared) and `AnnotationDetailsPanel.tsx`.
+- Shared domain types are defined once in src/types/anatomy.ts and re-exported by viewer/types.ts.
 - The backend URL `http://localhost:5000` is hardcoded in several components.
 - Mobile nav links are hidden below the `md` breakpoint with no replacement.
+
+## Automated regression command
+`npm run test:viewer` runs focused serialization/draft/projection/mode tests. Run this alongside the production build. The A/M rows above describe the broader baseline checklist; their labels alone are not proof that every row was executed in a particular run. See testing_log.md for actual results and limitations.
+
+### Entry-point extraction regression
+Check edit/save/cancel followed by creating a new annotation (canceled edits must not be submitted as updates), list collapse/expand, linked video open/close, teacher/student controls, and no canvas after leaving. Line-count baseline for this step: 1,413 before, 1,167 after; splitting responsibilities is preferred to compressing rendering code into long statements.
+
+### Loader extraction regression
+Run the 16-case `npm run test:viewer` suite. It now includes new-cache persistence versus cache reuse, late/canceled responses, navigation during cache saving, save/load failures, ordered numbering, and selected/hovered identity matching. Confirm model annotations and neutral view survive reload and deletion removes the intended record. Latest Viewer entry-point baseline: 1,167 before, 972 after.
+
+### Drawing/event boundary regression
+Run the 21-case suite. Verify jitter filtering, copied/reset drawing samples, zero-size coordinate guards, and complete/idempotent event cleanup. In browser, draw/save/delete a projected highlight, reload legacy annotations, select them under student/teacher accounts, and leave the Viewer. Baseline for this pass: 972 before, 859 after. Full region-fill drawing and precise masked-hover cases remain manual checks beyond this pass.
+
+Basic-renderer consolidation adds a regression case for plain visual descriptions: point and legacy draw positions/sizes, triangle vertex order, material appearance and missing data. Current automated suite: 22 passing tests. This pass only smoke-checks browser startup, without repeating previous annotation interaction checks.
+
+Final consolidation retains the 22-test automated baseline and adds a focused teacher browser check for model loading, numbered point-annotation rendering, list selection, camera focus and details display. The browser console remained clear. The temporary account and annotation were removed after verification.

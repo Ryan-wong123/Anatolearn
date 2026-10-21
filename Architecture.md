@@ -305,3 +305,20 @@ No global state is needed for video play state.
   "autoprefixer": "latest"
 }
 ```
+
+## Viewer responsibility boundaries (21 Oct 2026)
+On optimizingViewer, Viewer.tsx owns scene refs, marker/hotspot creation, hover/raycast handling, materials, cleanup, and panel-driven camera enable/disable behavior. AnnotationVisuals was reintegrated into this owner rather than exporting scene refs to a controller. Existing geometry utilities remain reusable. projectedMaskData receives plain projection-frame values instead of a live camera. Annotation panels/DraggablePanel receive DOM bounds and a drag-state callback, with no OrbitControls dependency.
+Data-only useViewerContent handles model/linked-video requests and stale-response guards without role/program duplication or Three.js state. Domain types belong to src/types/anatomy.ts so the API layer does not depend on Viewer components; the existing viewer/types path re-exports them. Pure annotationMapping and viewerMode helpers centralize persistence and mutually exclusive interaction transitions. Context remains the role/program source for UI; role props were removed from ViewerToolbar and AnnotationDetailsPanel.
+
+### Viewer entry-point size reduction (21 Oct 2026)
+ViewerOverlay composes the existing controls/panels/dialogs using plain content data, DOM bounds, and callbacks. useAnnotationEditor owns the annotation form draft and API save workflow, receiving plain annotation snapshots and a numeric scene epoch through callbacks. Its onSaved callback hands the saved plain record back to Viewer for scene mutation. createAnnotationBadge produces a canvas image only; CanvasTexture creation remains in Viewer. This separates UI/persistence from scene ownership without extracting a scene controller. Viewer.tsx decreased from 1,413 to 1,167 lines in this step.
+
+### Annotation loading orchestration (21 Oct 2026)
+loadViewerAnnotations coordinates plain annotation records through injected repository and view callbacks. Viewer alone creates the visuals and hotspots; the loader persists only newly generated cached geometry and checks scene lifetime before view callbacks. Selection matching is pure data logic. useViewerContent handles neutral-view API persistence, while useAnnotationEditor handles delete persistence. A single mode ref mirrors the exclusive interaction mode for pointer events. This further reduces Viewer.tsx to 972 lines without exporting scene ownership.
+
+### Drawing sample and event boundaries (21 Oct 2026)
+drawingSamples stores copied plain screen/world points and mesh indices; useDrawingSamples adds preview state without Three.js refs or global context. Viewer converts world snapshots to vectors only while calculating projections. bindViewerEvents receives a DOM canvas, event callbacks and resize target; its returned disposer detaches all listeners. Projected draft defaults are pure annotation data. Geometry/material creation, raycasting and disposal stay in Viewer.tsx, including ownership-aware disposal of invisible hit targets that share geometry with visible annotations. Latest file size: 859 lines.
+
+The Viewer basicAnnotationVisuals helper returns plain sphere/triangle descriptions and material settings only. Viewer.tsx constructs all corresponding Three.js objects, registers them and disposes them; no scene references cross this boundary. Click and drawing model picking share a local raycast implementation.
+
+Viewer.tsx also centralizes scene-object registration, point-to-Vector3 conversion and camera/controls synchronization through local typed helpers. These helpers do not move scene ownership outside the page; they remove repeated lifecycle bookkeeping while keeping creation and cleanup visible in the Three.js layer.

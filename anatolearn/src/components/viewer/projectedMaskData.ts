@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import type { DrawPoint, ProjectedMaskData, ScreenPoint } from './types';
 
+export interface ProjectionFrame {
+  right: DrawPoint;
+  up: DrawPoint;
+  forward: DrawPoint;
+  orientation: DrawPoint;
+}
+
 export function getCenterOfPoints(points: THREE.Vector3[]) {
   if (points.length === 0) return new THREE.Vector3();
   return points
@@ -27,19 +34,16 @@ export function getDominantMeshIndex(indices: number[]) {
 }
 
 export function buildProjectedMaskData(
-  camera: THREE.PerspectiveCamera,
+  frame: ProjectionFrame,
   markerSize: number,
   screenPoints: ScreenPoint[],
   worldPoints: THREE.Vector3[],
   meshIndex: number,
   mode: 'stroke' | 'fill',
 ): ProjectedMaskData {
-  camera.updateMatrixWorld(true);
-
-  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
-  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
-  const forward = new THREE.Vector3();
-  camera.getWorldDirection(forward);
+  const right = new THREE.Vector3(frame.right.x, frame.right.y, frame.right.z);
+  const up = new THREE.Vector3(frame.up.x, frame.up.y, frame.up.z);
+  const forward = new THREE.Vector3(frame.forward.x, frame.forward.y, frame.forward.z);
 
   const center = getCenterOfPoints(worldPoints);
   const localPoints = worldPoints.map((point) => point.clone().sub(center));
@@ -78,12 +82,10 @@ export function buildProjectedMaskData(
     y: maskPadding + ((point.y - minY) / screenHeight) * (1 - maskPadding * 2),
   }));
 
-  const orientation = new THREE.Euler().setFromQuaternion(camera.quaternion, 'XYZ');
-
   return {
     meshIndex,
     position: vectorToPoint(adjustedCenter),
-    orientation: { x: orientation.x, y: orientation.y, z: orientation.z },
+    orientation: { ...frame.orientation },
     size: { x: width, y: height, z: depth },
     maskPoints,
     mode,

@@ -1,5 +1,6 @@
+import { useAppContext } from '../../context/AppContext';
+
 interface ViewerToolbarProps {
-  role: string;
   addMode: boolean;
   drawMode: boolean;
   regionMode: boolean;
@@ -16,7 +17,6 @@ interface ViewerToolbarProps {
 }
 
 export default function ViewerToolbar({
-  role,
   addMode,
   drawMode,
   regionMode,
@@ -31,6 +31,7 @@ export default function ViewerToolbar({
   onSaveNeutralView,
   onReturnToNeutralView,
 }: ViewerToolbarProps) {
+  const { role } = useAppContext();
   return (
     <div
       className="absolute right-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap items-center justify-end gap-2"

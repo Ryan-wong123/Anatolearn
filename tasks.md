@@ -1403,3 +1403,14 @@ These tasks run continuously throughout the 10-week project:
 - [ ] Video thumbnail generation
 - [ ] Quiz timer
 - [ ] Student progress dashboard with charts
+
+- [x] Further refactor optimizingViewer: typed annotation persistence, exclusive interaction modes, safe async model loading, and scene lifecycle regression checks. 10 tests and build pass; focused lint has 0 errors/2 inherited warnings; teacher/student browser checks, docs and Docker rebuild complete.
+- [x] Shorten Viewer.tsx by extracting annotation editor workflow and UI composition while retaining Three.js ownership; verify line count and regressions. Reduced 1,413 to 1,167 lines; build/10 tests/browser checks passed; docs and Docker updated.
+
+- [x] Further shorten Viewer.tsx using data-loading/persistence services and shared selection logic while preserving scene ownership. Reduced 1,167 to 972 lines; 16 tests/build/browser checks pass; docs and Docker updated; final frontend/API health checks passed.
+
+- [x] Further reduce Viewer.tsx through plain-data drawing/camera helpers and consolidated scene operations; verify behavior and line count. Reduced 972 to 859 lines; 21 tests/build/browser checks pass; documentation and Docker updated; final health checks pass.
+
+- [x] Consolidate basic annotation rendering and pointer raycasts to further shorten Viewer.tsx while retaining scene ownership. Reduced 859 to 810 lines; 22 tests and production build pass, lint has zero errors/two existing warnings; Docker rebuilt, browser startup checked, documentation updated. Full annotation UI regression was not rerun this pass.
+
+- [x] Final Viewer reduction: consolidate scene registration, annotation hotspot construction, vector conversion and camera synchronization while preserving Three.js ownership and behavior. Reduced 810 to 760 physical lines; 22 tests/build/browser camera and annotation checks pass; lint has zero errors/two existing warnings; Docker and documentation updated.

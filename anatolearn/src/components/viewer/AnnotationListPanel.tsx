@@ -1,11 +1,10 @@
 import type { RefObject } from 'react';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import DraggablePanel from './DraggablePanel';
 import type { Annotation } from './types';
 
 interface AnnotationListPanelProps {
   boundaryRef: RefObject<HTMLDivElement | null>;
-  controlsRef: RefObject<OrbitControls | null>;
+  onDragStateChange: (dragging: boolean) => void;
   annotations: Annotation[];
   selectedAnnotation: Annotation | null;
   open: boolean;
@@ -18,7 +17,7 @@ interface AnnotationListPanelProps {
 
 export default function AnnotationListPanel({
   boundaryRef,
-  controlsRef,
+  onDragStateChange,
   annotations,
   selectedAnnotation,
   open,
@@ -31,7 +30,7 @@ export default function AnnotationListPanel({
   return (
     <DraggablePanel
       boundaryRef={boundaryRef}
-      controlsRef={controlsRef}
+      onDragStateChange={onDragStateChange}
       initialPosition={{ x: 9999, y: 88 }}
       className="w-80 max-w-[calc(100%-3rem)]"
     >
