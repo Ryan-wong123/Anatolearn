@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
+import { useToast } from '../../context/ToastContextState';
 import { api } from '../../api/api';
 import { applyAnnotationDraft, fromDbAnnotation, toAnnotationPayload } from './annotationMapping';
 import type AnnotationFormModal from './AnnotationFormModal';
@@ -17,6 +18,9 @@ const EMPTY_DRAFT: AnnotationDraft = { label: '', description: '', color: '#22d3
 
 // Owns form state and persistence only. Scene changes remain behind callbacks.
 export function useAnnotationEditor(options: AnnotationEditorOptions) {
+  const { toast } = useToast();
+  const operationRef = useRef(0);
+  const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Annotation['kind']>('point');
@@ -31,6 +35,7 @@ export function useAnnotationEditor(options: AnnotationEditorOptions) {
   }, []);
 
   function openForm(annotation?: Annotation, isEditing = false) {
+    setError(null);
     const nextKind = annotation?.kind ?? 'point';
     setKind(nextKind);
     setEditing(isEditing);
@@ -46,10 +51,12 @@ export function useAnnotationEditor(options: AnnotationEditorOptions) {
   async function save() {
     const modelId = options.getModelId();
     if (modelId === undefined || savingRef.current) return;
-    if (!draft.label.trim()) { alert('Please enter a label.'); return; }
+    if (!draft.label.trim()) { setError('Please enter a label.'); return; }
     const base = options.getAnnotation();
     if (!base) return;
     const epoch = options.getSceneEpoch();
+    const operation = ++operationRef.current;
+    setError(null);
     savingRef.current = true;
     setSaving(true);
     try {
@@ -62,15 +69,17 @@ export function useAnnotationEditor(options: AnnotationEditorOptions) {
       setOpen(false);
     } catch (error) {
       console.error('Failed to save annotation:', error);
-      if (mountedRef.current && options.getSceneEpoch() === epoch) alert('Failed to save annotation.');
+      if (mountedRef.current && options.getSceneEpoch() === epoch) setError('Failed to save annotation. Please try again.');
     } finally {
-      savingRef.current = false;
-      if (mountedRef.current) setSaving(false);
+      if (operationRef.current === operation) {
+        savingRef.current = false;
+        if (mountedRef.current) setSaving(false);
+      }
     }
   }
 
   const form: ComponentProps<typeof AnnotationFormModal> | null = open ? {
-    ...draft,
+    ...draft, error,
     title: editing ? 'Edit Annotation' : kind === 'point' ? 'Add Annotation' : kind === 'projectedRegion' ? 'Add Projected Region' : 'Add Projected Highlight',
     isSaving: saving,
     showColorPicker: kind === 'projectedRegion',
@@ -89,15 +98,23 @@ export function useAnnotationEditor(options: AnnotationEditorOptions) {
 
   async function deleteAnnotation(id: number | undefined) {
     if (id === undefined) return true;
+    const epoch = options.getSceneEpoch();
     try {
       await api.deleteAnnotation(id);
       return true;
     } catch (error) {
       console.error('Failed to delete annotation:', error);
-      alert('Failed to delete annotation.');
+      if (mountedRef.current && options.getSceneEpoch() === epoch) toast('Failed to delete annotation. Please try again.', 'error');
       return false;
     }
   }
 
-  return { form, openForm, deleteAnnotation };
+  function reset() {
+    operationRef.current += 1;
+    savingRef.current = false;
+    setSaving(false);
+    setOpen(false);
+    setError(null);
+  }
+  return { form, openForm, deleteAnnotation, reset };
 }

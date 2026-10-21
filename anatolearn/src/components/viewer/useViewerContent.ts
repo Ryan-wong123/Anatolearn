@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useToast } from '../../context/ToastContextState';
 import { api } from '../../api/api';
 import type { LinkedVideo, ModelRecord, NeutralView } from './types';
 
@@ -11,11 +12,14 @@ interface ViewerContent {
 
 // Only data crosses this boundary; Three.js resources stay owned by Viewer.
 export function useViewerContent(routeModelId: string | undefined) {
+  const { toast } = useToast();
+  const lifecycleRef = useRef(0);
   const modelId = Number(routeModelId);
   const validId = Number.isSafeInteger(modelId) && modelId > 0;
   const [content, setContent] = useState<ViewerContent | null>(null);
 
   useEffect(() => {
+    lifecycleRef.current += 1;
     if (!validId) return;
     let active = true;
     api.getModel(modelId)
@@ -40,7 +44,7 @@ export function useViewerContent(routeModelId: string | undefined) {
         }));
       })
       .catch((error: unknown) => console.error('Failed to load linked videos:', error));
-    return () => { active = false; };
+    return () => { active = false; lifecycleRef.current += 1; };
   }, [modelId, validId]);
 
   const current = validId && content?.modelId === modelId ? content : null;
@@ -50,13 +54,15 @@ export function useViewerContent(routeModelId: string | undefined) {
 
   async function saveNeutralView(view: NeutralView | null) {
     if (!current?.model || !view) return;
+    const epoch = lifecycleRef.current;
     try {
       const updated: ModelRecord = await api.saveNeutralView(current.model.id, view);
+      if (lifecycleRef.current !== epoch) return;
       updateModel(updated);
-      alert(current.model.neutral_view ? 'Neutral view updated.' : 'Neutral view saved.');
+      toast(current.model.neutral_view ? 'Neutral view updated.' : 'Neutral view saved.');
     } catch (error) {
       console.error('Failed to save neutral view:', error);
-      alert('Failed to save neutral view.');
+      if (lifecycleRef.current === epoch) toast('Failed to save neutral view.', 'error');
     }
   }
 

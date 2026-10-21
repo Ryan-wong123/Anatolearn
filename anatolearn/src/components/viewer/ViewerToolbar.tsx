@@ -1,6 +1,7 @@
 import { useAppContext } from '../../context/AppContextState';
 
 interface ViewerToolbarProps {
+  disabled: boolean;
   addMode: boolean;
   drawMode: boolean;
   regionMode: boolean;
@@ -17,6 +18,7 @@ interface ViewerToolbarProps {
 }
 
 export default function ViewerToolbar({
+  disabled,
   addMode,
   drawMode,
   regionMode,
@@ -41,6 +43,7 @@ export default function ViewerToolbar({
       {role === 'teacher' && (
         <>
           <button
+            disabled={disabled}
             onClick={onToggleAdd}
             className={`rounded-lg px-3 py-2 text-xs md:text-sm font-medium shadow-sm transition-colors ${
               addMode
@@ -52,6 +55,7 @@ export default function ViewerToolbar({
           </button>
 
           <button
+            disabled={disabled}
             onClick={onToggleDraw}
             className={`rounded-lg px-3 py-2 text-xs md:text-sm font-medium shadow-sm transition-colors ${
               drawMode
@@ -63,6 +67,7 @@ export default function ViewerToolbar({
           </button>
 
           <button
+            disabled={disabled}
             onClick={onToggleRegion}
             className={`rounded-lg px-3 py-2 text-xs md:text-sm font-medium shadow-sm transition-colors ${
               regionMode
@@ -73,6 +78,7 @@ export default function ViewerToolbar({
             {regionMode ? 'Cancel Region' : 'Region Fill'}
           </button>
           <button
+            disabled={disabled}
             onClick={onSaveNeutralView}
             className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
           >
@@ -83,19 +89,21 @@ export default function ViewerToolbar({
         </>
       )}
       <button
+            disabled={disabled}
         onClick={onReturnToNeutralView}
-        disabled={false}
         className="rounded-lg border px-3 py-2 text-xs md:text-sm font-medium shadow-sm border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         Return to Neutral View
       </button>
       <button
+            disabled={disabled}
         onClick={onToggleAnnotations}
         className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         {annotationsVisible ? 'Hide Annotations' : 'Show Annotations'}
       </button>
       <button
+            disabled={disabled}
         onClick={onToggleBackground}
         className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
       >

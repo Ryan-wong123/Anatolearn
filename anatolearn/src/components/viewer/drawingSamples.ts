@@ -30,3 +30,16 @@ export function createDrawingSamples() {
     }),
   };
 }
+
+
+export function hasRegionArea(points: ScreenPoint[]) {
+  if (points.length < 3) return false;
+  const twiceArea = points.reduce((sum, point, index) => {
+    const next = points[(index+1) % points.length];
+    return sum + point.x*next.y - next.x*point.y;
+  }, 0);
+  const xs = points.map((point) => point.x), ys = points.map((point) => point.y);
+  const boundsArea = (Math.max(...xs)-Math.min(...xs)) * (Math.max(...ys)-Math.min(...ys));
+  // Reject pointer jitter around a straight stroke as well as zero-area polygons.
+  return Math.abs(twiceArea) > 0.00002 && Math.abs(twiceArea) > boundsArea * 0.1;
+}

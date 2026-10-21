@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { USDLoader } from 'three/addons/loaders/USDLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { useToast } from '../context/ToastContextState';
 import { useAppContext } from '../context/AppContextState';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useParams } from 'react-router-dom';
@@ -33,15 +34,23 @@ import ViewerOverlay from '../components/viewer/ViewerOverlay';
 import { useAnnotationEditor } from '../components/viewer/useAnnotationEditor';
 import { createAnnotationBadge } from '../components/viewer/createAnnotationBadge';
 import { loadViewerAnnotations } from '../components/viewer/loadViewerAnnotations';
-import { normalizeDrawingPoint } from '../components/viewer/drawingSamples';
+import { hasRegionArea, normalizeDrawingPoint } from '../components/viewer/drawingSamples';
 import { useDrawingSamples } from '../components/viewer/useDrawingSamples';
 import { bindViewerEvents } from '../components/viewer/bindViewerEvents';
 import { getBasicAnnotationVisuals } from '../components/viewer/basicAnnotationVisuals';
+import { getModelFraming } from '../components/viewer/modelFraming';
+import { repositionAnnotation } from '../components/viewer/repositionAnnotation';
 import type { ViewerMode } from '../components/viewer/viewerMode';
+
+type Raycast = (event: MouseEvent, objects: THREE.Object3D[], recursive?: boolean) => THREE.Intersection[];
+type ModelHit = (event: MouseEvent) => THREE.Intersection | undefined;
 
 export default function Viewer() {
   const { modelId } = useParams();
   const { role } = useAppContext();
+  const { toast } = useToast();
+  const [isMoving, setIsMoving] = useState(false);
+  const [assetLoading, setAssetLoading] = useState(true);
   const [assetError, setAssetError] = useState<string | null>(null);
 
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -55,6 +64,7 @@ export default function Viewer() {
   }, []);
   const modelRef = useRef<THREE.Object3D | null>(null);
   const sourceMeshesRef = useRef<THREE.Mesh[]>([]);
+  const markerSizeRef = useRef(0.1);
   const modelCenterRef = useRef(new THREE.Vector3());
 
   const markersRef = useRef<THREE.Mesh[]>([]);
@@ -109,120 +119,72 @@ export default function Viewer() {
     );
   }, [darkBackground]);
 
-  useEffect(() => {
-    if (!selectedModel || !containerRef.current) return;
+  // Effect Events keep input/async completion callbacks current without recreating WebGL on UI edits.
+  const onModelLoaded = useEffectEvent((model: THREE.Object3D) => {
+    if (!selectedModel) { disposeModelResources(model); return null; }
+    const epoch = sceneEpochRef.current;
+    modelRef.current = model;
+    sourceMeshesRef.current = [];
 
-    const container = containerRef.current;
-    let disposed = false;
-    let thumbnailFrame = 0;
-    let projectionTimeout: ReturnType<typeof setTimeout> | undefined;
-    sceneEpochRef.current += 1;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf8fafc);
-    sceneRef.current = scene;
+    model.traverse((object) => {
+      if (!(object as THREE.Mesh).isMesh) return;
+      const mesh = object as THREE.Mesh;
+      const meshIndex = sourceMeshesRef.current.length;
+      mesh.userData.viewerMeshIndex = meshIndex;
+      sourceMeshesRef.current.push(mesh);
+    });
 
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      container.clientWidth / container.clientHeight,
-      0.005,
-      1000,
-    );
-    camera.position.set(0, 2, 5);
-    cameraRef.current = camera;
+    sceneRef.current?.add(model);
+    const bounds = new THREE.Box3().setFromObject(model);
+    const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+    if (bounds.isEmpty() || !Number.isFinite(sphere.radius)) {
+      disposeModelResources(model);
+      modelRef.current = null;
+      sourceMeshesRef.current = [];
+      setAssetLoading(false);
+      setAssetError('This file does not contain a renderable model.');
+      return null;
+    }
+    markerSizeRef.current = Math.max(...bounds.getSize(new THREE.Vector3()).toArray()) * 0.015;
+    modelCenterRef.current.copy(sphere.center);
+    const camera = cameraRef.current;
+    if (camera) {
+      const frame = getModelFraming(sphere.radius, camera.aspect, camera.fov);
+      camera.near = frame.near;
+      camera.far = frame.far;
+      camera.updateProjectionMatrix();
+      if (controlsRef.current) {
+        controlsRef.current.minDistance = frame.minDistance;
+        controlsRef.current.maxDistance = frame.maxDistance;
+      }
+    }
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    container.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
+    if (selectedModel.neutral_view) {
+      applyNeutralView(selectedModel.neutral_view);
+    } else {
+      centerCamera(model);
+    }
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.enablePan = true;
-    controlsRef.current = controls;
-
-    scene.add(new THREE.AmbientLight(0xffffff, 2));
-    const light = new THREE.DirectionalLight(0xffffff, 3);
-    light.position.set(5, 10, 5);
-    scene.add(light);
-
-    setAssetError(null);
-    const objectLoader = selectedModel.file_path.toLowerCase().endsWith('.usdz') ? new USDLoader() : new OBJLoader();
-    const loader = /\.(obj|usdz)$/i.test(selectedModel.file_path)
-      ? { load: (url: string, onLoad: (result: {scene:THREE.Object3D}) => void, progress: undefined, onError: (error: unknown) => void) => objectLoader.load(url, (scene) => onLoad({scene}), progress, onError) }
-      : new GLTFLoader();
-    loader.load(
-      `${selectedModel.file_path}`,
-      (gltf) => {
-        if (disposed) {
-          disposeModelResources(gltf.scene);
-          return;
-        }
-        const model = gltf.scene;
-        modelRef.current = model;
-        sourceMeshesRef.current = [];
-
-        model.traverse((object) => {
-          if (!(object as THREE.Mesh).isMesh) return;
-          const mesh = object as THREE.Mesh;
-          const meshIndex = sourceMeshesRef.current.length;
-          mesh.userData.viewerMeshIndex = meshIndex;
-          sourceMeshesRef.current.push(mesh);
-
-          console.log({
-            mesh: mesh.name || '(unnamed)',
-            vertices: mesh.geometry.attributes.position?.count ?? 0,
-            hasUV: Boolean(mesh.geometry.attributes.uv),
-            uvCount: mesh.geometry.attributes.uv?.count ?? 0,
-          });
-        });
-
-        scene.add(model);
-        modelCenterRef.current.copy(new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3()));
-
-        if (selectedModel.neutral_view) {
-          applyNeutralView(selectedModel.neutral_view);
-        } else {
-          centerCamera(model);
-        }
-
-        void loadViewerAnnotations(selectedModel.id, { getAnnotations: api.getAnnotations, updateAnnotation: role === 'teacher' ? api.updateAnnotation : async (id, payload) => ({id,...payload}) }, {
-          isActive: () => !disposed,
-          replace: (loaded) => {
-            clearAnnotationHitTargets();
-            clearMarkers();
-            clearHotspots();
-            setAnnotations(loaded);
-          },
-          render: (annotation, number) => {
-            createAnnotationVisual(annotation);
-            createAnnotationHotspot(annotation, number);
-          },
-          onError: console.error,
-        });
-        if (!selectedModel.thumbnail_path && role === 'teacher') {
-          thumbnailFrame = requestAnimationFrame(() => {
-            if (disposed) return;
-            renderer.render(scene, camera);
-            const thumbnail = renderer.domElement.toDataURL('image/png');
-            api.saveModelThumbnail(selectedModel.id, thumbnail).catch(console.error);
-          });
-        }
+    void loadViewerAnnotations(selectedModel.id, { getAnnotations: api.getAnnotations, updateAnnotation: role === 'teacher' ? api.updateAnnotation : async (id, payload) => ({id,...payload}) }, {
+      isActive: () => sceneEpochRef.current === epoch,
+      replace: (loaded) => {
+        clearAnnotationHitTargets();
+        clearMarkers();
+        clearHotspots();
+        setAnnotations(loaded);
       },
-      undefined,
-      () => { if (!disposed) setAssetError('Could not load this model. Verify the format and any required companion files.'); },
-    );
+      render: (annotation, number) => {
+        createAnnotationVisual(annotation);
+        createAnnotationHotspot(annotation, number);
+      },
+      onError: () => setAssetError('Some annotations could not be loaded or saved. Reload the model to try again.'),
+    }).finally(() => { if (sceneEpochRef.current === epoch) setAssetLoading(false); });
 
-    const raycaster = new THREE.Raycaster();
-    const raycast = (event: MouseEvent, objects: THREE.Object3D[], recursive = false) => {
-      const screen = normalizeDrawingPoint(event, renderer.domElement.getBoundingClientRect());
-      if (!screen) return [];
-      raycaster.setFromCamera(new THREE.Vector2(screen.x * 2 - 1, 1 - screen.y * 2), camera);
-      return raycaster.intersectObjects(objects, recursive);
-    };
-    const getModelHit = (event: MouseEvent) => raycast(event, sourceMeshesRef.current)[0];
+    return !selectedModel.thumbnail_path && role === 'teacher' ? selectedModel.id : null;
+  });
 
-    const handleClick = (event: MouseEvent) => {
+  const onCanvasClick = useEffectEvent((event: MouseEvent, raycast: Raycast, getModelHit: ModelHit) => {
+      if (assetLoading || isMoving || editor.form) return;
       if (modeRef.current === 'highlight' || modeRef.current === 'region') return;
 
       if (modeRef.current === 'point') {
@@ -231,16 +193,11 @@ export default function Viewer() {
         if (repositionRef.current) {
           const original = repositionRef.current;
           repositionRef.current = null;
-          const moved = { ...original, position: vectorToPoint(hit.point), view: getViewData() };
-          // Translate projected/legacy geometry together with its label anchor.
-          const delta = { x: moved.position.x-original.position.x, y:moved.position.y-original.position.y, z:moved.position.z-original.position.z };
-          const translate = (point: DrawPoint) => ({x:point.x+delta.x,y:point.y+delta.y,z:point.z+delta.z});
-          if (moved.drawPoints) moved.drawPoints=moved.drawPoints.map(translate);
-          if (moved.regionTriangles) moved.regionTriangles=moved.regionTriangles.map(translate);
-          if (moved.projectedMask) moved.projectedMask={...moved.projectedMask,position:translate(moved.projectedMask.position),meshIndex:hit.object.userData.viewerMeshIndex as number,cachedGeometry:undefined};
+          const moved = repositionAnnotation(original, vectorToPoint(hit.point), hit.object.userData.viewerMeshIndex as number, getViewData());
           const epoch=sceneEpochRef.current;
+          setIsMoving(true);
           void api.updateAnnotation(original.id!,toAnnotationPayload(moved)).then((record)=>{
-            if (disposed || sceneEpochRef.current!==epoch) return;
+            if (sceneEpochRef.current!==epoch) return;
             const saved=fromDbAnnotation(record);
             clearAnnotationHitTargets((target)=>target.userData.annotation?.id===saved.id);
             markersRef.current=markersRef.current.filter((marker)=>{if(marker.userData.annotation?.id!==saved.id)return true;disposeMarker(marker);return false;});
@@ -249,7 +206,8 @@ export default function Viewer() {
             clearHotspots();
             annotationsRef.current.map((item)=>item.id===saved.id?saved:item).forEach((item,index)=>createAnnotationHotspot(item,index+1));
             setPopupAnnotation(saved);
-          }).catch(()=>setAssetError('Could not move the annotation. Please try again.'));
+          }).catch(()=>{ if (sceneEpochRef.current===epoch) toast('Could not move the annotation. Please try again.', 'error'); })
+            .finally(()=>{ if (sceneEpochRef.current===epoch) setIsMoving(false); });
           setMode('view');
           return;
         }
@@ -258,106 +216,210 @@ export default function Viewer() {
         return;
       }
 
-      const accepted = raycast(event, markersRef.current, true).find(isPaintedHit);
+      if (!annotationsVisibleRef.current) return;
+      const accepted = raycast(event, hotspotsRef.current)[0] ?? raycast(event, annotationHitTargetsRef.current).find(isPaintedHit) ?? raycast(event, markersRef.current, true).find(isPaintedHit);
       if (!accepted) return;
       const marker = accepted.object as THREE.Mesh;
       const annotation = marker.userData.annotation as Annotation;
       if (!annotation) return;
 
       setPopupAnnotation(annotation);
-    };
+  });
 
+  const onDrawStart = useEffectEvent((event: PointerEvent, hit: ModelHit) => {
+    drawing.start();
+    clearPendingObjects();
+    addProjectedPoint(event, hit);
+  });
+  const onDrawMove = useEffectEvent((event: PointerEvent, hit: ModelHit) => addProjectedPoint(event, hit));
+  const onDrawFinish = useEffectEvent((kind: 'stroke' | 'fill') => {
+    try { finishProjectedAnnotation(kind); }
+    catch {
+      clearPendingObjects();
+      pendingAnnotationRef.current = null;
+      setMode('view');
+      toast('Could not create the annotation on this surface. Please try again.', 'error');
+    } finally { setIsGeneratingRegion(false); }
+  });
+  const onHover = useEffectEvent((event: PointerEvent) => handleAnnotationHover(event));
+  const onSceneStart = useEffectEvent(() => {
+    setAssetError(null);
+    setAssetLoading(true);
+    setIsMoving(false);
+    setAnnotations([]);
+    setPopupAnnotation(null);
+    setHoveredAnnotation(null);
+    setMode('view');
+    setIsGeneratingRegion(false);
+    return darkBackground ? 0x0f172a : 0xf8fafc;
+  });
+  const onSceneCleanup = useEffectEvent(() => {
+    clearAnnotationHitTargets();
+    clearMarkers();
+    clearHotspots();
+    clearPendingObjects();
+    repositionRef.current = null;
+    pendingPointRef.current = null;
+    pendingAnnotationRef.current = null;
+    editingAnnotationRef.current = null;
+    isDrawingRef.current = false;
+    drawing.start();
+    editor.reset();
+  });
+  const onDrawCancel = useEffectEvent(() => {
+    isDrawingRef.current = false;
+    drawing.start();
+    clearPendingObjects();
+    setIsGeneratingRegion(false);
+  });
+  const canStartDrawing = useEffectEvent(() => !assetLoading && !editor.form && !isGeneratingRegion);
+  const sceneModelId = selectedModel?.id;
+  const modelPath = selectedModel?.file_path;
+  useEffect(() => {
+    if (!sceneModelId || !modelPath || !containerRef.current) return;
+    const container = containerRef.current;
+    let disposed = false;
+    let projectionTimeout: ReturnType<typeof setTimeout> | undefined;
+    let thumbnailModelId: number | null = null;
+    sceneEpochRef.current += 1;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(onSceneStart());
+    sceneRef.current = scene;
+    const camera = new THREE.PerspectiveCamera(75, 1, 0.005, 1000);
+    camera.position.set(0, 2, 5);
+    cameraRef.current = camera;
+    let renderer: THREE.WebGLRenderer;
+    try { renderer = new THREE.WebGLRenderer({ antialias: true }); }
+    catch {
+      sceneRef.current = null;
+      cameraRef.current = null;
+      queueMicrotask(() => { if (!disposed) { setAssetLoading(false); setAssetError('3D rendering is unavailable. Enable WebGL or try another browser.'); } });
+      return () => { disposed = true; sceneEpochRef.current += 1; };
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.domElement.setAttribute('aria-label', 'Interactive anatomy model');
+    container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = true;
+    controlsRef.current = controls;
+    scene.add(new THREE.AmbientLight(0xffffff, 2));
+    const light = new THREE.DirectionalLight(0xffffff, 3);
+    light.position.set(5, 10, 5);
+    scene.add(light);
+    const objectLoader = modelPath.toLowerCase().endsWith('.usdz') ? new USDLoader() : new OBJLoader();
+    const loader = /\.(obj|usdz)$/i.test(modelPath)
+      ? { load: (url: string, onLoad: (result: {scene:THREE.Object3D}) => void, progress: undefined, onError: (error: unknown) => void) => objectLoader.load(url, (scene) => onLoad({scene}), progress, onError) }
+      : new GLTFLoader();
+    loader.load(modelPath, (gltf) => {
+      if (disposed) { disposeModelResources(gltf.scene); return; }
+      thumbnailModelId = onModelLoaded(gltf.scene);
+    }, undefined, () => {
+      if (!disposed) { setAssetLoading(false); setAssetError('Could not load this model. Verify the format and any required companion files.'); }
+    });
+    const raycaster = new THREE.Raycaster();
+    const raycast: Raycast = (event, objects, recursive = false) => {
+      const screen = normalizeDrawingPoint(event, renderer.domElement.getBoundingClientRect());
+      if (!screen) return [];
+      raycaster.setFromCamera(new THREE.Vector2(screen.x * 2 - 1, 1 - screen.y * 2), camera);
+      return raycaster.intersectObjects(objects, recursive);
+    };
+    const getModelHit: ModelHit = (event) => raycast(event, sourceMeshesRef.current)[0];
+    let drawingPointer: number | null = null;
     const handlePointerDown = (event: PointerEvent) => {
-      if (modeRef.current !== 'highlight' && modeRef.current !== 'region') return;
+      if (!canStartDrawing() || !event.isPrimary || event.button !== 0 || drawingPointer !== null ||
+          (modeRef.current !== 'highlight' && modeRef.current !== 'region')) return;
+      drawingPointer = event.pointerId;
+      renderer.domElement.setPointerCapture(event.pointerId);
       isDrawingRef.current = true;
       controls.enabled = false;
-      drawing.start();
-      clearPendingObjects();
-
-      addProjectedPoint(event, getModelHit);
+      onDrawStart(event, getModelHit);
     };
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!isDrawingRef.current) return;
-      addProjectedPoint(event, getModelHit);
-    };
-
-    const handlePointerUp = () => {
-      if (!isDrawingRef.current) return;
-      isDrawingRef.current = false;
+    const releaseDrawing = () => {
+      if (drawingPointer !== null && renderer.domElement.hasPointerCapture(drawingPointer))
+        renderer.domElement.releasePointerCapture(drawingPointer);
+      drawingPointer = null;
       controls.enabled = true;
-
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      if (isDrawingRef.current && drawingPointer === event.pointerId) onDrawMove(event, getModelHit);
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!isDrawingRef.current || drawingPointer !== event.pointerId) return;
+      isDrawingRef.current = false;
+      releaseDrawing();
       if (modeRef.current === 'region') {
         setIsGeneratingRegion(true);
-        projectionTimeout = setTimeout(() => {
-          if (disposed) return;
-          finishProjectedAnnotation('fill');
-          setIsGeneratingRegion(false);
-        }, 30);
-      } else {
-        finishProjectedAnnotation('stroke');
-      }
+        projectionTimeout = setTimeout(() => { if (!disposed) onDrawFinish('fill'); }, 30);
+      } else onDrawFinish('stroke');
     };
-
+    const cancelDrawing = () => {
+      clearTimeout(projectionTimeout);
+      releaseDrawing();
+      onDrawCancel();
+    };
     const handleResize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      if (width === 0 || height === 0) return;
+      const width = container.clientWidth, height = container.clientHeight;
+      if (!width || !height) return;
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
     };
     const unbindEvents = bindViewerEvents(renderer.domElement, {
-      click: handleClick, pointerDown: handlePointerDown, pointerMove: handlePointerMove,
-      pointerUp: handlePointerUp, hover: handleAnnotationHover, resize: handleResize,
+      click: (event) => onCanvasClick(event, raycast, getModelHit),
+      pointerDown: handlePointerDown, pointerMove: handlePointerMove,
+      pointerUp: handlePointerUp, pointerCancel: () => { if (isDrawingRef.current) cancelDrawing(); },
+      hover: (event) => onHover(event), resize: handleResize,
     });
-
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
+    handleResize();
     let animationId = 0;
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-
       controls.update();
-
       renderer.render(scene, camera);
+      if (thumbnailModelId !== null) {
+        const id = thumbnailModelId;
+        thumbnailModelId = null;
+        api.saveModelThumbnail(id, renderer.domElement.toDataURL('image/png')).catch(console.error);
+      }
     };
     animate();
-
     return () => {
       disposed = true;
       sceneEpochRef.current += 1;
       cancelAnimationFrame(animationId);
-      cancelAnimationFrame(thumbnailFrame);
       clearTimeout(projectionTimeout);
       unbindEvents();
-      clearAnnotationHitTargets();
-      clearMarkers();
-      clearHotspots();
-      clearPendingObjects();
-      repositionRef.current = null;
-      pendingPointRef.current = null;
-      pendingAnnotationRef.current = null;
-      editingAnnotationRef.current = null;
-      isDrawingRef.current = false;
+      resizeObserver.disconnect();
+      releaseDrawing();
+      onSceneCleanup();
       if (modelRef.current) disposeModelResources(modelRef.current);
       modelRef.current = null;
       sourceMeshesRef.current = [];
       controls.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       sceneRef.current = null;
       cameraRef.current = null;
       rendererRef.current = null;
       controlsRef.current = null;
       if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
     };
-  }, [selectedModel]);
+  }, [sceneModelId, modelPath]);
 
   function disposeModelResources(object: THREE.Object3D) {
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     const textures = new Set<THREE.Texture>();
+    const skeletons = new Set<THREE.Skeleton>();
+    const images = new Set<ImageBitmap>();
     object.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       geometries.add(child.geometry);
+      if (child instanceof THREE.SkinnedMesh) skeletons.add(child.skeleton);
       const meshMaterials = Array.isArray(child.material) ? child.material : [child.material];
       meshMaterials.forEach((material) => {
         materials.add(material);
@@ -366,21 +428,31 @@ export default function Viewer() {
         });
       });
     });
-    textures.forEach((texture) => texture.dispose());
+    textures.forEach((texture) => {
+      const data: unknown = texture.source.data;
+      for (const image of Array.isArray(data) ? data : [data]) {
+        if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) images.add(image);
+      }
+      texture.dispose();
+    });
+    images.forEach((image) => image.close());
+    skeletons.forEach((skeleton) => skeleton.dispose());
     materials.forEach((material) => material.dispose());
     geometries.forEach((geometry) => geometry.dispose());
     object.removeFromParent();
   }
 
-  useEffect(() => {
+  const onVisibilityChange = useEffectEvent(() => {
     setAnnotationVisibility(
       popupAnnotation,
       hoveredAnnotation,
     );
-  }, [
+  });
+  useEffect(() => { onVisibilityChange(); }, [
     annotationsVisible,
     popupAnnotation,
     hoveredAnnotation,
+    annotations,
   ]);
 
   function centerCamera(object: THREE.Object3D) {
@@ -396,27 +468,15 @@ export default function Viewer() {
 
     controls.target.copy(sphere.center);
 
-    camera.position.set(
-      sphere.center.x,
-      sphere.center.y + sphere.radius * 0.6,
-      sphere.center.z + sphere.radius * 2.5,
-    );
+    const frame = getModelFraming(sphere.radius, camera.aspect, camera.fov);
+    const position = sphere.center.clone().add(new THREE.Vector3(0, 0.6, 2.5).normalize().multiplyScalar(frame.distance));
+    controls.minDistance = frame.minDistance;
+    controls.maxDistance = Math.max(frame.maxDistance, frame.distance * 2);
 
-    /*
-    * Keep the camera outside the bounding sphere.
-    */
-    controls.minDistance = sphere.radius * 0.03;
-    controls.maxDistance = sphere.radius * 8;
-
-    camera.lookAt(sphere.center);
-    controls.update();
+    syncCamera(position, sphere.center);
   }
 
-  function getMarkerSize() {
-    if (!modelRef.current) return 0.1;
-    const size = new THREE.Box3().setFromObject(modelRef.current).getSize(new THREE.Vector3());
-    return Math.max(size.x, size.y, size.z) * 0.015;
-  }
+  function getMarkerSize() { return markerSizeRef.current; }
 
   function getViewData() {
     if (!cameraRef.current || !controlsRef.current) return undefined;
@@ -459,6 +519,12 @@ export default function Viewer() {
       return;
     }
 
+    if (mode === 'fill' && !hasRegionArea(screenPoints)) {
+      toast('Draw a region with an enclosed area.', 'error');
+      clearPendingObjects();
+      setMode('view');
+      return;
+    }
     const meshIndex = getDominantMeshIndex(samples.meshIndices);
     const camera = cameraRef.current;
     camera.updateMatrixWorld(true);
@@ -486,7 +552,7 @@ export default function Viewer() {
     const preview = createProjectedVisual(annotation);
     if (!preview) {
       pendingAnnotationRef.current = null;
-      alert('The projected annotation could not be created on this surface.');
+      toast('The projected annotation could not be created on this surface.', 'error');
       setMode('view');
       return;
     }
@@ -578,7 +644,7 @@ export default function Viewer() {
   }
 
   function handleAnnotationHover(event: PointerEvent) {
-    if (!rendererRef.current || !cameraRef.current) return;
+    if (!rendererRef.current || !cameraRef.current || isDrawingRef.current || modeRef.current !== 'view') return;
     if (!annotationsVisibleRef.current) { setHoveredAnnotation(null); return; }
     const rect = rendererRef.current.domElement.getBoundingClientRect();
     const screen = normalizeDrawingPoint(event, rect);
@@ -692,7 +758,8 @@ export default function Viewer() {
     const annotation = popupAnnotation;
     if (!annotation) return;
 
-    if (!await editor.deleteAnnotation(annotation.id)) return;
+    const epoch = sceneEpochRef.current;
+    if (!await editor.deleteAnnotation(annotation.id) || sceneEpochRef.current !== epoch) return;
 
     clearAnnotationHitTargets((target) => target.userData.annotation?.id === annotation.id);
     markersRef.current = markersRef.current.filter((marker) => {
@@ -733,7 +800,7 @@ export default function Viewer() {
     const distance = annotation.view?.distance || 1;
     syncCamera(position.clone().add(direction.multiplyScalar(distance)), position);
     setPopupAnnotation(annotation);
-    syncCamera(cameraRef.current.position, modelCenterRef.current);
+
   }
 
   function cancelForm() {
@@ -746,7 +813,7 @@ export default function Viewer() {
 
   function setAnnotationVisibility(selected: Annotation | null, hovered: Annotation | null) {
     markersRef.current.forEach((marker) => {
-      marker.visible = isAnnotationActive(marker.userData.annotation as Annotation | undefined, selected, hovered);
+      marker.visible = annotationsVisible && isAnnotationActive(marker.userData.annotation as Annotation | undefined, selected, hovered);
     });
     hotspotsRef.current.forEach((hotspot) => {
       hotspot.visible = annotationsVisible && !isAnnotationActive(hotspot.userData.annotation as Annotation | undefined, selected, hovered);
@@ -764,11 +831,16 @@ export default function Viewer() {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
+    // Consume residual orbit/pan/zoom deltas before applying an explicit camera pose.
+    const damping = controls.enableDamping;
+    controls.enableDamping = false;
+    controls.update();
     camera.position.copy(position);
     controls.target.copy(target);
     camera.lookAt(target);
     camera.updateMatrixWorld();
     controls.update();
+    controls.enableDamping = damping;
   }
   function applyNeutralView(neutralView: NeutralView) {
     syncCamera(pointToVector(neutralView.cameraPosition), pointToVector(neutralView.target));
@@ -785,7 +857,7 @@ export default function Viewer() {
       <ViewerOverlay
         key={selectedModel?.id ?? modelId}
         boundaryRef={viewerRef} onDragStateChange={handlePanelDrag}
-        model={selectedModel} loadError={assetError || loadError} mode={mode} onModeChange={setMode}
+        model={selectedModel} loading={assetLoading} moving={isMoving} loadError={assetError || loadError} mode={mode} onModeChange={setMode}
         annotations={annotations} selectedAnnotation={popupAnnotation} videos={modelVideos}
         annotationsVisible={annotationsVisible} darkBackground={darkBackground}
         generatingRegion={isGeneratingRegion} boundaryPreview={drawing.preview}

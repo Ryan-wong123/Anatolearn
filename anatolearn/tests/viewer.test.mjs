@@ -1,8 +1,10 @@
+import { getModelFraming } from '../src/components/viewer/modelFraming.ts';
+import { repositionAnnotation } from '../src/components/viewer/repositionAnnotation.ts';
 import { getBasicAnnotationVisuals } from '../src/components/viewer/basicAnnotationVisuals.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fromDbAnnotation, toAnnotationPayload, applyAnnotationDraft, isAnnotationActive, createProjectedAnnotation } from '../src/components/viewer/annotationMapping.ts';
-import { createDrawingSamples, normalizeDrawingPoint } from '../src/components/viewer/drawingSamples.ts';
+import { createDrawingSamples, hasRegionArea, normalizeDrawingPoint } from '../src/components/viewer/drawingSamples.ts';
 import { bindViewerEvents } from '../src/components/viewer/bindViewerEvents.ts';
 import { loadViewerAnnotations } from '../src/components/viewer/loadViewerAnnotations.ts';
 import { toggleViewerMode, VIEWER_MODE_LABELS } from '../src/components/viewer/viewerMode.ts';
@@ -223,17 +225,19 @@ test('Viewer DOM subscriptions handle input and detach every listener on cleanup
   const events = [];
   const dispose = bindViewerEvents(canvas, {
     click: () => events.push('click'), pointerDown: () => events.push('down'),
-    pointerMove: () => events.push('move'), pointerUp: () => events.push('up'),
+    pointerMove: () => events.push('move'), pointerUp: () => events.push('up'), pointerCancel: () => events.push('cancel'),
     hover: () => events.push('hover'), resize: () => events.push('resize'),
   }, resizeTarget);
-  for (const type of ['click', 'pointerdown', 'pointermove', 'pointerup', 'pointerleave']) canvas.dispatchEvent(new Event(type));
+  for (const type of ['click', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture']) canvas.dispatchEvent(new Event(type));
   resizeTarget.dispatchEvent(new Event('resize'));
-  assert.deepEqual(events, ['click', 'down', 'move', 'hover', 'up', 'up', 'resize']);
+  resizeTarget.dispatchEvent(new Event('blur'));
+  assert.deepEqual(events, ['click', 'down', 'move', 'hover', 'up', 'cancel', 'cancel', 'resize', 'cancel']);
   dispose();
   dispose();
-  for (const type of ['click', 'pointerdown', 'pointermove', 'pointerup', 'pointerleave']) canvas.dispatchEvent(new Event(type));
+  for (const type of ['click', 'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture']) canvas.dispatchEvent(new Event(type));
   resizeTarget.dispatchEvent(new Event('resize'));
-  assert.equal(events.length, 7);
+  resizeTarget.dispatchEvent(new Event('blur'));
+  assert.equal(events.length, 9);
 });
 
 test('projected annotation drafts keep existing fill/stroke defaults and camera metadata', () => {
@@ -265,4 +269,65 @@ test('basic rendering preserves legacy coordinates, appearance and missing-data 
   for (const kind of ['draw', 'region', 'projectedDraw', 'projectedRegion']) {
     assert.deepEqual(getBasicAnnotationVisuals({ ...base, kind }, 2), []);
   }
+});
+
+
+test('portrait framing contains the complete bounding sphere and scales clipping to the model', () => {
+  for (const radius of [0.001, 1, 10000]) for (const aspect of [0.01, 0.25, 0.75, 1, 2]) {
+    const frame = getModelFraming(radius, aspect, 75);
+    const angularRadius = Math.asin(radius / frame.distance);
+    const halfVertical = 75 * Math.PI / 360;
+    assert.ok(angularRadius < Math.min(halfVertical, Math.atan(Math.tan(halfVertical) * aspect)));
+    assert.ok(frame.near > 0 && frame.near < radius);
+    assert.ok(frame.far > frame.distance + radius);
+  }
+  assert.ok(getModelFraming(1, 0.5, 75).distance > getModelFraming(1, 2, 75).distance);
+});
+
+test('moving annotations preserves identity and view data while invalidating projected geometry on the new mesh', () => {
+  for (const kind of ['point', 'draw', 'region', 'projectedDraw', 'projectedRegion']) {
+    const original = { id: 8, label: 'Linked part', description: 'Preserve', kind, position, view,
+      drawPoints: [position], regionTriangles: [position], projectedMask };
+    const before = JSON.stringify(original);
+    const target = { x: 10, y: 20, z: 30 };
+    const moved = repositionAnnotation(original, target, 9, view);
+    assert.equal(moved.id, original.id);
+    assert.equal(moved.label, original.label);
+    assert.deepEqual(moved.drawPoints[0], target);
+    assert.deepEqual(moved.regionTriangles[0], target);
+    assert.deepEqual(moved.projectedMask.position, target);
+    assert.equal(moved.projectedMask.meshIndex, 9);
+    assert.equal(moved.projectedMask.cachedGeometry, undefined);
+    assert.deepEqual(fromDbAnnotation({id: 8, ...toAnnotationPayload(moved)}).position, target);
+    assert.equal(JSON.stringify(original), before);
+  }
+});
+
+
+test('region gestures reject clicks and collinear strokes instead of saving invisible fills', () => {
+  assert.equal(hasRegionArea([]), false);
+  assert.equal(hasRegionArea([{x:0,y:0},{x:0.5,y:0.5},{x:1,y:1},{x:0,y:0}]), false);
+  assert.equal(hasRegionArea([{x:0,y:0},{x:0.5,y:0.501},{x:1,y:1},{x:0,y:0}]), false);
+  const polygon = [{x:0.1,y:0.1},{x:0.8,y:0.1},{x:0.8,y:0.8},{x:0.1,y:0.8}];
+  assert.equal(hasRegionArea(polygon), true);
+  assert.equal(hasRegionArea(polygon.toReversed()), true);
+});
+
+
+test('orbit/pan drag gestures do not select annotations and the next intentional click still works', () => {
+  const canvas = new EventTarget(), target = new EventTarget();
+  let clicks = 0, hovers = 0;
+  const noop = () => {};
+  const unbind = bindViewerEvents(canvas, { click: () => clicks++, pointerDown: noop, pointerMove: noop, pointerUp: noop, pointerCancel: noop, hover: () => hovers++, resize: noop }, target);
+  const pointer = (type,x,y) => canvas.dispatchEvent(Object.assign(new Event(type),{pointerId:1,clientX:x,clientY:y}));
+  pointer('pointerdown',10,10); pointer('pointermove',80,80); pointer('pointerup',80,80);
+  canvas.dispatchEvent(new Event('click'));
+  assert.equal(clicks,0);
+  pointer('pointermove',90,90);
+  assert.equal(hovers,1);
+  pointer('pointerdown',20,20); pointer('pointerup',20,20);
+  canvas.dispatchEvent(new Event('lostpointercapture'));
+  canvas.dispatchEvent(new Event('click'));
+  assert.equal(clicks,1);
+  unbind();
 });

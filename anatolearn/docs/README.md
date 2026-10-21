@@ -193,3 +193,12 @@ The backup command briefly stops backend writes and restarts a previously runnin
 To verify an existing snapshot, run `docker compose --profile ops run --rm --no-deps operations bash /ops/snapshot.sh verify snapshot-yyyyMMdd-HHmmss` with the real snapshot name and unused restore targets. This is an isolated restore tool; switching production to restored data is a separate maintenance operation. Before any live recovery, invalidate restored login sessions or rotate JWT_SECRET so old backed-up tokens cannot regain access. Backups contain private accounts and teaching content; store them with appropriate host permissions and copy them to protected external storage for disaster recovery. Linux archive permissions do not configure Windows ACLs. This implementation provides on-demand backups, not an unattended schedule or off-site storage.
 
 `responsive-qa.html` is a local development viewport harness; sign in using disposable QA fixtures and inspect pages at 375, 768 and 1440 pixels. The normal production build contains only the application entry, not the harness.
+
+
+## Viewer reliability verification
+
+Run `docker compose exec -T frontend npm run test:viewer` for numeric framing, annotation translation, drawing, async-loading and event cleanup regressions. The current suite has 26 cases; ESLint has no remaining viewer effect warnings. The production viewer chunk still exceeds Vite's size warning threshold.
+
+For isolated browser checks, run `docker compose exec -T backend node tests/viewer-fixture.js`. It prints disposable teacher/student account identifiers (password `Testing123`) and model IDs. The glTF contains two transformed meshes with an embedded checker texture; the fixture includes a linked point/video and saved projected region. Use `docker compose exec -T backend node tests/viewer-fixture.js cleanup` afterward; cleanup removes only recorded fixture IDs/files and generated thumbnails. A pre-existing fixture manifest must be cleaned before another is created. No production seed or teaching record is changed by setup/cleanup.
+
+Viewer callbacks stay current through Effect Events; model metadata updates preserve the live canvas. Loading/error states and annotation form feedback are visible. Reset handles damping, default framing fits portrait views and the canvas tracks container resizing. Browser/GPU limits are recorded in testing_log.md.

@@ -173,7 +173,7 @@ Drawing modes are view/point/highlight/region. Projection stores normalized mask
 
 Teachers can move an existing annotation by choosing Move and clicking a new surface position. The anchor and legacy geometry are translated; projected geometry is regenerated against the hit source mesh. Annotation IDs and video links remain intact. Stale save responses are ignored. Selection/hover reveals the corresponding visual; list items and numbered hotspots expose label identity and details/video actions.
 
-Cleanup advances the scene epoch, cancels animation/thumbnail frames and region timers, unsubscribes events, clears hit targets/pending/annotation resources, disposes model geometry/materials/textures and controls/renderer, removes the canvas and clears refs. Late model loads dispose their results. The animation loop updates controls and renders without React state changes. Two existing exhaustive-dependency warning sites remain and are recorded in the test log.
+Cleanup advances the scene epoch, cancels animation/thumbnail frames and region timers, unsubscribes events, clears hit targets/pending/annotation resources, disposes model geometry/materials/textures and controls/renderer, removes the canvas and clears refs. Late model loads dispose their results. The animation loop updates controls and renders without React state changes. Scene creation depends on model ID and file path. React Effect Events deliver current editor/role/visibility callbacks without recreating WebGL on UI changes or neutral-view saves. The effect-dependency warnings are resolved.
 
 ## 10. Assessments and question bank
 
@@ -229,7 +229,7 @@ Production must serve the SPA/build plus the same-origin authenticated API/asset
 
 Current checks include TypeScript/Vite build, ESLint, 22 viewer helper tests, two OBJ/USDZ parser tests and database-backed policy/assessment integration tests. Browser QA covers teacher/student flows, native media, OBJ viewing/label movement, permissions, programme filtering, timed MCQ submission/history/review and keyboard dialog behavior. Exact evidence, counts and scope are in docs/testing_log.md.
 
-The Viewer route is lazy-loaded: the current build separates a 366.38 kB initial JS bundle from a 749.95 kB viewer chunk. Remaining limits include the viewer chunk size warning, two viewer effect-dependency warnings, incomplete general API response typing, native alert feedback in parts of the viewer, no exhaustive Chrome/Edge/Firefox/Safari sweep, no full four-programme browser matrix, no GPU/concurrency performance certification, no binary USDC/USDZ compatibility matrix, and legacy requirements such as embedded annotation exports/cloud adapters that are outside this change. Documented current behavior does not waive unmet PRD requirements.
+The Viewer route is lazy-loaded: the current build separates a 366.43 kB initial JS bundle from a 754.14 kB viewer chunk. Remaining limits include the viewer chunk size warning, incomplete general API response typing, no exhaustive Chrome/Edge/Firefox/Safari sweep, no full four-programme browser matrix, no GPU/concurrency performance certification, no binary USDC/USDZ compatibility matrix, and legacy requirements such as embedded annotation exports/cloud adapters that are outside this change. Documented current behavior does not waive unmet PRD requirements.
 
 
 ## 14. Session maintenance and recovery operations
@@ -239,3 +239,16 @@ maintenance.js runs once at backend startup and hourly with an advisory transact
 `ops/Backup.ps1 -VerifyRestore` pauses the running backend, creates a PostgreSQL custom dump plus teaching-assets tar archive, hashes and row-count manifest, and restarts the backend in a finally block. The optional verification creates a fresh database and separate extracted asset directory; it never replaces live data. The Compose operations profile uses the PostgreSQL tools image with read-only source assets. Backups are ignored by Git and Docker builds and denied by Vite. See docs/README.md for operation and recovery limitations.
 
 22 October follow-up verification: both roles across five pages at 375/768/1440 in in-app Chromium; assigned/shared content enforced through actual API accounts for all four programmes; timed quiz browser submission; revoked-session and expired-session regressions; successful database/file restore with hash and row-count equality. Other browser engines and the complete programme-by-browser matrix remain unverified.
+
+
+## 15. Viewer reliability follow-up — 22 October 2026
+
+The resource effect is keyed by model ID/file path. Effect Events separate long-lived scene subscriptions from current UI callbacks. Epoch checks reject late model/annotation/editor/move/delete responses after teardown; editor reset invalidates older save completions. Saving a neutral view updates metadata without recreating the scene. Moving annotations temporarily disables conflicting authoring actions.
+
+Canvas picking checks numbered sprites and painted mask hit targets before annotation visuals. Hidden annotations cannot be selected from the canvas. Orbit/pan drags are distinguished from deliberate clicks. Drawing tracks a primary pointer with capture, handles cancellation/lost capture/window blur and clears preview state on teardown. Straight or nearly collinear region gestures are rejected instead of storing invisible fills.
+
+Container ResizeObserver updates the camera and renderer alongside the window resize listener. Default framing fits the bounding sphere to the narrower horizontal/vertical field of view and scales clipping/distance limits to model size. Explicit camera reset consumes residual OrbitControls damping before applying the pose; focusing an annotation retains the requested target. Saved teacher neutral views remain explicit camera poses.
+
+Cleanup additionally releases decoded ImageBitmaps and skinned-model skeleton buffers, deduplicating shared resources, and explicitly releases the WebGL context after renderer disposal. Thumbnail capture occurs after the animation loop's render. Empty models/WebGL creation failures show visible errors; model/annotation loading has status feedback and disables authoring until ready. Annotation validation/save failures are inline; neutral-view/delete/projection feedback uses accessible toasts.
+
+Numeric framing and annotation-translation helpers own no scene state. A disposable backend/tests/viewer-fixture.js supplies embedded checker-textured glTF with transformed meshes, an OBJ comparison, stored region, linked video and two roles. All generated records/files were cleaned after verification. See docs/testing_log.md for actual browser coverage and limits.

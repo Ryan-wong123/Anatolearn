@@ -681,3 +681,30 @@ Confirmed product choices: teachers may self-register; students see published as
 The first expanded programme-matrix test run exposed duplicate synthetic email generation in the test helper; unique fixture suffixes fixed it and the full integration suite passed on rerun. Expected injected SQL-FK failures and protected-edit 409 messages still appear in test output and are asserted regression cases. Temporary browser users, models, videos, quiz/attempts and generated files were removed using the fixture cleanup script before the backup.
 
 Only in-app Chromium was connected. Chrome/Edge/Firefox/Safari, real mobile hardware, every programme through every browser workflow, textured-model annotation stress, GPU/concurrent load and complete assistive-technology checks remain unverified. The harness browser log captured one MutationObserver parameter error without an app source location during frame navigation; no source usage was found, so its origin is unresolved and this run does not claim a clean console certification. Backup scheduling/off-site replication, orphan cleanup, embedded annotation exports and a complete cloud storage adapter remain separate work.
+
+
+## 22 October 2026 — viewer reliability pass
+
+Implemented model-ID/file-path scene lifetime, current callbacks via Effect Events, stale-mutation guards/editor reset, numbered-hotspot picking, pointer capture/cancellation, orbit-drag click suppression, nearly collinear region rejection, responsive camera framing/clipping, damping-safe explicit poses, resource/context disposal, loading feedback and inline annotation errors. API routes, database schema and supported file formats did not change.
+
+| Verification actually run | Result |
+|---|---|
+| Frontend ESLint | Passed: 0 errors, 0 warnings. Both former Viewer dependency warnings resolved without suppressions. |
+| Viewer unit/regression suite | 26 passed, including portrait/extreme-aspect framing, scale-dependent clipping, immutable move payloads preserving IDs while invalidating cache, thin/collinear region rejection, cancellation/unsubscription and click-vs-drag behavior. |
+| Format parser suite | 2 passed (OBJ and USDA in USDZ). |
+| TypeScript + Vite build | Passed; initial JS 366.43 kB, lazy Viewer 754.14 kB. Viewer chunk warning remains. |
+| Existing anatomy GLB | A1's 3.74 MB textured model loaded in connected Chromium. Rotate/zoom/reset verified visually. Found and fixed damping causing motion after reset; reset now restores the initial view immediately. No original model/annotation edits were made. |
+| Teacher textured glTF | Two transformed meshes with embedded checker texture rendered. Clicking a numbered canvas hotspot opened its annotation. Linked video reached readyState 4, advanced playback and had no media error; Escape closed the dialog and restored focus. |
+| Annotation creation/move | Drew and saved a projected highlight. Empty label produced an inline error. Moved point and highlight to the second mesh, retained point ID 15 and video link, and reloaded. Stored polygon rendered; edited opacity to 100%, moved region to mesh 1 and reloaded. Teacher-generated projected caches persisted with 99/72 position values. |
+| Region invalid input | Near-straight drag produced 'Draw a region with an enclosed area' instead of a save form. Full polygon authoring was not automated. |
+| Metadata update | Saving the fixture's neutral view preserved the active scene/annotation selection and showed a toast. |
+| Repeated SPA navigation | Five gallery -> textured viewer -> gallery cycles: canvas count 1 inside, 0 outside. No new warning/error during these cycles after correcting fixture PNG. |
+| Student workflow | Authoring controls absent; all three saved labels rendered; linked video played (readyState 4, no error) and Escape restored focus. |
+| Responsive viewer | 375/768/1440px iframe widths had matching document width and canvas CSS widths; draw buffers tracked device pixel ratio (468/960/1800px). No document overflow. |
+| Final fresh-load console | No new errors/warnings during final student load/playback/resizing checks. |
+
+During development, the initial one-pixel fixture PNG failed decoding; it was replaced with a valid generated checker texture. Adding a hook to useViewerContent during live HMR caused a hook-order error; a full reload resolved the development refresh state, and the final fresh-load checks were clean. Colour-input automation changed the native control value without updating React's draft, so this pass does not claim a successful browser colour-change verification. Opacity persistence was verified.
+
+Saved proof: verification/viewer-textured-region.png. Fixture setup refuses to overwrite an existing manifest and cleanup removed the temporary users, two models, annotations, linked video, generated model files and thumbnails. Existing teaching records were preserved.
+
+Limits: only connected in-app Chromium; no Firefox/Safari/standalone Edge/Chrome certification, real-touch hardware, complete freehand polygon authoring, delayed-network CRUD stress, skinned/animated browser fixture or GPU-memory/concurrency benchmark. Resource disposal paths were reviewed, not measured with a GPU profiler. Cross-mesh drawing still uses a dominant source mesh, and the existing projected-surface fallback behavior remains unchanged. Broader accessibility, content organisation, portable exports and production deployment work remain separate follow-ups.

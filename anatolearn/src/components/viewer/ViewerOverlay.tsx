@@ -15,6 +15,8 @@ interface ViewerOverlayProps {
   boundaryRef: RefObject<HTMLDivElement | null>;
   model: ModelRecord | null;
   loadError: string | null;
+  loading: boolean;
+  moving: boolean;
   mode: ViewerMode;
   onModeChange: (mode: ViewerMode) => void;
   annotations: Annotation[];
@@ -45,13 +47,15 @@ export default function ViewerOverlay(props: ViewerOverlayProps) {
   const regionMode = props.mode === 'region';
 
   return <>
-    {(!props.model || props.loadError) && (
+    {(!props.model || props.loading || props.loadError) && (
       <p className="absolute inset-x-4 top-20 z-30 rounded-lg bg-white p-4 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200" role={props.loadError ? 'alert' : 'status'}>
         {props.loadError ?? 'Loading model...'}
       </p>
     )}
+    {props.moving && <p role="status" className="absolute left-4 top-44 z-30 rounded-lg bg-white p-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">Moving annotation…</p>}
     <ViewerInstructions modeText={VIEWER_MODE_LABELS[props.mode]} drawMode={drawMode} regionMode={regionMode} />
     <ViewerToolbar
+      disabled={!props.model || props.loading || props.moving}
       addMode={props.mode === 'point'} drawMode={drawMode} regionMode={regionMode}
       annotationsVisible={props.annotationsVisible} darkBackground={props.darkBackground}
       hasNeutralView={Boolean(props.model?.neutral_view)}
@@ -80,7 +84,7 @@ export default function ViewerOverlay(props: ViewerOverlayProps) {
     />
     {props.selectedAnnotation && (
       <AnnotationDetailsPanel
-        boundaryRef={props.boundaryRef} onDragStateChange={props.onDragStateChange} annotation={props.selectedAnnotation}
+        busy={props.moving} boundaryRef={props.boundaryRef} onDragStateChange={props.onDragStateChange} annotation={props.selectedAnnotation}
         linkedVideo={props.videos.find((video) => video.annotation_id === props.selectedAnnotation?.id) ?? null}
         onPlayVideo={setPlayingVideo} onReposition={props.onReposition} onEdit={props.onEdit} onDelete={props.onDelete} onClose={props.onClose}
       />

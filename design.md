@@ -255,3 +255,8 @@ Keyboard-activatable model/video cards, shared focus rings, mobile navigation an
 ## Responsive verification follow-up — 22 October 2026
 
 Desktop navigation starts at xl (1280px); the compact menu remains available on tablets. The brand wordmark and development role preview start at 2xl. This prevents the 768px header from forcing horizontal overflow. The logo link has an accessible name, and all four content search fields have explicit accessible labels. A dev-only responsive-qa.html harness provides 375/768/1440px iframe viewports; it is excluded from production output. Both roles passed a five-page overflow/alt-attribute smoke check in in-app Chromium. The viewer route shows a themed loading status while its lazy chunk loads.
+
+
+## Viewer feedback follow-up — 22 October 2026
+
+The viewer displays loading status through geometry and annotation readiness; toolbar controls are disabled during loading and moves. Moving an annotation has a separate status message. Empty geometry, unavailable WebGL and failed asset/annotation reads show visible errors. Annotation label/description/colour/opacity controls have accessible names. Validation and save errors remain in the form; neutral-view/projection/delete feedback uses themed success/error toasts announced as status/alert. Near-collinear region gestures ask the teacher to draw an enclosed area. Canvas picking supports numbered hotspots and excludes orbit drags. Neutral reset immediately stops residual camera motion.
