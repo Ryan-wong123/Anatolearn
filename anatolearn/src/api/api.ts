@@ -1,3 +1,5 @@
+import type { AnnotationPayload, AnnotationRecord, ModelRecord } from '../types/anatomy';
+
 const API_BASE = "http://localhost:5000/api";
 
 // Single source of truth for where the JWT lives in sessionStorage.
@@ -112,7 +114,7 @@ export const api = {
         return request(`/models${qs ? `?${qs}` : ''}`);
     },
 
-    getModel: (id: number) => request(`/models/${id}`),
+    getModel: (id: number): Promise<ModelRecord> => request(`/models/${id}`),
 
     saveModelThumbnail: (id: number, thumbnailDataUrl: string) =>
         apiFetch(`/models/${id}/thumbnail`, {
@@ -256,19 +258,13 @@ export const api = {
             body: JSON.stringify({ is_published: isPublished }),
         }),
 
-    getAnnotations: (modelId: number) =>
+    getAnnotations: (modelId: number): Promise<AnnotationRecord[]> =>
         request(`/models/${modelId}/annotations`),
 
     createAnnotation: (
         modelId: number,
-        data: {
-            annotation_type: 'point' | 'highlight' | 'region_fill';
-            label: string;
-            description: string;
-            color?: string | null;
-            annotation_data: object;
-        }
-    ) =>
+        data: AnnotationPayload
+    ): Promise<AnnotationRecord> =>
         apiFetch(`/models/${modelId}/annotations`, {
             method: 'POST',
             body: JSON.stringify(data),
@@ -279,14 +275,8 @@ export const api = {
 
     updateAnnotation: (
         id: number,
-        data: {
-            annotation_type: 'point' | 'highlight' | 'region_fill';
-            label: string;
-            description: string;
-            color?: string | null;
-            annotation_data: object;
-        }
-    ) =>
+        data: AnnotationPayload
+    ): Promise<AnnotationRecord> =>
         apiFetch(`/annotations/${id}`, {
             method: 'PUT',
             body: JSON.stringify(data),

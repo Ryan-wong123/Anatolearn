@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 interface DraggablePanelProps {
   children: ReactNode;
   boundaryRef: RefObject<HTMLDivElement | null>;
-  controlsRef: RefObject<OrbitControls | null>;
+  onDragStateChange: (dragging: boolean) => void;
   initialPosition: { x: number; y: number };
   className?: string;
 }
@@ -13,7 +12,7 @@ interface DraggablePanelProps {
 export default function DraggablePanel({
   children,
   boundaryRef,
-  controlsRef,
+  onDragStateChange,
   initialPosition,
   className = '',
 }: DraggablePanelProps) {
@@ -22,7 +21,7 @@ export default function DraggablePanel({
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const draggingRef = useRef(false);
 
-  const clampPosition = (x: number, y: number) => {
+  const clampPosition = useCallback((x: number, y: number) => {
     const boundary = boundaryRef.current;
     const panel = panelRef.current;
     if (!boundary || !panel) return { x, y };
@@ -35,7 +34,7 @@ export default function DraggablePanel({
       x: Math.min(Math.max(padding, x), maxX),
       y: Math.min(Math.max(padding, y), maxY),
     };
-  };
+  }, [boundaryRef]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('button, input, textarea, select, a')) return;
@@ -51,7 +50,7 @@ export default function DraggablePanel({
       y: event.clientY - boundaryRect.top - position.y,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (controlsRef.current) controlsRef.current.enabled = false;
+    onDragStateChange(true);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -76,16 +75,20 @@ export default function DraggablePanel({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    if (controlsRef.current) controlsRef.current.enabled = true;
+    onDragStateChange(false);
   };
 
   useEffect(() => {
-    setPosition((current) => clampPosition(current.x, current.y));
     const handleResize = () =>
       setPosition((current) => clampPosition(current.x, current.y));
+    const frame = requestAnimationFrame(handleResize);
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', handleResize);
+      if (draggingRef.current) onDragStateChange(false);
+    };
+  }, [clampPosition, onDragStateChange]);
 
   return (
     <div
@@ -96,6 +99,7 @@ export default function DraggablePanel({
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onLostPointerCapture={endDrag}
       onClick={(event) => event.stopPropagation()}
     >
       {children}

@@ -1,20 +1,12 @@
 import type { RefObject } from 'react';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { useAppContext } from '../../context/AppContext';
 import DraggablePanel from './DraggablePanel';
-import type { Annotation } from './types';
-
-interface LinkedVideo {
-  id: number;
-  title: string;
-  video_path: string;
-  annotation_id: number | null;
-}
+import type { Annotation, LinkedVideo } from './types';
 
 interface AnnotationDetailsPanelProps {
   boundaryRef: RefObject<HTMLDivElement | null>;
-  controlsRef: RefObject<OrbitControls | null>;
+  onDragStateChange: (dragging: boolean) => void;
   annotation: Annotation;
-  role: string;
   linkedVideo?: LinkedVideo | null;
   onPlayVideo?: (video: LinkedVideo) => void;
   onEdit: () => void;
@@ -32,19 +24,19 @@ function annotationTypeLabel(annotation: Annotation) {
 
 export default function AnnotationDetailsPanel({
   boundaryRef,
-  controlsRef,
+  onDragStateChange,
   annotation,
-  role,
   linkedVideo,
   onPlayVideo,
   onEdit,
   onDelete,
   onClose,
 }: AnnotationDetailsPanelProps) {
+  const { role } = useAppContext();
   return (
     <DraggablePanel
       boundaryRef={boundaryRef}
-      controlsRef={controlsRef}
+      onDragStateChange={onDragStateChange}
       initialPosition={{ x: 9999, y: 390 }}
       className="w-80 max-w-[calc(100%-3rem)]"
     >
