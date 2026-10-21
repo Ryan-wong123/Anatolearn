@@ -71,7 +71,7 @@ Versions are declared dependency ranges. `npm run build` runs TypeScript then Vi
 | backend/src/questionBank.js | teacher-only reusable bank and copy-to-quiz endpoints |
 | backend/src/storage.js | local root/path resolution, model/resource validation and glTF reference checks |
 | backend/src/db.js | dotenv configuration and pg.Pool |
-| backend/sql/001..008 | initialization, seed data and additive schema changes |
+| backend/sql/001..009 | initialization, seed data and additive schema changes |
 | backend/tests/ | policy/integration tests and disposable browser-fixture tooling |
 | tests/ | focused viewer-helper and model-parser regressions |
 | docs/ | setup, API, database, storage, formats and verification records |
@@ -96,13 +96,13 @@ Provider order is AppProvider -> ToastProvider -> ConfirmProvider -> BrowserRout
 
 There are no role-specific frontend routes. ProtectedRoute checks token presence; the backend verifies JWT validity and authorizes content. A JSON API 401 clears stored frontend identity and notifies AppProvider, causing protected content to redirect to Login. There is no refresh-token flow.
 
-Layout uses pathname equality or a child-path prefix for active navigation. A hamburger menu exposes all five sections below md; account controls adapt to narrow widths. Shared Dialog wrappers trap keyboard focus, close through an explicit callback on Escape, and restore the invoking element's focus.
+Layout uses pathname equality or a child-path prefix for active navigation. A hamburger menu exposes all five sections below xl; account controls adapt to narrow widths. Shared Dialog wrappers trap keyboard focus, close through an explicit callback on Escape, and restore the invoking element's focus.
 
 ## 5. Identity, global state and session delivery
 
-Registration accepts name, normalized email, password, student/teacher role and optional programme ID. It stores a bcrypt hash and returns an account, then the UI navigates to Login. Login returns `{ token, user }`; the JWT includes id, name, role and program_id, with a 24-hour expiry. Teacher self-registration remains available; there is no invitation/approval workflow.
+Registration accepts name, normalized email, password, student/teacher role and optional programme ID. It stores a bcrypt hash and returns an account, then the UI navigates to Login. Login returns `{ token, user }`; the JWT includes id, name, role, program_id and a UUID sid, with a 24-hour expiry. Teacher self-registration remains available; there is no invitation/approval workflow.
 
-Login also sets `anatolearn_session`, an HttpOnly, SameSite=Lax cookie with a 24-hour maximum age and Secure in production. The cookie allows native image/video/document and model dependency requests to authenticate without URL tokens. API callers may use the Bearer header; it takes precedence over the cookie. Logout clears the cookie and frontend session storage. JWTs remain stateless: previously copied bearer tokens are not centrally revoked before expiry.
+Login also sets `anatolearn_session`, an HttpOnly, SameSite=Lax cookie with a 24-hour maximum age and Secure in production. The cookie allows native image/video/document and model dependency requests to authenticate without URL tokens. API callers may use the Bearer header; it takes precedence over the cookie. Login persists sid in auth_sessions. Every authenticated request verifies the JWT and joins its unexpired, unrevoked session to the current users row, so backend permissions use current database identity. Logout revokes the presented session, clears the cookie and frontend session storage; copied bearer tokens for that session immediately fail. Tokens issued before migration 009 require a fresh login.
 
 | State | Ownership/persistence |
 |---|---|
@@ -114,7 +114,7 @@ Login also sets `anatolearn_session`, an HttpOnly, SameSite=Lax cookie with a 24
 | confirmation | ConfirmProvider, one pending choice |
 | filters/forms/assessment/annotation UI | page-local state or viewer hooks |
 
-The frontend still does not decode JWT claims. Identity for presentation comes from the login response; backend authorization uses verified JWT claims. The development role preview never alters backend permissions. The viewer canvas background remains a separate local light/dark option.
+The frontend still does not decode JWT claims. Identity for presentation comes from the login response; backend authorization uses the verified session and current database user. The development role preview never alters backend permissions. The viewer canvas background remains a separate local light/dark option.
 
 ## 6. Publication, programme and download policy
 
@@ -177,7 +177,7 @@ Cleanup advances the scene epoch, cancels animation/thumbnail frames and region 
 
 ## 10. Assessments and question bank
 
-Teachers configure an optional time_limit_seconds between 30 and 86400. Starting a student attempt creates a UUID quiz_sessions row with student/quiz IDs, server start/deadline and a complete question snapshot. The response omits answer keys. The timer UI counts down to the server deadline and automatically submits on expiry; the backend accepts a ten-second transport grace and rejects later submissions. Untimed sessions have a null deadline. Cancel/navigation closes the session through an authenticated keepalive request when possible.
+Teachers configure an optional time_limit_seconds between 30 and 86400. Starting a student attempt creates a UUID quiz_sessions row with student/quiz IDs, server start/deadline and a complete question snapshot. The response omits answer keys. The timer UI corrects device-clock offset using server_now and counts down to the server deadline and automatically submits on expiry; the backend accepts a ten-second transport grace and rejects later submissions. Untimed sessions have a null assessment deadline but a separate session_expires_at lease, default 24 hours; timed sessions retain at least their deadline plus transport grace. Cancel/navigation closes the session through an authenticated keepalive request when possible.
 
 Submission requires the owner's unused session and exactly one answer per snapshot question. Unknown/duplicate/missing questions and invalid MCQ options are rejected; unanswered questions are represented explicitly and score zero. A transaction locks the session, inserts the attempt and every answer, and consumes the session. Failures roll back everything; duplicate submission is rejected. MCQs grade immediately; open-ended questions set pending_review.
 
@@ -196,7 +196,8 @@ The teacher-only question bank stores independent MCQ/open-ended questions with 
 | annotations | model FK, point/highlight/region_fill type, text/color and geometry JSONB |
 | videos | media path, publication/programme, optional annotation FK |
 | quizzes, quiz_questions | assessment metadata/timer and per-quiz questions/category/answer keys |
-| quiz_sessions | UUID, student/quiz, question snapshot, start/deadline/consumption |
+| quiz_sessions | UUID, student/quiz, question snapshot, start/deadline/absolute lease/consumption |
+| auth_sessions | UUID sid, user FK, expiry, revocation and creation timestamps |
 | question_bank | independent reusable questions and body-system categories |
 | quiz_attempts, quiz_attempt_answers | owner, score/status, responses and grading |
 | resources | pdf/document/image/link, path or URL, publication/programme |
@@ -205,7 +206,7 @@ The teacher-only question bank stores independent MCQ/open-ended questions with 
 
 Shared types remain in src/types/anatomy.ts and are re-exported by components/viewer/types.ts. Runtime annotation kinds include point/draw/region/projectedDraw/projectedRegion; database kinds are point/highlight/region_fill. Projection cache, opacity and view data live in annotation_data JSONB.
 
-Fresh PostgreSQL volumes run 001 schema, 002 seed, 003 users, 004 model metadata/download audit, 005 attempt owners, 006 video links, 007 favourites and 008 access/assessments. Existing volumes must apply additive scripts explicitly; 008 has been applied to the local development database. Do not rerun destructive 001/002 initialization scripts against existing content. Existing models begin with downloads disabled; existing quizzes remain untimed. The original seed dataset is unchanged and still differs from PRD prototype fixtures.
+Fresh PostgreSQL volumes run 001 schema, 002 seed, 003 users, 004 model metadata/download audit, 005 attempt owners, 006 video links, 007 favourites, 008 access/assessments and 009 session lifecycle. Existing volumes must apply additive scripts explicitly; 008 and 009 have been applied to the local development database. Do not rerun destructive 001/002 initialization scripts against existing content. Existing models begin with downloads disabled; existing quizzes remain untimed. The original seed dataset is unchanged and still differs from PRD prototype fixtures.
 
 ## 12. File storage and deployment
 
@@ -218,7 +219,7 @@ Fresh PostgreSQL volumes run 001 schema, 002 seed, 003 users, 004 model metadata
 
 Upload filenames use UUIDs. Model validation checks GLB structure headers, glTF version/embedded dependencies, OBJ vertices/faces or USDZ archive signature. Material validation checks selected type, extension and basic file signatures. Legacy local glTF companions can be served through ownership checks; new multi-file glTF uploads must be converted to GLB or embedded glTF. OBJ currently loads geometry without a companion MTL upload workflow. USDZ support depends on the installed USDLoader's format subset; Unreal .uasset is rejected with an export-to-GLB instruction. See docs/3d_model_tools.md.
 
-storage.js centralizes the configured local root, safe resolution and validation, but local Multer/fs operations still remain in server.js. A full cloud storage adapter is future work. Database deletion generally does not delete old uploaded files automatically; backup/recovery and orphan-file maintenance remain separate operational work.
+storage.js centralizes the configured local root, safe resolution and validation, but local Multer/fs operations still remain in server.js. A full cloud storage adapter is future work. Database deletion generally does not delete old uploaded files automatically; ops/Backup.ps1 creates consistent database-and-file snapshots and optionally verifies an isolated restore; orphan-file maintenance remains future work.
 
 Compose runs PostgreSQL 16 and Node 22 frontend/backend development services on 5432/5173/5000. PUBLIC_DIR=/public points to the mounted frontend public directory; outside Docker the default is backend/public. The frontend uses BACKEND_URL=http://backend:5000; local Vite defaults to localhost:5000. Polling watch modes support Windows bind mounts. DATABASE_URL, JWT_SECRET, PORT and FRONTEND_ORIGINS configure backend behavior. Compose uses development credentials/secrets and no database readiness health check.
 
@@ -228,4 +229,13 @@ Production must serve the SPA/build plus the same-origin authenticated API/asset
 
 Current checks include TypeScript/Vite build, ESLint, 22 viewer helper tests, two OBJ/USDZ parser tests and database-backed policy/assessment integration tests. Browser QA covers teacher/student flows, native media, OBJ viewing/label movement, permissions, programme filtering, timed MCQ submission/history/review and keyboard dialog behavior. Exact evidence, counts and scope are in docs/testing_log.md.
 
-Remaining limits include the large viewer bundle warning, two viewer effect-dependency warnings, incomplete general API response typing, native alert feedback in parts of the viewer, no exhaustive Chrome/Edge/Firefox/Safari sweep, no full four-programme browser matrix, no GPU/concurrency performance certification, no binary USDC/USDZ compatibility matrix, and legacy requirements such as embedded annotation exports/cloud adapters that are outside this change. Documented current behavior does not waive unmet PRD requirements.
+The Viewer route is lazy-loaded: the current build separates a 366.38 kB initial JS bundle from a 749.95 kB viewer chunk. Remaining limits include the viewer chunk size warning, two viewer effect-dependency warnings, incomplete general API response typing, native alert feedback in parts of the viewer, no exhaustive Chrome/Edge/Firefox/Safari sweep, no full four-programme browser matrix, no GPU/concurrency performance certification, no binary USDC/USDZ compatibility matrix, and legacy requirements such as embedded annotation exports/cloud adapters that are outside this change. Documented current behavior does not waive unmet PRD requirements.
+
+
+## 14. Session maintenance and recovery operations
+
+maintenance.js runs once at backend startup and hourly with an advisory transaction lock. It closes expired quiz sessions and removes closed quiz/auth sessions after 30 days. `QUIZ_SESSION_LIFETIME_HOURS` accepts 1–168 (default 24); `SESSION_RETENTION_DAYS` accepts 1–365 (default 30). `npm run maintenance` runs the same job manually. Quiz attempts and answers are retained independently. Active question-edit guards include the ten-second submission grace.
+
+`ops/Backup.ps1 -VerifyRestore` pauses the running backend, creates a PostgreSQL custom dump plus teaching-assets tar archive, hashes and row-count manifest, and restarts the backend in a finally block. The optional verification creates a fresh database and separate extracted asset directory; it never replaces live data. The Compose operations profile uses the PostgreSQL tools image with read-only source assets. Backups are ignored by Git and Docker builds and denied by Vite. See docs/README.md for operation and recovery limitations.
+
+22 October follow-up verification: both roles across five pages at 375/768/1440 in in-app Chromium; assigned/shared content enforced through actual API accounts for all four programmes; timed quiz browser submission; revoked-session and expired-session regressions; successful database/file restore with hash and row-count equality. Other browser engines and the complete programme-by-browser matrix remain unverified.

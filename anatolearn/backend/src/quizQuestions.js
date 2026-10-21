@@ -1,3 +1,4 @@
+const { ACTIVE_QUIZ_SESSION } = require('./maintenance');
 const { validQuestion } = require('./questionBank');
 
 async function withEditableQuiz(pool,quizId,operation) {
@@ -7,7 +8,7 @@ async function withEditableQuiz(pool,quizId,operation) {
     const quiz=(await client.query('SELECT id FROM quizzes WHERE id=$1 FOR UPDATE',[quizId])).rows[0];
     if(!quiz)throw Object.assign(new Error('Quiz not found'),{status:404});
     const used=await client.query(`SELECT 1 FROM quiz_attempts WHERE quiz_id=$1 UNION ALL
-      SELECT 1 FROM quiz_sessions WHERE quiz_id=$1 AND submitted_at IS NULL AND (expires_at IS NULL OR expires_at>NOW()) LIMIT 1`,[quizId]);
+      SELECT 1 FROM quiz_sessions WHERE quiz_id=$1 AND ${ACTIVE_QUIZ_SESSION} LIMIT 1`,[quizId]);
     if(used.rows.length)throw Object.assign(new Error('This quiz has attempts or active sessions. Create a new quiz to change questions.'),{status:409});
     const result=await operation(client);
     await client.query(`UPDATE quizzes SET type=COALESCE((SELECT CASE WHEN COUNT(*)=0 THEN 'MCQ' WHEN bool_and(format='mcq') THEN 'MCQ' WHEN bool_and(format='open_ended') THEN 'Practical' ELSE 'Mixed' END::quiz_type FROM quiz_questions WHERE quiz_id=$1),'MCQ') WHERE id=$1`,[quizId]);

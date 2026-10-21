@@ -4,6 +4,7 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon --legacy-watch src/server.js",
+    "maintenance": "node src/maintenance.js",
     "start": "node src/server.js",
     "test": "node --test tests/access.test.js",
     "test:integration": "node --test tests/integration.test.js"

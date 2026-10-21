@@ -263,6 +263,7 @@ export default function ModelGallery() {
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
+            aria-label="Search models"
             placeholder="Search models..."
             className="text-slate-900 dark:text-slate-100 pl-9 pr-3 py-2 w-full border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
           />

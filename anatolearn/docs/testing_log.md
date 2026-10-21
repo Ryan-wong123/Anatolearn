@@ -658,3 +658,26 @@ Evidence: [access-assessment.png](verification/access-assessment.png). Model pos
 ### Scope limits
 
 Browser checks used the in-app Chromium browser at its narrow viewport. A full desktop/tablet/four-programme browser sweep, Chrome/Edge/Firefox/Safari matrix, GPU leak profiling, concurrent teaching-session load tests and complex/binary USDZ exporter coverage were not performed. USDLoader's USDA parser requires compatible formatting in the tested fixture; UASSET still requires export to GLB and multi-file glTF needs embedding/conversion. Basic upload signatures are not antivirus scanning. Download flags govern the attachment feature and cannot stop an authorised viewer extracting model bytes delivered for rendering. Cloud storage adapters, embedded model annotation exports, backup automation, old orphan-file cleanup and complete accessibility certification remain separate PRD/operational work. No claim of full PRD compliance is made.
+
+
+## 22 October 2026 — follow-up regression, session lifecycle and recovery
+
+Confirmed product choices: teachers may self-register; students see published assigned-programme and shared content. Applied additive migration 009 to the local PostgreSQL volume. No volume reset or live-data restore was performed.
+
+| Check actually run | Result |
+|---|---|
+| Frontend TypeScript + Vite production build | Passed; initial JS 366.38 kB / gzip 97.32 kB, lazy Viewer 749.95 kB / gzip 195.44 kB. Viewer chunk still exceeds warning threshold. |
+| Frontend ESLint | 0 errors; 2 existing Viewer effect-dependency warnings. |
+| Viewer regression suite | 22 passed. |
+| OBJ/USDZ parser suite | 2 passed; no claim of broad binary-USDC support. |
+| Backend policy suite | 4 passed. |
+| Backend real-DB integration | 14 scenarios passed (15 TAP tests including parent). Covers four actual student and teacher programme accounts, assigned/shared list/direct reads, revoked bearer/cookie denial, independent teacher session, abandoned untimed expiry, active-session preservation and question-edit lock during transport grace, alongside prior transactional/access checks. |
+| Responsive Chromium smoke | 30 page/role/width combinations: Dashboard, Models, Videos, Quizzes, Library; student + teacher; 375/768/1440px iframe viewport. No horizontal document overflow after fix; no rendered img missing alt. These are layout smoke checks, not complete workflow/accessibility certification. |
+| Tablet navigation | Found 992px document width in a 768px quiz viewport. After moving desktop navigation to xl, document fits (753px with scrollbar). Mobile menu opens and navigates. Search controls and logo now have accessible names. |
+| Student timed quiz browser workflow | Disposable PT student started 60s quiz, selected answer, submitted, received 100% and a history entry. Saved verification/responsive-quiz.png. |
+| Backup + isolated restore | ops/Backup.ps1 -VerifyRestore succeeded: snapshot-20261022-022729; pg_restore into restore_snapshot_20261022_022729; every asset hash and selected table row count matched. Backend restarted. Restored data remains isolated for inspection. |
+| Backup exposure protection | Frontend-origin requests to /backups/.../database.dump and /@fs/app/backups/.../database.dump both returned 403. Backups are ignored by Git and Docker context. |
+
+The first expanded programme-matrix test run exposed duplicate synthetic email generation in the test helper; unique fixture suffixes fixed it and the full integration suite passed on rerun. Expected injected SQL-FK failures and protected-edit 409 messages still appear in test output and are asserted regression cases. Temporary browser users, models, videos, quiz/attempts and generated files were removed using the fixture cleanup script before the backup.
+
+Only in-app Chromium was connected. Chrome/Edge/Firefox/Safari, real mobile hardware, every programme through every browser workflow, textured-model annotation stress, GPU/concurrent load and complete assistive-technology checks remain unverified. The harness browser log captured one MutationObserver parameter error without an app source location during frame navigation; no source usage was found, so its origin is unresolved and this run does not claim a clean console certification. Backup scheduling/off-site replication, orphan cleanup, embedded annotation exports and a complete cloud storage adapter remain separate work.

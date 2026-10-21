@@ -18,7 +18,7 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
     return response;
   }
   async function login(role,program){
-    const email=`${stamp}-${role}-${program}@example.test`;
+    const email=`${stamp}-${role}-${program}-${userIds.length}@example.test`;
     const id=(await pool.query('INSERT INTO users(name,email,password_hash,role,program_id) VALUES($1,$2,$3,$4,$5) RETURNING id',[stamp,email,await bcrypt.hash('Testing123',4),role,program])).rows[0].id;
     userIds.push(id);
     const response=await call('/api/auth/login',null,{email,password:'Testing123'});
@@ -28,6 +28,24 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
   }
   try{
     const teacher=await login('teacher',1),student=await login('student',1),other=await login('student',2);
+    await t.test('all four programme accounts receive only assigned and shared content',async()=>{
+      const rows=[];
+      for(const program of [1,2,3,4,null]) {
+        const row=(await pool.query('INSERT INTO models(title,file_path,is_published,program_id) VALUES($1,$2,true,$3) RETURNING *',[stamp+'-matrix', '/models/matrix.obj', program])).rows[0];
+        modelIds.push(row.id); rows.push(row);
+      }
+      for(const program of [1,2,3,4]) {
+        const account=await login('student',program);
+        const listed=await(await call('/api/models',account.token)).json();
+        for(const row of rows) {
+          const allowed=row.program_id===null || row.program_id===program;
+          assert.equal(listed.some(item=>item.id===row.id),allowed);
+          assert.equal((await call(`/api/models/${row.id}`,account.token)).status,allowed?200:404);
+        }
+        const instructor=await login('teacher',program);
+        for(const row of rows) assert.equal((await call(`/api/models/${row.id}`,instructor.token)).status,200);
+      }
+    });
     const model=(await pool.query('INSERT INTO models(title,file_path,is_published,program_id) VALUES($1,$2,true,1) RETURNING *',[stamp,`/models/anatomy/${stamp}.obj`])).rows[0];modelIds.push(model.id);
     filePath=storage.resolveAsset(model.file_path);await fs.mkdir(require('path').dirname(filePath),{recursive:true});await fs.writeFile(filePath,'v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n');
     await t.test('assets require login, support cookie media/ranges and enforce account programme',async()=>{
@@ -109,8 +127,22 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       const question=(await pool.query('SELECT * FROM quiz_questions WHERE quiz_id=$1',[id])).rows[0];
       const active=await(await call(`/api/quizzes/${id}/start`,student.token,{})).json();
       assert.equal((await call(`/api/questions/${question.id}`,teacher.token,{...question,question:'Revised question'},'PUT')).status,409);
+      await pool.query("UPDATE quiz_sessions SET expires_at=NOW()-INTERVAL '3 seconds' WHERE id=$1",[active.session_id]);
+      assert.equal((await call(`/api/questions/${question.id}`,teacher.token,{...question,question:'During transport grace'},'PUT')).status,409);
       assert.equal((await call(`/api/quiz-sessions/${active.session_id}/cancel`,student.token,{})).status,200);
       assert.equal((await call(`/api/questions/${question.id}`,teacher.token,{...question,question:'Revised question'},'PUT')).status,200);
+    });
+    await t.test('abandoned untimed sessions expire and maintenance preserves active sessions',async()=>{
+      const id=quizIds[quizIds.length-1];
+      const expired=await(await call(`/api/quizzes/${id}/start`,student.token,{})).json();
+      const active=await(await call(`/api/quizzes/${id}/start`,student.token,{})).json();
+      await pool.query("UPDATE quiz_sessions SET session_expires_at=NOW()-INTERVAL '1 second' WHERE id=$1",[expired.session_id]);
+      assert.equal((await call(`/api/quizzes/${id}/submit`,student.token,{session_id:expired.session_id,answers:[]})).status,409);
+      await require('../src/maintenance').cleanupSessions(pool);
+      const rows=(await pool.query('SELECT id,submitted_at FROM quiz_sessions WHERE id=ANY($1::uuid[])',[[expired.session_id,active.session_id]])).rows;
+      assert.ok(rows.find(r=>r.id===expired.session_id).submitted_at);
+      assert.equal(rows.find(r=>r.id===active.session_id).submitted_at,null);
+      await call(`/api/quiz-sessions/${active.session_id}/cancel`,student.token,{});
     });
     await t.test('content deletion removes polymorphic favourites through database triggers',async()=>{
       const id=quizIds[quizIds.length-1];
@@ -124,6 +156,9 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call(resource.file_path)).status,401);assert.equal((await call(resource.file_path,teacher.token)).status,200);
       await fs.unlink(storage.resolveAsset(resource.file_path));
       const logout=await call('/api/auth/logout',null,{},'POST',student.cookie);assert.equal(logout.status,200);assert.match(logout.headers.get('set-cookie'),/Expires=/);
+      assert.equal((await call('/api/models',student.token)).status,401);
+      assert.equal((await call('/api/models',null,null,'GET',student.cookie)).status,401);
+      assert.equal((await call('/api/models',teacher.token)).status,200);
     });
   } finally {
     await pool.query('DELETE FROM models WHERE id=ANY($1::int[])',[modelIds]);

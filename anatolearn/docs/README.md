@@ -63,7 +63,7 @@ The PostgreSQL service creates the `anatolearn` database automatically and runs 
 
 - `001_schema.sql`
 - `002_seed.sql`
-- `003_add_users.sql` through `008_access_and_assessments.sql`
+- `003_add_users.sql` through `009_session_lifecycle.sql`
 
 These scripts are mounted read-only into `/docker-entrypoint-initdb.d`, which the official PostgreSQL image runs only when the database volume is empty. If a local `postgres_data` volume already exists, Docker keeps the existing database and does not rerun the init scripts. For a clean development reset:
 
@@ -174,3 +174,22 @@ docker compose exec -T backend npm run test:integration
 ```
 
 Integration tests create and clean only isolated temporary records/files; they require the migrated local database. Historical viewer test counts and architecture notes earlier in this file describe older snapshots. Current behavior is documented in root Architecture.md/design.md and the latest testing_log.md entry.
+
+
+## Session lifecycle and backups (22 October 2026)
+
+Existing databases must apply `backend/sql/009_session_lifecycle.sql` after 008 before running this backend. From this directory in PowerShell:
+
+```powershell
+Get-Content backend/sql/009_session_lifecycle.sql | docker compose exec -T postgres psql -U anatolearn -d anatolearn -v ON_ERROR_STOP=1
+docker compose exec -T backend npm run maintenance
+.\ops\Backup.ps1 -VerifyRestore
+```
+
+Migration 009 requires users with previously issued tokens to sign in again. Login sessions expire after 24 hours; logout revokes the current session. Untimed quiz sessions expire after 24 hours by default. Maintenance runs at startup and hourly, removing closed session records after 30 days, while retaining attempts and answers. Optional environment settings: `QUIZ_SESSION_LIFETIME_HOURS` (1–168), `SESSION_RETENTION_DAYS` (1–365).
+
+The backup command briefly stops backend writes and restarts a previously running backend automatically. Keep PostgreSQL running and prevent independent database/file writers during the snapshot. It creates `backups/snapshot-yyyyMMdd-HHmmss/` with database.dump, assets.tar.gz, file hashes and row counts. `-VerifyRestore` creates a separate `restore_snapshot_...` database and `restored-assets/` folder, validates archive/file checksums and compares restored row counts. Existing restore targets are never replaced; a repeat verification requires a new target. The verified clone remains available for inspection and has not been connected to the app.
+
+To verify an existing snapshot, run `docker compose --profile ops run --rm --no-deps operations bash /ops/snapshot.sh verify snapshot-yyyyMMdd-HHmmss` with the real snapshot name and unused restore targets. This is an isolated restore tool; switching production to restored data is a separate maintenance operation. Before any live recovery, invalidate restored login sessions or rotate JWT_SECRET so old backed-up tokens cannot regain access. Backups contain private accounts and teaching content; store them with appropriate host permissions and copy them to protected external storage for disaster recovery. Linux archive permissions do not configure Windows ACLs. This implementation provides on-demand backups, not an unattended schedule or off-site storage.
+
+`responsive-qa.html` is a local development viewport harness; sign in using disposable QA fixtures and inspect pages at 375, 768 and 1440 pixels. The normal production build contains only the application entry, not the harness.

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Local responsive QA</title></head>
+<body>
+<h1>Local responsive QA</h1>
+<p>Development viewport harness. Sign in with a temporary QA account inside the frame.</p>
+<button data-width="375">Mobile 375</button>
+<button data-width="768">Tablet 768</button>
+<button data-width="1440">Desktop 1440</button>
+<p><button data-path="/dashboard">Dashboard</button><button data-path="/3dviewer">Models</button><button data-path="/videos">Videos</button><button data-path="/quizzes">Quizzes</button><button data-path="/library">Library</button></p>
+<button id="inspect">Inspect layout</button><output id="result"></output>
+<iframe title="AnatoLearn test viewport" src="/login" width="375" height="900" style="display:block;border:1px solid #888"></iframe>
+<script type="module">
+if (!import.meta.env.DEV) throw new Error('Development only');
+const frame=document.querySelector('iframe');
+document.querySelectorAll('[data-path]').forEach(button=>button.onclick=()=>{frame.src=button.dataset.path;});
+document.querySelectorAll('[data-width]').forEach(button=>button.onclick=()=>{frame.width=button.dataset.width;});
+document.querySelector('#inspect').onclick=()=>{
+  const doc=frame.contentDocument;
+  document.querySelector('#result').textContent=JSON.stringify({width:frame.clientWidth,scrollWidth:doc.documentElement.scrollWidth,path:frame.contentWindow.location.pathname,missingImageAlt:doc.querySelectorAll('img:not([alt])').length});
+};
+</script></body></html>

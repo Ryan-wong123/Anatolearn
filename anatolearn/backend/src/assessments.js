@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const { canRead } = require('./access');
+const { SESSION_LIFETIME_HOURS } = require('./maintenance');
 
 function validateAnswers(questions, answers) {
   if (!Array.isArray(answers) || answers.length !== questions.length) return false;
@@ -30,11 +31,11 @@ function registerAssessments(app, pool, authenticate, requireTeacher) {
       const questions = (await client.query('SELECT * FROM quiz_questions WHERE quiz_id=$1 ORDER BY id', [quiz.id])).rows;
       if (!questions.length) { await client.query('ROLLBACK'); return res.status(400).json({ message: 'This quiz has no questions' }); }
       const id = randomUUID();
-      const result = await client.query(`INSERT INTO quiz_sessions (id,quiz_id,student_id,expires_at,questions)
-        VALUES ($1,$2,$3,CASE WHEN $4::int IS NULL THEN NULL ELSE NOW()+$4*INTERVAL '1 second' END,$5) RETURNING *`,
-        [id, quiz.id, req.user.id, quiz.time_limit_seconds, JSON.stringify(questions)]);
+      const result = await client.query(`INSERT INTO quiz_sessions (id,quiz_id,student_id,expires_at,questions,session_expires_at)
+        VALUES ($1,$2,$3,CASE WHEN $4::int IS NULL THEN NULL ELSE NOW()+$4*INTERVAL '1 second' END,$5,NOW()+GREATEST($6::int*3600,COALESCE($4,0)+10)*INTERVAL '1 second') RETURNING *, NOW() AS server_now`,
+        [id, quiz.id, req.user.id, quiz.time_limit_seconds, JSON.stringify(questions), SESSION_LIFETIME_HOURS]);
       await client.query('COMMIT');
-      res.json({ session_id: id, expires_at: result.rows[0].expires_at,
+      res.json({ session_id: id, expires_at: result.rows[0].expires_at, server_now: result.rows[0].server_now, session_expires_at: result.rows[0].session_expires_at,
         questions: questions.map(({ correct_option, model_answer, ...question }) => question) });
     } catch(error) { await client.query('ROLLBACK');throw error; }
     finally { client.release(); }
@@ -54,7 +55,7 @@ function registerAssessments(app, pool, authenticate, requireTeacher) {
         return res.status(409).json({ message: 'Quiz session is unavailable or already submitted' });
       }
       // A short transport grace allows the automatic timeout submission to arrive.
-      if (session.expires_at && new Date(session.server_now) > new Date(session.expires_at).getTime() + 10000) {
+      if (new Date(session.server_now) >= new Date(session.session_expires_at) || (session.expires_at && new Date(session.server_now) > new Date(session.expires_at).getTime() + 10000)) {
         await client.query('ROLLBACK');
         return res.status(409).json({ message: 'Quiz time limit has expired. Start a new attempt.' });
       }

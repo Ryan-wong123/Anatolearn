@@ -53,19 +53,19 @@ export default function Layout() {
       <nav className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-6">
-            <button aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} className="xl:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-            <Link to="/dashboard" className="flex items-center gap-2">
+            <Link to="/dashboard" aria-label="AnatoLearn dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                 <GraduationCap className="w-5 h-5 text-white" />
               </div>
-              <span className="hidden lg:inline font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight font-display">
+              <span className="hidden 2xl:inline font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight font-display">
                 AnatoLearn
               </span>
             </Link>
 
-            <div className="hidden md:flex space-x-1">
+            <div className="hidden xl:flex space-x-1">
               {navItems.map(({ label, icon: Icon, path }) => {
                 const isActive = location.pathname === path || location.pathname.startsWith(path + '/');
                 return (
@@ -109,7 +109,7 @@ export default function Layout() {
                 render (or do anything) in a production build — role there
                 comes only from the logged-in account. */}
             {isDevMode && (
-              <div className="hidden xl:flex items-center gap-2">
+              <div className="hidden 2xl:flex items-center gap-2">
                 <button
                   onClick={() => setRole('student')}
                   className={`text-sm transition-colors ${
@@ -159,7 +159,7 @@ export default function Layout() {
             </div>
           </div>
         </div>
-        {menuOpen && <div className="absolute top-16 inset-x-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-3 md:hidden shadow-lg">
+        {menuOpen && <div className="absolute top-16 inset-x-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-3 xl:hidden shadow-lg">
           {navItems.map(({path,label,icon:Icon}) => <Link key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
         </div>}
       </nav>

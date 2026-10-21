@@ -8,7 +8,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { randomUUID } = require('crypto');
 
-const { authenticate, canRead, canDownload } = require('./access');
+const { authenticate, canRead, canDownload, sessionToken } = require('./access');
 const storage = require('./storage');
 const app = express();
 // Express 4 does not forward rejected async handlers by default.
@@ -226,8 +226,10 @@ app.post("/api/auth/login", async (req, res) => {
       return invalidCredentials();
     }
 
+    const sid = randomUUID();
+    await pool.query("INSERT INTO auth_sessions(id,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '24 hours')", [sid,user.id]);
     const token = jwt.sign(
-      { id: user.id, name: user.name, role: user.role, program_id: user.program_id },
+      { id: user.id, name: user.name, role: user.role, program_id: user.program_id, sid },
       JWT_SECRET,
       { expiresIn: "24h" }
     );
@@ -250,7 +252,11 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
+  let claims;
+  try { claims = jwt.verify(sessionToken(req) || '', JWT_SECRET, { algorithms: ['HS256'] }); } catch { /* Clear invalid or expired cookies too. */ }
+  if (typeof claims?.sid === 'string' && /^[0-9a-f-]{36}$/i.test(claims.sid))
+    await pool.query('UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2', [claims.sid,claims.id]);
   res.clearCookie('anatolearn_session', { path: '/' });
   res.json({ message: 'Logged out' });
 });
@@ -1235,7 +1241,10 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-if (require.main === module) app.listen(PORT, () => {
-  console.log(`AnatoLearn backend running on port ${PORT}`);
-});
+if (require.main === module) {
+  require('./maintenance').startMaintenance(pool);
+  app.listen(PORT, () => {
+    console.log(`AnatoLearn backend running on port ${PORT}`);
+  });
+}
 module.exports = app;

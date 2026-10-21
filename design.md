@@ -63,12 +63,12 @@ Google Fonts are imported in `src/index.css`: DM Sans weights 400/600/700 and IB
 Its inner row is `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`, horizontally distributing:
 
 - Brand: 32px blue rounded-lg square, white 20px GraduationCap, AnatoLearn text.
-- Five icon/text links: Dashboard, 3D Viewer, Videos, Quizzes, Library; hidden below md, with 16px icons and compact rounded-md hit areas.
+- Five icon/text links: Dashboard, 3D Viewer, Videos, Quizzes, Library; hidden below xl, with 16px icons and compact rounded-md hit areas.
 - Program label and API-populated select, development role toggle, theme toggle, truncated account name, avatar icon and logout.
 
 Program selects use a white/deep-slate background, slate-300/slate-600 border, rounded-md and 14px text. The user name is hidden below sm and capped at 140px; the brand wordmark is hidden below lg and the programme selector narrows on small screens. The Student | Teacher control appears only in Vite development builds. The avatar is a UserCircle2 button without a profile workflow.
 
-Active links match their exact route or child-route prefix. Below md a Menu/X toggle opens a themed dropdown containing all five navigation links; selecting a link closes it. Programme controls, theme and logout remain available in the compact header. The development role toggle is hidden below xl.
+Active links match their exact route or child-route prefix. Below xl a Menu/X toggle opens a themed dropdown containing all five navigation links; selecting a link closes it. Programme controls, theme and logout remain available in the compact header. The development role toggle is hidden below 2xl.
 
 ## 6. Page geometry and spacing
 
@@ -250,3 +250,8 @@ These controls read AppContext role; the development role preview does not grant
 Lucide provides most icons: GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun/Moon, Search, Upload/Download, FileJson/FileText, ExternalLink, Heart, Play, Trophy, Activity, Clock and X. Common sizes are 16px for actions/navigation, 20px for controls, 24px for metrics, and 32–40px for resource/model fallbacks. The viewer also contains an inline SVG play mark, SVG drawing preview and text +/- controls.
 
 Keyboard-activatable model/video cards, shared focus rings, mobile navigation and Dialog focus/Escape/return-focus behavior are implemented. Some legacy field labels and native alerts still need broader accessibility review; no certification or complete cross-browser/mobile matrix is claimed. SVG drawing previews and a few legacy inline icons remain. Full implementation/verification details are in Architecture.md and anatolearn/docs/testing_log.md.
+
+
+## Responsive verification follow-up — 22 October 2026
+
+Desktop navigation starts at xl (1280px); the compact menu remains available on tablets. The brand wordmark and development role preview start at 2xl. This prevents the 768px header from forcing horizontal overflow. The logo link has an accessible name, and all four content search fields have explicit accessible labels. A dev-only responsive-qa.html harness provides 375/768/1440px iframe viewports; it is excluded from production output. Both roles passed a five-page overflow/alt-attribute smoke check in in-app Chromium. The viewer route shows a themed loading status while its lazy chunk loads.

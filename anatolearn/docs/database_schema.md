@@ -299,3 +299,10 @@ Apply `backend/sql/008_access_and_assessments.sql` after 001–007. It is additi
 - `remove_content_favorites` deletion triggers on videos/quizzes clean polymorphic favourite references when content is deleted.
 
 Submission transactions lock the session, insert attempt/answers and consume the session atomically. Manual grading locks the attempt and commits its answer/final score together. Question mutations lock their quiz and refuse changes after attempts or while sessions are active; starting a session takes a shared quiz lock while snapshotting. This preserves the existing question FK/history model instead of allowing edits to rewrite old results. Backup/restore and cleanup of old closed sessions remain operational considerations.
+
+
+## Migration 009 — session lifecycle
+
+`quiz_sessions.session_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW()+INTERVAL '24 hours')` adds an absolute lease. Existing rows receive the later of start+24h and timer+10s. Partial indexes support open-session expiry and closed-session retention.
+
+`auth_sessions`: `id UUID PRIMARY KEY` (JWT sid), `user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE`, `expires_at TIMESTAMPTZ NOT NULL`, nullable `revoked_at TIMESTAMPTZ`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`. An expiry index supports cleanup. Login creates a row; logout records revocation; authentication joins the current user. Session maintenance is transactional and uses an advisory lock. Closed records are removed after configurable retention; quiz_attempts and quiz_attempt_answers are preserved.

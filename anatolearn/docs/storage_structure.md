@@ -31,4 +31,7 @@ Original model downloads preserve the uploaded file. Annotation exports are sepa
 
 ## Operations
 
-Migration 008 adds download permissions, image material types, quiz sessions/bank/timers and favourite-deletion triggers. Existing volumes require explicit additive migration; no volume reset is needed. Metadata and files must both be included in any backup. Automated backup/restore, retention of closed quiz sessions, orphan-file cleanup and cloud delivery remain operational work; never delete files solely because one metadata record was removed when another may reference the same path.
+Migration 008 adds download permissions, image material types, quiz sessions/bank/timers and favourite-deletion triggers. Existing volumes require explicit additive migration; no volume reset is needed. Metadata and files must both be included in any backup. On-demand backup/isolated restore and closed-session retention are implemented (009 and ops/); unattended backup scheduling, orphan-file cleanup and cloud delivery remain operational work; never delete files solely because one metadata record was removed when another may reference the same path.
+
+
+Snapshots live outside public/ under ignored `backups/`, excluded from Docker build contexts and denied by the Vite filesystem server. ops/Backup.ps1 coordinates a write pause and captures metadata plus the complete teaching-file tree. The optional isolated restore checks archive hashes, every extracted file hash and selected table counts. It leaves the live database and public/ untouched. No automatic orphan deletion or cloud backup was added. See README.md for commands, host permissions and recovery precautions.

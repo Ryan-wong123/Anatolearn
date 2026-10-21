@@ -262,3 +262,10 @@ This section supersedes older submission/download/result behavior in historical 
 Starting an attempt and changing its questions coordinate through parent-quiz locks. Question CRUD/imports reject quizzes with existing attempts or active sessions (409); use a new quiz for revised assessments. Submission locks and consumes its session in one transaction with attempt/answers. Replays and expired sessions return 409; validation returns 400; database failures roll back all writes. Timed sessions allow a ten-second delivery grace after their deadline; the browser auto-submits on timeout. Open-ended results remain pending until graded.
 
 Model upload adds USDZ and validates GLB/glTF/OBJ/USDZ headers/content structure. New glTF uploads must embed their dependencies or be converted to GLB; unsupported UASSET returns an export instruction. Resource upload adds `resource_type=image` for PNG/JPEG/WebP and checks basic signatures/type consistency. External links must use HTTP(S). Failed uploads clean up their new files. Model downloading returns the original file; separate JSON/CSV annotations are not embedded into it.
+
+
+## Session lifecycle update — 22 October 2026
+
+Login retains `{token,user}` and the media cookie, adding a UUID `sid` JWT claim backed by auth_sessions. Authenticated API and asset requests require an unrevoked, unexpired stored session; current role/programme are read from users. Tokens without sid require re-login. Logout revokes the presented bearer/cookie session and clears its cookie; repeating logout with an invalid/expired token still clears the cookie. Other sessions remain signed in.
+
+`POST /api/quizzes/:id/start` additionally returns `server_now` and `session_expires_at`. The UI uses server_now to correct clock offset. `expires_at` remains the optional assessment timer; the independent lease prevents abandoned untimed sessions from lasting indefinitely. Submission returns 409 after either the lease or timed deadline plus ten seconds. Question edits stay blocked during this transport grace. Maintenance closes expired sessions and later removes closed session records, without deleting historical attempts/answers.

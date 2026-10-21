@@ -247,6 +247,7 @@ export default function Videos() {
           <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
+            aria-label="Search videos"
             placeholder="Search videos..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}

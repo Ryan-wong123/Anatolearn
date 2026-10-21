@@ -96,6 +96,7 @@ export default function Quizzes() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [quizSearchTerm, setQuizSearchTerm] = useState('');
   const [sessionId, setSessionId] = useState('');
+  const [clockOffset, setClockOffset] = useState(0);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
   const submitRef = useRef<() => void>(() => {});
@@ -198,7 +199,7 @@ export default function Quizzes() {
     try {
       const session = await api.startQuiz(quiz.id);
       setSessionId(session.session_id);
-      setExpiresAt(session.expires_at);
+      setExpiresAt(session.expires_at); setClockOffset(Date.parse(session.server_now)-Date.now());
       const loadedQuestions = session.questions;
 
 
@@ -276,13 +277,13 @@ export default function Quizzes() {
   useEffect(() => {
     if (!expiresAt || !activeQuiz || submitResult) return;
     const tick = () => {
-      const seconds = Math.max(0, Math.ceil((Date.parse(expiresAt)-Date.now())/1000));
+      const seconds = Math.max(0, Math.ceil((Date.parse(expiresAt)-(Date.now()+clockOffset))/1000));
       setRemaining(seconds);
       if (seconds === 0) { clearInterval(timer); submitRef.current(); }
     };
     const timer = setInterval(tick,1000);
     return () => clearInterval(timer);
-  }, [expiresAt, activeQuiz, submitResult]);
+  }, [expiresAt, activeQuiz, submitResult, clockOffset]);
 
   useEffect(() => {
     if (!sessionId || submitResult) return;
@@ -292,7 +293,7 @@ export default function Quizzes() {
   }, [sessionId, submitResult]);
 
   const handleRetry = async () => {
-    if (activeQuiz) { const session = await api.startQuiz(activeQuiz.id); setSessionId(session.session_id); setExpiresAt(session.expires_at); }
+    if (activeQuiz) { const session = await api.startQuiz(activeQuiz.id); setSessionId(session.session_id); setExpiresAt(session.expires_at); setClockOffset(Date.parse(session.server_now)-Date.now()); }
     if (activeQuiz) {
       sessionStorage.removeItem(`quiz-attempt-${activeQuiz.id}`);
     }
@@ -685,6 +686,7 @@ export default function Quizzes() {
           type="text"
           value={quizSearchTerm}
           onChange={(e) => setQuizSearchTerm(e.target.value)}
+          aria-label="Search quizzes"
           placeholder="Search quizzes by title, category, or description..."
           className="bg-white dark:bg-slate-900 w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 dark:focus:border-blue-300"
         />

@@ -402,3 +402,8 @@ This section consolidates product and QA obligations formerly listed in Agents.m
 - Verify the applicable prototype data renders correctly and programme selection updates visible text.
 - TypeScript must compile without errors, and affected browser workflows must have no console errors before they are reported as verified.
 - Record actual verification evidence and unresolved limitations in anatolearn/docs/testing_log.md. A source review or historical passing result does not establish a newly executed browser, role/programme, compatibility or performance check.
+
+
+## Confirmed account policies — 22 October 2026
+
+The user confirmed that teachers continue to self-register. An invitation or approval gate is not required. Students may access published content assigned to their account programme and published shared content; changing a display filter never grants access to another programme. Teachers retain content management and draft preview access.

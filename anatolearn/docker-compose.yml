@@ -59,5 +59,18 @@ services:
     depends_on:
       - backend
 
+  operations:
+    image: postgres:16
+    profiles: [ops]
+    environment:
+      PGHOST: postgres
+      PGUSER: anatolearn
+      PGPASSWORD: password
+      PGDATABASE: anatolearn
+    volumes:
+      - ./ops:/ops:ro
+      - ./public:/assets:ro
+      - ./backups:/backups
+
 volumes:
   postgres_data:
