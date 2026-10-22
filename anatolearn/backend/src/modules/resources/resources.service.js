@@ -47,7 +47,7 @@ async function uploadResource(input) {
                 await fs.unlink(input.file.path).catch(() => { });
                 return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: error.message } });
             }
-            filePath = `/resources/${input.file.filename}`;
+            filePath = await storage.persist(input.file, 'resources');
         }
         const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });

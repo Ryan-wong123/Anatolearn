@@ -17,6 +17,13 @@ async function getTeachingAsset(input) {
     }
     if (!allowed)
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: 'Asset not found' } });
+    if (storage.REMOTE) {
+        (outcomeMeta.headers['Cache-Control'] = 'private, no-store');
+        (outcomeMeta.headers['X-Content-Type-Options'] = 'nosniff');
+        if (/\.(docx?|usdz)$/i.test(assetPath))
+            outcomeMeta.headers['Content-Disposition'] = 'attachment';
+        return ({ ...outcomeMeta, status: 200, kind: 'object', assetPath });
+    }
     const root = path.resolve(storage.ROOT);
     const absolute = path.resolve(root, '.' + assetPath);
     if (!absolute.startsWith(root + path.sep))
