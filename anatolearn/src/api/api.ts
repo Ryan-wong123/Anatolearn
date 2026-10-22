@@ -111,6 +111,7 @@ export const api = {
         password: string;
         role: "student" | "teacher";
         program_id?: number;
+        invite_code?: string;
     }) =>
         apiFetch("/auth/register", {
             method: "POST",

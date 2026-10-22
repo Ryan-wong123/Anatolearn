@@ -54,7 +54,7 @@ async function uploadResource(input) {
     }
     catch (err) {
         console.error("Failed to upload resource:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.message || "Failed to upload resource" } });
+        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload resource" } });
     }
 }
 async function deleteResource(input) {

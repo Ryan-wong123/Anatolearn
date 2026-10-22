@@ -21,4 +21,7 @@ async function insertSession(parameters) {
 async function revokeSession(parameters) {
     return pool.query('UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2', parameters);
 }
-module.exports = { findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };
+async function findProgram(parameters) {
+    return pool.query('SELECT id FROM programs WHERE id = $1', parameters);
+}
+module.exports = { findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };

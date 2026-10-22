@@ -23,6 +23,7 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<Role>('student');
+  const [inviteCode, setInviteCode] = useState('');
   const [programId, setProgramId] = useState<string>('');
   const selectedProgramId = programId || (programs[0] ? String(programs[0].id) : '');
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export default function Register() {
         email,
         password,
         role,
+        invite_code: role === 'teacher' ? inviteCode : undefined,
         program_id: selectedProgramId ? Number(selectedProgramId) : undefined,
       });
       navigate('/login');
@@ -164,6 +166,23 @@ export default function Register() {
               <option value="teacher">Teacher</option>
             </select>
           </div>
+
+          {role === 'teacher' && (
+            <div>
+              <label htmlFor="inviteCode" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Teacher invite code
+              </label>
+              <input
+                autoComplete="off" id="inviteCode"
+                type="password"
+                required
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                placeholder="Provided by your administrator"
+              />
+            </div>
+          )}
 
           <div>
             <label htmlFor="program" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">

@@ -3,10 +3,11 @@ async function health(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     try {
         const result = await repository.checkDatabase();
-        return ({ ...outcomeMeta, status: 200, kind: 'json', body: { status: "ok", db_time: result.rows[0].now } });
+        return ({ ...outcomeMeta, status: 200, kind: 'json', body: { status: "ok" } });
     }
     catch (err) {
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { status: "error", message: err.message } });
+        console.error('Health check failed:', err.message);
+        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { status: "error" } });
     }
 }
 async function listPrograms(input) {
