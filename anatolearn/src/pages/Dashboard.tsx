@@ -42,7 +42,6 @@ export default function Dashboard() {
   // Student stats
   const [quizzesTaken, setQuizzesTaken] = useState<number>(0);
   const [avgScore, setAvgScore] = useState<number | null>(null);
-  const [recentAttempts, setRecentAttempts] = useState<AttemptSummary[]>([]);
 
   const [favoriteVideos, setFavoriteVideos] = useState<FavoriteVideo[]>([]);
   const [favoriteQuizzes, setFavoriteQuizzes] = useState<FavoriteQuiz[]>([]);
@@ -66,7 +65,6 @@ export default function Dashboard() {
       api.getMyAttempts()
         .then((attempts: AttemptSummary[]) => {
           setQuizzesTaken(attempts.length);
-          setRecentAttempts(attempts.slice(0, 3));
 
           const graded = attempts.filter((a) => a.status === 'graded' && a.score != null);
           if (graded.length > 0) {
@@ -122,48 +120,7 @@ export default function Dashboard() {
 
       {role === 'student' && (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
-            Recent Activity
-          </h2>
-          {recentAttempts.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 text-center">
-              <p className="text-sm text-slate-400 dark:text-slate-500">No quiz attempts yet. Head to the Quizzes page to get started.</p>
-              <Link to="/quizzes" className="mt-3 inline-block text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">
-                Browse Quizzes →
-              </Link>
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-              {recentAttempts.map((attempt) => (
-                <div
-                  key={attempt.id}
-                  className="px-5 py-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-b-0"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{attempt.quiz_title}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                      {new Date(attempt.attempted_at).toLocaleDateString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                  {attempt.status === 'graded' ? (
-                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {attempt.score}%
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
-                      Pending Review
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-8">
+          <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
               Favourites
             </h2>
