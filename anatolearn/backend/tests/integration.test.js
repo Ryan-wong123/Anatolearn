@@ -14,6 +14,7 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
   const userIds=[],modelIds=[],quizIds=[],bankIds=[],resourceIds=[],videoIds=[];
   let filePath;
   const captionPaths=[];
+  const refactorPaths=[];
   async function call(path,token,body,method=body?'POST':'GET',cookie){
     const response=await fetch(base+path,{method,headers:{...(token?{Authorization:`Bearer ${token}`}:{ }),...(cookie?{Cookie:cookie}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
     return response;
@@ -168,6 +169,72 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call(`/api/quizzes/${id}`,teacher.token,null,'DELETE')).status,200);
       assert.equal(Number((await pool.query("SELECT COUNT(*) FROM favorites WHERE item_type='quiz' AND item_id=$1",[id])).rows[0].count),0);
     });
+    await t.test('public routes and registration preserve their contracts after module extraction',async()=>{
+      assert.equal((await call('/api/health')).status,200);
+      assert.equal((await call('/api/programs')).status,200);
+      const email=`${stamp}-registration@example.test`;
+      const registered=await call('/api/auth/register',null,{name:stamp,email,password:'Testing123',role:'student',program_id:1});
+      assert.equal(registered.status,201);
+      const account=await registered.json();userIds.push(account.id);
+      assert.equal(account.email,email);
+      assert.equal('password_hash' in account,false);
+      assert.equal((await call('/api/auth/register',null,{name:stamp,email,password:'Testing123',role:'student'})).status,409);
+      assert.equal((await call('/api/auth/login',null,{email,password:'incorrect'})).status,401);
+      assert.equal((await call('/api/auth/logout',null,{})).status,200);
+      const untrusted=await fetch(base+'/api/auth/login',{method:'POST',headers:{Origin:'https://untrusted.example','Content-Type':'application/json'},body:'{}'});
+      assert.equal(untrusted.status,403);
+    });
+    await t.test('model authoring, annotations and exports preserve response and file contracts',async()=>{
+      const form=new FormData();form.append('title',stamp+'-refactor');
+      // The model upload field remains "model".
+      form.append('model',new Blob(['v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n']),'fixture.obj');
+      const upload=await fetch(base+'/api/models/upload',{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:form});
+      assert.equal(upload.status,201);const created=await upload.json();modelIds.push(created.id);refactorPaths.push(created.file_path);
+      const id=created.id;
+      assert.equal((await call(`/api/models/${id}`,teacher.token,{title:stamp+'-updated',body_system:'Muscular'},'PUT')).status,200);
+      assert.equal((await call(`/api/models/${id}/neutral-view`,teacher.token,{cameraPosition:{x:0,y:0,z:5},target:{x:0,y:0,z:0}},'PATCH')).status,200);
+      assert.equal((await call(`/api/models/${id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
+      const filtered=await(await call(`/api/models?system=Muscular&q=${encodeURIComponent(stamp+'-updated')}`,student.token)).json();
+      assert.ok(filtered.some(row=>row.id===id));
+      const unmatched=await(await call(`/api/models?q=${encodeURIComponent("' OR 1=1 --")}`,student.token)).json();
+      assert.equal(unmatched.length,0);
+      assert.equal((await call(`/api/models/${id}/download-permission`,teacher.token,{is_downloadable:true},'PATCH')).status,200);
+      const download=await call(`/api/models/${id}/download`,student.token);
+      assert.equal(download.status,200);assert.match(download.headers.get('content-disposition'),/attachment/);assert.match(await download.text(),/v 0 0 0/);
+      const annotation=await call(`/api/models/${id}/annotations`,teacher.token,{annotation_type:'point',label:'Fixture point',annotation_data:{position:{x:0,y:0,z:0}}});
+      assert.equal(annotation.status,201);const saved=await annotation.json();
+      assert.equal((await call(`/api/annotations/${saved.id}`,teacher.token,{annotation_type:'point',label:'Updated point',annotation_data:{}},'PUT')).status,200);
+      assert.equal((await call(`/api/models/${id}/annotations`,student.token)).status,200);
+      const jsonExport=await call(`/api/models/${id}/annotations/export`,teacher.token);
+      assert.match(jsonExport.headers.get('content-disposition'),/annotations.json/);assert.equal((await jsonExport.json())[0].label,'Updated point');
+      const csvExport=await call(`/api/models/${id}/annotations/export?format=csv`,teacher.token);
+      assert.match(csvExport.headers.get('content-type'),/text\/csv/);assert.match(await csvExport.text(),/Updated point/);
+      assert.equal((await call(`/api/annotations/${saved.id}`,teacher.token,null,'DELETE')).status,200);
+      assert.equal((await call(`/api/models/${id}`,teacher.token,null,'DELETE')).status,200);
+    });
+    await t.test('quiz, resource and video management and favourites retain their APIs',async()=>{
+      const createdQuiz=await call('/api/quizzes',teacher.token,{title:stamp+'-crud',type:'MCQ',program_id:1});
+      assert.equal(createdQuiz.status,201);const quiz=await createdQuiz.json();quizIds.push(quiz.id);
+      assert.equal((await call(`/api/quizzes/${quiz.id}`,teacher.token,{title:stamp+'-revised'},'PUT')).status,200);
+      assert.equal((await call(`/api/quizzes/${quiz.id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
+      assert.equal((await call('/api/favorites',student.token,{item_type:'quiz',item_id:quiz.id})).status,201);
+      const favorites=await(await call('/api/favorites',student.token)).json();
+      assert.ok(favorites.quizzes.some(row=>row.id===quiz.id));
+      assert.equal((await call(`/api/favorites/quiz/${quiz.id}`,student.token,null,'DELETE')).status,200);
+      const link=await call('/api/resources/upload',teacher.token,{title:stamp,resource_type:'link',url:'https://example.com',program_id:1});
+      assert.equal(link.status,201);const resource=await link.json();resourceIds.push(resource.id);
+      assert.equal((await call(`/api/resources/${resource.id}`,teacher.token,{title:stamp+'-updated',url:'https://example.com/updated'},'PUT')).status,200);
+      assert.equal((await call(`/api/resources/${resource.id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
+      assert.equal((await call('/api/resources',student.token)).status,200);
+      assert.equal((await call(`/api/resources/${resource.id}`,teacher.token,null,'DELETE')).status,200);
+      const videoForm=new FormData();videoForm.append('title',stamp);videoForm.append('video',new Blob(['fixture video']),'fixture.mp4');
+      const uploadedVideo=await fetch(base+'/api/videos/upload',{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:videoForm});
+      assert.equal(uploadedVideo.status,201);const video=await uploadedVideo.json();videoIds.push(video.id);refactorPaths.push(video.video_path);
+      assert.equal((await call(`/api/videos/${video.id}`,teacher.token,{title:stamp+'-updated'},'PUT')).status,200);
+      assert.equal((await call(`/api/videos/${video.id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
+      assert.equal((await call(`/api/videos/${video.id}`,student.token)).status,200);
+      assert.equal((await call(`/api/videos/${video.id}`,teacher.token,null,'DELETE')).status,200);
+    });
     await t.test('photo materials upload, authenticated delivery and logout cookie clearing',async()=>{
       const form=new FormData();form.append('title',stamp);form.append('resource_type','image');form.append('file',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9x8AAAAASUVORK5CYII=','base64')]),'photo.png');
       const upload=await fetch(base+'/api/resources/upload',{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:form});assert.equal(upload.status,201);const resource=await upload.json();resourceIds.push(resource.id);
@@ -187,6 +254,7 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
     await pool.query('DELETE FROM users WHERE id=ANY($1::int[])',[userIds]);
     if(filePath)await fs.unlink(filePath).catch(()=>{});
     for(const asset of captionPaths)await fs.unlink(storage.resolveAsset(asset)).catch(()=>{});
+    for(const asset of refactorPaths)await fs.unlink(storage.resolveAsset(asset)).catch(()=>{});
     await new Promise((resolve)=>server.close(resolve));await pool.end();
   }
 });

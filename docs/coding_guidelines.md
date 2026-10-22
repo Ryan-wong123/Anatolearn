@@ -400,3 +400,16 @@ interface NavItem {
 ```
 
 
+
+## 18. Backend feature/layer boundaries
+
+The Express backend uses a layered modular monolith under anatolearn/backend/src/modules/<feature>/:
+
+- <feature>.routes.js: endpoint declarations, auth/role/upload middleware, controller bindings. Keep business rules and SQL out.
+- <feature>.controller.js: named bindings between routes and services through http/controller.js. Keep database access out.
+- <feature>.service.js: validation, permissions, workflow, grading and transaction orchestration. Accept a plain input record; return a plain result record. Do not access live Express req/res objects or execute SQL.
+- <feature>.repository.js: parameterized SQL and database reads/writes. Do not import services or Express. Transactional methods must receive and use the service's connection rather than the global pool.
+
+Services currently return HTTP-shaped result records to preserve response compatibility; controller.js is the only place that applies their headers, cookies, exports or streams to Express. Services may acquire/release pg connections and coordinate filesystem utilities. Keep validated dynamic table/column/filter fragments internal; never pass unchecked client SQL fragments into repositories. Share question validation through questions/question.validation.js, and shared publication/programme/download rules through access.js. Cross-feature bank imports use the question-edit transaction service so copied questions follow the same locking rules.
+
+app.js composes middleware/routes and handles errors; server.js starts the process and maintenance. Keep both free of feature handlers. Preserve compatibility shims until their external/test callers are deliberately migrated. Operational maintenance SQL is outside the feature repository convention. Existing frontend conventions above continue to apply; this refactor does not change product requirements.

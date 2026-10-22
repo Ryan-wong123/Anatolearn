@@ -6,7 +6,7 @@
     "dev": "node --watch src/server.js",
     "maintenance": "node src/maintenance.js",
     "start": "node src/server.js",
-    "test": "node --test tests/access.test.js",
+    "test": "node --test tests/access.test.js tests/layers.test.js",
     "test:integration": "node --test tests/integration.test.js"
   },
   "dependencies": {

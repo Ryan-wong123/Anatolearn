@@ -214,21 +214,13 @@ Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, co
 
 Tested: correct login (200 + token), wrong password (401), non-existent email (401, identical message to wrong password), missing password (400), case-insensitive email match (200). See `testing_log.md`.
 
-### Auth middleware (Task 9.3)
-Two Express middleware functions, defined near the top of `server.js`:
+### Auth middleware (current implementation, 22 October 2026)
 
-- **`authenticate`** — requires an `Authorization: Bearer <token>` header, verifies it with `jwt.verify`, and attaches the decoded payload to `req.user`. Returns 401 if the header is missing, malformed, or the token is invalid/expired.
-- **`requireTeacher`** — must run after `authenticate`. Returns 403 if `req.user.role !== 'teacher'`.
+authenticate in backend/src/access.js accepts a bearer token or HttpOnly session cookie, verifies JWT claims and checks the live database session/current user through auth.repository.js. middleware/roles.js supplies requireTeacher and requireStudent. middleware/contentAccess.js enforces direct content/attempt ownership using catalog.repository.js.
 
-**Applied to every route except:** `GET /api/health`, `GET /api/programs`, `POST /api/auth/register`, `POST /api/auth/login`. `GET /api/programs` is deliberately left public because the Register page's program dropdown needs it before the user has an account.
+Health, programmes, register, login and logout register before the global /api authentication gate. Logout clears invalid/expired cookies too and revokes a valid presented session. Teaching assets authenticate separately. Thumbnail writes require teachers; attempt details/answers require the owning student or a teacher. Shared content additionally respects publication and programme rules.
 
-**Two judgment calls worth knowing about**, since they're not explicitly specified anywhere:
-- `PATCH /api/models/:id/thumbnail` is `authenticate`-only (not teacher-only) — the frontend currently auto-generates a model's thumbnail whenever *anyone* opens the viewer, not just teachers, so gating it to teachers would break that.
-- `GET /api/attempts/:id` and `GET /api/attempts/:id/answers` are `authenticate`-only, not teacher-only — the teacher grading UI uses them, but so does the student-facing sessionStorage "check my result" workaround (see Task 8.5/8.7 notes above). Since there's still no `student_id` on attempts, this means any logged-in user can view any attempt's answers by guessing an ID — a real gap, but it's the same underlying gap as the missing `student_id` column, not a new one introduced here.
-
-Full route classification (which routes are public / any-authenticated-user / teacher-only) is in the middleware's inline comments in `server.js` — not duplicated here since it'd just be a second copy to keep in sync.
-
-**Frontend status (updated 20 Jul 2026):** the frontend impact note above is now resolved. `src/api/api.ts` attaches `Authorization: Bearer <token>` to every request via a shared `apiFetch` helper, `Login.tsx` is a real working form, `ProtectedRoute.tsx` actually checks for a token, and `Layout.tsx` has a working logout button. `Register.tsx` is still a stub (Task 9.5, not yet built) — the Login page's "Register" link currently goes nowhere useful. None of this has been confirmed yet against a real running backend + browser session.
+Route classification is declared in backend/src/modules/<feature>/<feature>.routes.js. Controllers adapt plain service results through http/controller.js, services own workflows and repositories own SQL. The feature refactor preserves existing endpoint paths, request/response bodies, authentication, cookies and errors; no client or schema migration is needed.
 
 ---
 

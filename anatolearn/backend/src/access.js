@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const pool = require('./db');
+const { findSessionUser } = require('./modules/auth/auth.repository');
 
 function sessionToken(req) {
   const bearer = req.headers.authorization;
@@ -12,9 +12,7 @@ async function authenticate(req, res, next) {
   try {
     const claims = jwt.verify(sessionToken(req) || '', process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (typeof claims.sid !== 'string' || !/^[0-9a-f-]{36}$/i.test(claims.sid)) throw new Error('Session missing');
-    const result = await pool.query(`SELECT u.id, u.name, u.role, u.program_id FROM auth_sessions s
-      JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2
-      AND s.revoked_at IS NULL AND s.expires_at > NOW()`, [claims.sid, claims.id]);
+    const result = await findSessionUser([claims.sid, claims.id]);
     if (!result.rows[0]) throw new Error('Session expired');
     req.user = { ...claims, ...result.rows[0] };
     next();

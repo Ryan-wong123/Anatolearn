@@ -6,27 +6,63 @@ Implementation reference, updated 22 October 2026. Paths are relative to `anatol
 
 AnatoLearn combines a React learning/authoring interface, an Express API, PostgreSQL metadata, and locally stored teaching files. Students explore annotated models, watch videos, take assessments and open programme-specific resources. Teachers manage publication, programme assignment, download permissions, annotations, question banks and grading.
 
-```text
-Browser (same origin)
-  AppProvider -> ToastProvider -> ConfirmProvider -> BrowserRouter
-    ProtectedRoute -> Layout -> shared student/teacher pages
-    API client: Bearer JWT + HttpOnly media-session cookie
-    Viewer: local scene/resources + geometry and UI helpers
-         |
-         | /api, /models, /videos/<file>, /resources, /thumbnails
-         v
-Vite development/preview proxy (production requires equivalent reverse proxy)
-         |
-Express
-  access.js: authentication + publication/programme/download policy
-  server.js: content/account endpoints and authenticated file delivery
-  assessments.js: timed sessions, transactional submission/grading
-  quizQuestions.js: locked question mutations and historical-result protection
-  questionBank.js: reusable bank records and independent quiz copies
-  storage.js: local root, safe paths, validation, glTF dependency ownership
-         |
-  pg.Pool -> PostgreSQL 16        filesystem under PUBLIC_DIR
+```mermaid
+flowchart TB
+  subgraph browser["Browser: React + TypeScript"]
+    App["main.tsx / App.tsx<br/>Providers and React Router"]
+    Pages["ProtectedRoute / Layout / pages<br/>Dashboard, models, videos, quizzes, library"]
+    Viewer["Viewer.tsx + components/viewer<br/>Three.js scene and annotation tools"]
+    Client["api/api.ts<br/>JSON, multipart and downloads"]
+    Media["Native media and model loaders<br/>Images, video, captions and model files"]
+    App --> Pages
+    Pages --> Viewer
+    Pages --> Client
+    Viewer --> Media
+    Pages --> Media
+  end
+
+  Proxy["Same-origin proxy<br/>Vite in development/preview<br/>Equivalent reverse proxy in production"]
+  Client -->|"/api: bearer JWT and session cookie"| Proxy
+  Media -->|"Protected asset URLs: session cookie"| Proxy
+
+  subgraph backend["Backend: Node.js + Express modular monolith"]
+    Server["server.js<br/>Listener and maintenance startup"]
+    ExpressApp["app.js<br/>CORS, origin checks, JSON and route registration"]
+    Routes["modules/feature/feature.routes.js<br/>Endpoint paths and middleware bindings"]
+    Guards["access.js + middleware/<br/>Authentication, roles and content access"]
+    Uploads["middleware/uploads.js<br/>Multer and failed-upload cleanup"]
+    Controller["feature.controller.js + http/controller.js<br/>Plain inputs/results, cookies, exports and streams"]
+    Services["feature.service.js<br/>Validation, business rules and transactions"]
+    Repositories["feature.repository.js<br/>Parameterized SQL"]
+    Storage["storage.js + filesystem utilities<br/>Validation, safe paths and file operations"]
+    Maintenance["maintenance.js<br/>Session expiry and retention"]
+    Pool["db.js<br/>pg.Pool"]
+
+    Server --> ExpressApp
+    Server --> Maintenance
+    ExpressApp --> Routes
+    Routes --> Guards
+    Routes --> Uploads
+    Routes --> Controller
+    Controller --> Services
+    Services --> Repositories
+    Services --> Storage
+    Services -.->|"Acquire/release transaction connections"| Pool
+    Guards -->|"Session and content lookups"| Repositories
+    Repositories --> Pool
+    Maintenance --> Pool
+  end
+
+  Proxy --> ExpressApp
+  Database[("PostgreSQL 16<br/>Accounts, sessions, content and assessments")]
+  Files[("Local files under PUBLIC_DIR<br/>Models, videos, resources, thumbnails and captions")]
+  Pool --> Database
+  Storage --> Files
+  Uploads --> Files
+  Controller -->|"Authenticated file streaming"| Files
 ```
+
+Arrows show calls and dependencies; responses return through the HTTP adapter and proxy. Feature modules cover auth, publicCatalog, catalog, models, annotations, videos, quizzes, assessments, questions, questionBank, resources, favorites and assets. Authentication and role/content guards apply according to each route; public auth/health/programme endpoints register before the global API gate. The assets service checks ownership and access before the adapter streams a file. Services manage transaction lifetimes and pass the same connection to transactional repository methods. Section 20 describes these boundaries in detail.
 
 There is no public static teaching-file middleware. Vite's public directory is disabled so a production build does not copy uploaded files into its output; development filesystem deny rules also block alternate `/public` and `/@fs` paths to teaching files/backend configuration.
 
@@ -65,10 +101,12 @@ Versions are declared dependency ranges. `npm run build` runs TypeScript then Vi
 | src/components/viewer/ | viewer overlays, data/editor hooks, sampling, serialization and projection helpers |
 | src/types/anatomy.ts | shared model/annotation/payload/geometry types |
 | backend/src/access.js | JWT extraction/verification and content policy predicates |
-| backend/src/server.js | Express setup, content/account routes and asset access checks |
-| backend/src/assessments.js | assessment sessions, validation, transactional submission/grading |
-| backend/src/quizQuestions.js | locked question CRUD, derived quiz type and edit guards |
-| backend/src/questionBank.js | teacher-only reusable bank and copy-to-quiz endpoints |
+| backend/src/server.js | process startup, maintenance scheduling and backwards-compatible app export |
+| backend/src/app.js | Express composition, CORS/origin/JSON middleware, ordered route registration and error handling |
+| backend/src/modules/ | feature routes, controller bindings, business services and SQL repositories |
+| backend/src/http/controller.js | request-to-input and result-to-response adapter, cookies, exports and file streams |
+| backend/src/middleware/ | shared role gates, direct content/attempt authorization and Multer upload/cleanup |
+| backend/src/assessments.js / quizQuestions.js / questionBank.js | compatibility exports for existing tests/tools; implementation lives in feature modules |
 | backend/src/storage.js | local root/path resolution, model/resource validation and glTF reference checks |
 | backend/src/db.js | dotenv configuration and pg.Pool |
 | backend/sql/001..009 | initialization, seed data and additive schema changes |
@@ -219,7 +257,7 @@ Fresh PostgreSQL volumes run 001 schema, 002 seed, 003 users, 004 model metadata
 
 Upload filenames use UUIDs. Model validation checks GLB structure headers, glTF version/embedded dependencies, OBJ vertices/faces or USDZ archive signature. Material validation checks selected type, extension and basic file signatures. Legacy local glTF companions can be served through ownership checks; new multi-file glTF uploads must be converted to GLB or embedded glTF. OBJ currently loads geometry without a companion MTL upload workflow. USDZ support depends on the installed USDLoader's format subset; Unreal .uasset is rejected with an export-to-GLB instruction. See 3d_model_tools.md.
 
-storage.js centralizes the configured local root, safe resolution and validation, but local Multer/fs operations still remain in server.js. A full cloud storage adapter is future work. Database deletion generally does not delete old uploaded files automatically; ops/Backup.ps1 creates consistent database-and-file snapshots and optionally verifies an isolated restore; orphan-file maintenance remains future work.
+storage.js centralizes the configured local root, safe resolution and validation, but Multer configuration lives in middleware/uploads.js and feature services coordinate local fs operations. A full cloud storage adapter is future work. Database deletion generally does not delete old uploaded files automatically; ops/Backup.ps1 creates consistent database-and-file snapshots and optionally verifies an isolated restore; orphan-file maintenance remains future work.
 
 Compose runs PostgreSQL 16 and Node 22 frontend/backend development services on 5432/5173/5000. PUBLIC_DIR=/public points to the mounted frontend public directory; outside Docker the default is backend/public. The frontend uses BACKEND_URL=http://backend:5000; local Vite defaults to localhost:5000. Polling watch modes support Windows bind mounts. DATABASE_URL, JWT_SECRET, PORT and FRONTEND_ORIGINS configure backend behavior. Compose uses development credentials/secrets and no database readiness health check.
 
@@ -292,3 +330,26 @@ Migration `backend/sql/010_video_captions.sql` adds nullable `videos.captions_pa
 The authenticated `/captions/*` asset handler resolves caption ownership to the video row and reuses its programme/publication access policy. Vite proxies that route to the backend; production must do the same and must not publish the storage directory as static content. Standalone and viewer-modal players render a default native English captions track when a path exists. Captions are optional, manually supplied by teachers and English-only; the app does not transcribe or verify them. Unit and database integration coverage includes valid/malformed VTT, authenticated delivery, programme denial, teacher replacement and removal. Fresh cross-browser caption-track coverage is being rerun; actual Safari and spoken screen-reader checks remain environment-dependent.
 
 Dependency audit follow-up: Tailwind CSS v4 now runs through the official Vite plugin with the existing JavaScript config explicitly loaded. Compatible frontend advisories were patched; Nodemon was removed in favor of Node 22 `--watch` because its legacy dependency chain had no safe release. Both frontend and backend `npm audit` report zero vulnerabilities. Build/lint and backend tests pass; the existing Viewer bundle-size warning remains.
+
+## 20. Layered feature modules — 22 October 2026
+
+The backend is a layered modular monolith. The React presentation tier and PostgreSQL/file persistence tier remain unchanged. All existing feature endpoints now follow:
+
+~~~text
+React API client
+  -> feature routes (paths, role/auth/upload middleware)
+  -> feature controller (shared HTTP adapter)
+  -> feature service (validation, permissions, workflow, transactions)
+  -> feature repository (parameterized SQL)
+  -> PostgreSQL
+~~~
+
+Feature directories under backend/src/modules are auth, models, annotations, videos, quizzes, assessments, questions, questionBank, resources, favorites, assets, catalog and publicCatalog. Each has matching .routes.js, .controller.js, .service.js and .repository.js files. publicCatalog contains public health/programme reads; catalog contains cross-content programme assignment and shared list filtering. Existing assessment/question-bank entry files are compatibility shims, not duplicate implementations.
+
+Controllers bind named service operations through http/controller.js. The adapter passes a plain input record (body, params, query, user, headers, path and uploaded-file descriptors), rather than live Express objects. Services return plain result records with status, kind, body and optional headers/cookies/file information. The adapter applies those results to Express, including JSON/CSV exports, cookies, sendFile and download error callbacks. This intentionally keeps the existing HTTP result contract in the application layer; it is not a completely transport-independent domain model. SQL lives in repositories, while services own transaction connection lifetimes, locks, commit/rollback decisions and release. There is no ORM or new runtime dependency.
+
+Authentication/token extraction and shared read/download predicates remain in access.js; its live-session lookup delegates to auth.repository.js. middleware/contentAccess.js delegates content/attempt lookups to catalog.repository.js. middleware/roles.js owns teacher/student gates. middleware/uploads.js owns Multer disk configuration and failed-response cleanup. storage.js retains file validation/path/dependency utilities. Services still coordinate filesystem effects directly; a cloud storage adapter and a separate domain/entity model remain future work. Operational maintenance remains in maintenance.js with its existing SQL.
+
+Public routes register before the /api authentication/content gate. All other features register after it, and file routes explicitly authenticate. Existing route paths, payloads, status codes, role/programme/download policies, cookie behavior, quiz transaction semantics and database schema are preserved. server.js remains the npm/Docker entry point and starts maintenance only when executed directly; importing app.js or server.js does not open a listener or schedule maintenance. No frontend migration or database migration is required.
+
+Verification for this refactor is recorded in testing_log.md. Existing product gaps and browser/accessibility limitations elsewhere in this document remain applicable.
