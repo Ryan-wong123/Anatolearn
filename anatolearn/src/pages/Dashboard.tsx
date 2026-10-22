@@ -51,7 +51,6 @@ export default function Dashboard() {
   }, program);
   const {modelCount,videoCount,quizCount,favoriteVideos,favoriteQuizzes} = data;
   const quizzesTaken = data.attempts.length;
-  const recentAttempts = data.attempts.slice(0,3);
   const graded = data.attempts.filter((attempt) => attempt.status === 'graded' && attempt.score != null);
   const avgScore = graded.length ? Math.round(graded.reduce((sum,attempt) => sum+(attempt.score ?? 0),0)/graded.length) : null;
 
@@ -93,48 +92,7 @@ export default function Dashboard() {
 
       {role === 'student' && !loading && !loadError && (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
-            Recent Activity
-          </h2>
-          {recentAttempts.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 text-center">
-              <p className="text-sm text-slate-600 dark:text-slate-400">No quiz attempts yet. Head to the Quizzes page to get started.</p>
-              <Link to="/quizzes" className="mt-3 inline-block text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">
-                Browse Quizzes →
-              </Link>
-            </div>
-          ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-              {recentAttempts.map((attempt) => (
-                <div
-                  key={attempt.id}
-                  className="px-5 py-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-b-0"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{attempt.quiz_title}</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                      {new Date(attempt.attempted_at).toLocaleDateString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                  {attempt.status === 'graded' ? (
-                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {attempt.score}%
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">
-                      Pending Review
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-8">
+          <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
               Favourites
             </h2>
