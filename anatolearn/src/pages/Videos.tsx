@@ -1,13 +1,16 @@
+import Dialog from '../components/Dialog';
+import ContentSettings from '../components/ContentSettings';
 import { useEffect, useState } from 'react';
 import { Search, Play, Upload, X, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAppContext } from '../context/AppContext';
-import { useToast } from '../context/ToastContext';
-import { useConfirm } from '../context/ConfirmContext';
+import { useAppContext } from '../context/AppContextState';
+import { useToast } from '../context/ToastContextState';
+import { useConfirm } from '../context/ConfirmContextState';
 import { api } from '../api/api';
 
 interface Video {
   id: number;
+  program_id: number | null;
   title: string;
   description: string | null;
   video_path: string;
@@ -25,7 +28,7 @@ interface AnnotationOption {
 }
 
 export default function Videos() {
-  const { role } = useAppContext();
+  const { role, program } = useAppContext();
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const navigate = useNavigate();
@@ -60,7 +63,7 @@ export default function Videos() {
     api.getAllAnnotations()
       .then(setAnnotationOptions)
       .catch((err) => console.error('Failed to load annotations for linking:', err));
-  }, [role]);
+  }, [role, program]);
 
   useEffect(() => {
     if (role !== 'student') return;
@@ -69,7 +72,7 @@ export default function Videos() {
         setFavoritedVideoIds(new Set(data.videos.map((v) => v.id)));
       })
       .catch((err) => console.error('Failed to load favorites:', err));
-  }, [role]);
+  }, [role, program]);
 
   const toggleFavorite = async (video: Video, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -95,13 +98,13 @@ export default function Videos() {
   const loadVideos = () => {
     api.getVideos(role === 'student')
       .then(setVideos)
-      .catch((err) => console.error('Failed to load videos:', err));
+      .catch(() => toast('Could not load videos. Please try again.', 'error'));
   };
 
   useEffect(() => {
     loadVideos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+  }, [role, program]);
 
   const filtered = videos.filter((v) =>
     v.title.toLowerCase().includes(search.toLowerCase())
@@ -152,6 +155,7 @@ export default function Videos() {
       toast(video.is_published ? 'Video unpublished' : 'Video published');
     } catch (err) {
       console.error('Failed to update publish state:', err);
+      toast('The change could not be saved. Please try again.', 'error');
     }
   };
 
@@ -171,6 +175,7 @@ export default function Videos() {
       toast('Video deleted');
     } catch (err) {
       console.error('Failed to delete video:', err);
+      toast('The change could not be saved. Please try again.', 'error');
     }
   };
 
@@ -216,7 +221,7 @@ export default function Videos() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 font-display">
             Educational Videos
@@ -242,6 +247,7 @@ export default function Videos() {
           <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
+            aria-label="Search videos"
             placeholder="Search videos..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -254,6 +260,7 @@ export default function Videos() {
         {filtered.map((video) => (
           <div
             key={video.id}
+            role="link" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); navigate(`/videos/${video.id}`); } }}
             onClick={() => navigate(`/videos/${video.id}`)}
             className="text-left bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
           >
@@ -306,6 +313,7 @@ export default function Videos() {
                 Watch Video →
               </p>
 
+              <ContentSettings kind="videos" id={video.id} programId={video.program_id} onSaved={loadVideos} />
               {role === 'teacher' && (
                 <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                   <button
@@ -340,7 +348,7 @@ export default function Videos() {
       </div>
 
       {showUpload && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={closeUploadModal} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
@@ -426,11 +434,11 @@ export default function Videos() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {editingVideo && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+        <Dialog onClose={closeEdit} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
               Edit Video
@@ -504,7 +512,7 @@ export default function Videos() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

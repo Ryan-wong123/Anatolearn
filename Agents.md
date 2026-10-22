@@ -1,232 +1,36 @@
-# Agents.md — Codex Workflow Instructions for AnatoLearn
+# Agents.md — AnatoLearn Main Agent
 
-## 1. Purpose
+## Role
 
-This file defines how Codex or coding agents should work on the AnatoLearn React project.
+Act as the main coding agent for AnatoLearn. Own the requested work from understanding the requirement through implementation, verification, documentation and handoff. Product, architecture, UI, viewer and QA work are responsibilities of this agent; they do not require separate agents. Delegate only when the user explicitly requests it.
 
-The goal is to implement a maintainable, extendible, and clean React web app for anatomy education, based on the design and architecture documents.
+## Project references
 
-Agents must avoid hardcoded role logic, scene-global Three.js state, and per-page context duplication.
+Read the documents relevant to the task before changing code:
 
----
+| Document | Responsibility |
+|---|---|
+| [PRD.md](PRD.md) | Product scope, roles, features, content expectations and product acceptance criteria |
+| [Architecture.md](Architecture.md) | Current implementation, source boundaries, data flow and known gaps |
+| [design.md](design.md) | Current theme, page layouts, interactions and responsive reference |
+| [coding_guidelines.md](coding_guidelines.md) | Engineering constraints, naming, types and viewer lifecycle rules |
+| [anatolearn/docs/README.md](anatolearn/docs/README.md) | Setup, local usage and documentation index |
 
-## 2. Prime Directive
+ When requirements and implementation differ, preserve the distinction and report the gap. Do not remove requirements or declare them implemented solely to match existing code. Resolve scope changes using the user's instructions; explain unresolved conflicts instead of silently choosing a new product policy.
 
-Build the app using a **clean separation of concerns**:
-- Global state (`role`, `program`) is decoded from the authenticated JWT and lives exclusively in `AppContext`
-- Every app page is protected by an auth guard
-- Role-gated UI is rendered through JSX conditionals on shared pages; role route guards are only for pages or workflows that are exclusively student-only or teacher-only
-- Three.js is isolated entirely inside `Viewer.tsx` — no scene objects leak outside
+## Workflow
 
----
-
-## 3. Required Architecture Style
-
-Follow the layered architecture defined in `Architecture.md`:
-
-1. **Context Layer** — `AppContext.tsx` — role and program only
-2. **Routing Layer** — `App.tsx` and `ProtectedRoute.tsx` — public auth routes plus protected app routes
-3. **Layout Layer** — `Layout.tsx` — persistent nav shell
-4. **Page Layer** — `Dashboard`, `Viewer`, `Videos`, `Quizzes`, `Library`
-5. **Three.js Layer** — isolated inside `Viewer.tsx` useEffect
-
----
-
-## 4. Agent Responsibilities
-
-### Product Agent
-Responsible for:
-- Ensuring all features match `PRD.md` scope
-- Verifying role-gated features match the role-gating table in `PRD.md` section 6
-- Checking that mock data matches `PRD.md` section 10
-- Maintaining educational clarity of the platform's purpose
-
-### Architecture Agent
-Responsible for:
-- Keeping context, routing, layout, and pages cleanly separated
-- Preventing role logic from appearing outside JSX conditionals
-- Preventing Three.js objects from leaking outside `Viewer.tsx`
-- Reviewing that `AppContext` is only extended for genuinely global state
-- Ensuring dependency direction follows `Architecture.md` section 4
-
-### UI Agent
-Responsible for:
-- Implementing components exactly matching `design.md` visual specs
-- Using only Tailwind CSS classes (no custom CSS unless unavoidable)
-- Importing icons only from `lucide-react`
-- Verifying responsive breakpoints match `design.md` section 16
-- Ensuring all interactive elements have hover and focus states
-
-### Three.js Agent
-Responsible for:
-- Implementing the Three.js scene only inside `Viewer.tsx`
-- Ensuring all refs are typed correctly
-- Implementing the full cleanup return function from `coding_guidelines.md` section 9
-- Implementing resize handler correctly
-- Implementing raycasting correctly (mouse coordinates, intersection check)
-
-### QA Agent
-Responsible for:
-- Testing JWT-derived role rendering on every page for both student and teacher accounts
-- Testing program selector updates visible text
-- Testing Viewer navigation in and out (cleanup verification)
-- Testing all mock data renders correctly
-- Testing responsive layout at mobile, tablet, and desktop
-- Checking all `alt` attributes on images
-
----
-
-## 5. Important Implementation Rules
-
-### Do
-- Read `role` from `useAppContext()` — never from props, URLs, or local state
-- Read `program` from `useAppContext()` — never duplicated in local state
-- Store Three.js objects in refs — never in React state
-- Use the `three/addons/controls/OrbitControls.js` import path
-- Use Tailwind responsive prefixes for breakpoints — not JS checks
-- Implement card hover behavior according to `design.md`
-- Use `useLocation().pathname` for active nav link detection
-- Guard all Three.js operations with null checks on refs and mountRef
-
-### Do Not
-- Do not put role logic in route guards except for pages or workflows that are exclusively student-only or teacher-only
-- Do not put role logic in context — only in JSX conditionals
-- Do not call `setState` inside the Three.js animation loop
-- Do not store `THREE.Mesh`, `THREE.Scene`, or renderer in React state
-- Do not leave Three.js event listeners or animation frames on unmount
-- Do not import from one page file inside another page file
-- Do not use inline `style={{}}` for values that have Tailwind equivalents
-- Do not use `any` type in TypeScript
-
----
-
-## 6. Development Order
-
-Agents should implement in this order:
-
-1. Project setup (Vite, Tailwind, dependencies)
-2. `AppContext` (role + program state)
-3. Auth flow (`Login.tsx`, `Register.tsx`, JWT decoding, `ProtectedRoute.tsx`)
-4. `App.tsx` router
-5. `Layout.tsx` (nav shell, role/program display and controls following `design.md`)
-6. `Dashboard.tsx` (student + teacher views)
-7. `Videos.tsx`
-8. `Quizzes.tsx`
-9. `Library.tsx` (including materials and links)
-10. `Viewer.tsx` (Three.js setup, raycasting, detail panel, cleanup)
-11. Responsive check and role/program verification
-
----
-
-## 7. Naming Conventions
-
-### Files
-- One component per file
-- File name matches exported component name exactly
-
-```
-AppContext.tsx   → export function AppProvider, export function useAppContext
-Layout.tsx       → export function Layout
-ProtectedRoute.tsx → export function ProtectedRoute
-Login.tsx        → export function Login
-Register.tsx     → export function Register
-Dashboard.tsx    → export function Dashboard
-Viewer.tsx       → export function Viewer
-Videos.tsx       → export function Videos
-Quizzes.tsx      → export function Quizzes
-Library.tsx      → export function Library
-App.tsx          → export function App
-```
-
-### Types and Interfaces
-PascalCase:
-- `Role`
-- `Program`
-- `AppContextType`
-- `AnatomyPart`
-- `NavItem`
-
-### Constants (outside components)
-SCREAMING_SNAKE_CASE:
-- `ANATOMY_PARTS`
-- `DEFAULT_HAND_SIZE` (if needed)
-
-### State and Variables
-camelCase:
-- `selectedPart`
-- `isAddingLabel`
-- `showVideo`
-
----
-
-## 8. Expected Core Types
-
-Agents should create or maintain:
-
-```tsx
-type Role = 'student' | 'teacher';
-type Program = 'PT' | 'OT' | 'Radiography' | 'Nursing';
-
-interface AppContextType {
-  role: Role;
-  setRole: (role: Role) => void;
-  program: Program;
-  setProgram: (program: Program) => void;
-}
-
-interface AnatomyPart {
-  id: string;
-  name: string;
-  description: string;
-  videoUrl: string;
-  color: number;
-  position: [number, number, number];
-}
-
-interface NavItem {
-  path: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-```
-
----
-
-## 9. Three.js Implementation Checklist
-
-Before marking the Viewer task done, verify:
-
-- [ ] Scene, camera, renderer, controls, and meshes stored in refs (not state)
-- [ ] All created inside a single `useEffect`
-- [ ] Resize handler added to `window` inside effect, removed in cleanup
-- [ ] Click handler added to `mountRef.current` inside effect, removed in cleanup
-- [ ] Renderer DOM element removed from `mountRef.current` in cleanup
-- [ ] All geometries disposed in cleanup
-- [ ] All materials disposed in cleanup
-- [ ] `renderer.dispose()` called in cleanup
-- [ ] `requestAnimationFrame` loop does not call `setState`
-- [ ] `OrbitControls` imported from `three/addons/controls/OrbitControls.js`
-
----
-
-## 10. Definition of Done
-
-A task is done only when:
-- TypeScript compiles with no errors
-- All role-gated UI is controlled only through `role` from context
-- Three.js scene is fully cleaned up on route change (Viewer task)
-- UI matches `design.md` visual specification
-- Feature works correctly for both `student` and `teacher` roles
-- Feature works correctly across all four programs
-- No console errors in the browser
-- All affected project documentation is updated before `tasks.md` status is marked done:
-  - `docs/README.md` for setup, usage, architecture, or local run changes
-  - `docs/api_endpoints.md` for API route, request, response, auth, or error behavior changes
-  - `docs/database_schema.md` for schema, relationship, seed data, or migration changes
-  - `docs/storage_structure.md` for upload paths, file formats, storage limits, or cloud-migration changes
-  - `docs/testing_log.md` after verification, browser checks, API checks, or regression testing
-  - `docs/3d_model_tools.md` for 3D model tooling, supported formats, conversion notes, or compatibility findings
-- `tasks.md` status is updated as the final workflow step:
-  - Mark started work `[~]`
-  - Mark completed work `[x]` only after implementation, verification, and documentation are complete
-  - Mark blocked work `[!]` with a short blocker note
+1. Inspect the relevant source, requirements and working-tree changes. Preserve unrelated user edits and deletions.
+2. Identify the requested outcome, affected layers and appropriate verification. For existing tasks, work in dependency order; use the initial-build sequence in coding_guidelines.md only when applicable.
+3. Implement the authorized change using the engineering and design references. Keep the work focused on the requested outcome.
+4. Run appropriate checks and evaluate the applicable acceptance criteria in PRD.md. Distinguish checks actually run from historical results or unverified expectations.
+5. Update affected documentation before marking work complete:
+   - `anatolearn/docs/README.md`: setup, usage, architecture or local-run changes.
+   - `anatolearn/docs/api_endpoints.md`: API routes, requests, responses, authentication or errors.
+   - `anatolearn/docs/database_schema.md`: schema, relationships, seeds or migrations.
+   - `anatolearn/docs/storage_structure.md`: upload paths, formats, limits or cloud migration, when relevant.
+   - `anatolearn/docs/testing_log.md`: verification results and limitations.
+   - `anatolearn/docs/3d_model_tools.md`: model tooling, conversion or compatibility findings, when relevant.
+   - Root architecture/design/guideline documents when their subject changes.
+6. If `tasks.md` exists, mark started work `[~]`, completed work `[x]` only after implementation, verification and documentation, or blocked work `[!]` with a short blocker note. Completion status is the final workflow step. Do not recreate a user-deleted task file without a request.
+7. Report the outcome, relevant checks and remaining limitations clearly. Do not claim completion when required work remains blocked.

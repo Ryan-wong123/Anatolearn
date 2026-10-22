@@ -1,12 +1,12 @@
 # API Endpoints
 
-Base URL (local dev): `http://localhost:5000/api`
+Browser base: `/api` through the same-origin proxy. Direct local backend base: `http://localhost:5000/api`.
 
-Every endpoint below requires a valid JWT (`Authorization: Bearer <token>`) except `GET /api/health`, `GET /api/programs`, `POST /api/auth/register`, and `POST /api/auth/login` — see the Auth section for the full middleware writeup. This was not true before 20 Jul 2026; an earlier version of this note said auth didn't exist yet.
+Authentication accepts a Bearer JWT or the HttpOnly `anatolearn_session` cookie set at login. Public endpoints are health, programmes, registration, login and logout (logout clears the cookie). Other APIs and teaching-file requests require authentication. Student reads enforce publication plus the account programme or shared programme-null content, even without a published query parameter. Teachers can read drafts. `X-Program-Name` additionally filters list responses; it never expands account access.
 
-**CORS:** `cors()` is configured with `exposedHeaders: ['Content-Disposition']` (added 20 Jul 2026) — required for the browser to read the real filename on model downloads (Task 10.1) and annotation exports (Task 10.2). Without it, `fetch()` in the frontend can't see that header cross-origin (frontend:5173, backend:5000 are different origins) and downloads silently fall back to a generic filename. This was caught via real-browser testing, not `curl` (`curl` doesn't enforce CORS, so it looked fine in isolated backend testing) — worth remembering for any future endpoint that sets a custom response header the frontend needs to read.
+CORS allows credentialed configured FRONTEND_ORIGINS and exposes Content-Disposition. Unsafe requests with an untrusted Origin return 403. JSON 401 responses cause the frontend to clear its identity. Unavailable content/other students' attempts return 404; role-restricted actions return 403.
 
-**Static files:** as of 15 Jul 2026, `express.static` serves `PUBLIC_DIR` (`/public` in the container) directly — any `video_path`, `thumbnail_path`, or model `file_path` stored in the database is reachable at that exact URL path (e.g. `video_path: "/videos/s.mp4"` → `http://localhost:5000/videos/s.mp4`). This was previously broken (files existed on disk but had no route serving them) — see `docs/database_schema.md` for the bug writeup.
+Teaching files are served through authenticated ownership checks, not express.static. Model/video/resource/thumbnail URLs use the same origin and the media-session cookie; byte ranges are supported. Alternate development `/public` and `/@fs` paths are denied and teaching files are not copied into the frontend build. See storage_structure.md.
 
 ---
 
@@ -31,7 +31,7 @@ Returns models, optionally filtered. Query params (all optional, combinable):
 - `published=true` — only published models
 - `system=<value>` — exact match on `body_system`
 - `part=<value>` — exact match on `body_part`
-- `q=<text>` — case-insensitive substring match on title or description
+- `q=<text>` — case-insensitive substring match on title, description, body system or body part
 
 Returns `[]` (not 404) when nothing matches. With no query params at all, returns everything.
 
@@ -39,7 +39,7 @@ Returns `[]` (not 404) when nothing matches. With no query params at all, return
 Returns a single model. 404 if not found.
 
 ### `POST /api/models/upload` (teacher only)
-Multipart form: `title` (required), `description?`, `program_id?`, `body_system?`, `body_part?`, `model` (file — `.glb`/`.gltf`/`.obj` only). Created unpublished (`is_published: false`). 400 if no title or no file, or an unsupported extension.
+Multipart form: `title` (required), `description?`, `program_id?`, `body_system?`, `body_part?`, `model` (file — GLB/embedded glTF/OBJ/USDZ). Created unpublished (`is_published: false`). 400 if no title or no file, or an unsupported extension.
 
 ### `PUT /api/models/:id` (teacher only)
 Body: `{ title, description?, body_system?, body_part? }`. Updates model metadata. 400 if no title, 404 if not found.
@@ -51,10 +51,10 @@ Deletes the database row. 404 if not found. **Known gap:** does not delete the u
 Body: `{ is_published: boolean }`. Toggles visibility.
 
 ### `PATCH /api/models/:id/thumbnail`
-Body: `{ thumbnailDataUrl: string }` (base64 PNG data URL). Saves a thumbnail image to disk and updates `thumbnail_path`. 400 if missing data, 404 if model not found. Called automatically by `Viewer.tsx` the first time a model is opened and has no existing thumbnail — this is why it's `authenticate`-only rather than teacher-only, any logged-in user can trigger it just by viewing a model.
+Body: `{ thumbnailDataUrl: string }` (base64 PNG data URL). Saves a thumbnail image to disk and updates `thumbnail_path`. 400 if missing data, 404 if model not found. Teacher-only. Called automatically when a teacher opens a model without an existing thumbnail; student viewing never writes thumbnails.
 
 ### `GET /api/models/:id/download`
-Streams the model file (via Express's `res.download()`, which handles `Content-Disposition`/`Content-Type` automatically). Filename is the model's title (sanitized) plus its real extension, not the randomized on-disk filename. Teachers can download any model; students only published ones (403 otherwise). Logs the download to the `downloads` table (`model_id`, `downloaded_by` — the real authenticated user's id, `downloaded_at`) on a best-effort basis; a failed log insert doesn't block the download itself. 404 if the model doesn't exist.
+Streams the model file (via Express's `res.download()`, which handles `Content-Disposition`/`Content-Type` automatically). Filename is the model's title (sanitized) plus its real extension, not the randomized on-disk filename. Both roles require is_downloadable=true. Students additionally require publication and their account programme/shared content; disabled downloads return 403. Logs the download to the `downloads` table (`model_id`, `downloaded_by` — the real authenticated user's id, `downloaded_at`) on a best-effort basis; a failed log insert doesn't block the download itself. 404 if the model doesn't exist.
 
 ---
 
@@ -88,7 +88,7 @@ Returns videos. Optional query param `?published=true` filters to `is_published 
 Returns a single video. 404 if not found.
 
 ### `POST /api/videos/upload` (added 15 Jul 2026)
-Multipart form upload (`multipart/form-data`, not JSON). Fields: `video` (file, required — `.mp4`/`.webm` only, 200MB limit), `title` (required), `description` (optional), `program_id` (optional). Saves the file to `PUBLIC_DIR/videos/` with a generated unique filename (`video-<timestamp>.<ext>`), creates a `videos` row with `is_published: false`. Returns the created video record. 400 if no file, wrong format, or missing title.
+Multipart form upload (`multipart/form-data`, not JSON). Fields: `video` (file, required — `.mp4`/`.webm` only, 200MB limit), `title` (required), `description` (optional), `program_id` (optional). Saves the file to `PUBLIC_DIR/videos/` with a generated unique filename (`video-<uuid>.<ext>`), creates a `videos` row with `is_published: false`. Returns the created video record. 400 if no file, wrong format, or missing title.
 
 ### `DELETE /api/videos/:id` (added 15 Jul 2026)
 Deletes a video's database row. 404 if not found. **Does not delete the underlying file from disk** — only removes the database record. Worth flagging as a known gap if disk space becomes a concern.
@@ -161,7 +161,7 @@ Body: `{ answers: [{ question_id, selected_option? , answer_text? }] }` — send
 **Resolved 20 Jul 2026:** now records the real authenticated `student_id` (`req.user.id`) on every new attempt, via `quiz_attempts.student_id` (added in `005_add_quiz_attempt_student_id.sql`). This was previously blocked on auth not existing — see `GET /api/students/me/attempts` below for what it unlocked. Attempts submitted before this migration have `student_id: NULL` and can't be retroactively attributed.
 
 ### `GET /api/quizzes/:id/attempts/pending`
-Returns all attempts for a quiz with `status = 'pending_review'`, ordered by `attempted_at`. Powers the teacher's "View Results" pending-attempts list.
+Returns all attempts for a quiz with `status = 'pending_review'`, ordered by `attempted_at`. Retained as a pending-only API; the teacher UI now uses GET /api/quizzes/:id/attempts to include graded results.
 
 ### `GET /api/students/me/attempts`
 Returns the logged-in student's own quiz attempt history: `[{ id, quiz_id, quiz_title, score, status, attempted_at }]`, newest first. Scoped strictly to `req.user.id` — there's no `:studentId` param, so a student can't view anyone else's history by guessing an ID. `quiz_title` is joined in from `quizzes` so the frontend doesn't need a second lookup per attempt. Task 8.8, resolved 20 Jul 2026 now that auth exists — see `docs/database_schema.md`'s open questions for the history of why this was blocked.
@@ -235,3 +235,37 @@ Returns all resources (learning materials / links).
 - `GET /api/quizzes/:id` — combined quiz + questions in one call (currently two separate requests: `GET /api/quizzes` + `GET /api/quizzes/:id/questions`)
 - `GET /api/labels/:id/video` — cannot be built as originally specified; there is no `labels` table, and whether/how to link video to annotations is an open architecture decision (Task 7.5/7.6) that isn't the to resolve (Tim owns `Viewer.tsx`, where this would live)
 - A "downloads" viewing/reporting endpoint (e.g. "who downloaded what") — the `downloads` table (Task 10.1) logs this data, but nothing currently reads it back out; not referenced by any task as something to build
+
+## Access and assessment changes — 22 October 2026
+
+This section supersedes older submission/download/result behavior in historical notes above.
+
+| Endpoint | Access | Request / result |
+|---|---|---|
+| POST /api/auth/logout | public, origin checked | clears media cookie; frontend then clears sessionStorage |
+| PATCH /api/models/:id/download-permission | teacher | `{is_downloadable: boolean}` -> model; default false; downloads require read access and this flag for both roles |
+| PATCH /api/:kind/:id/program | teacher | kind=models/videos/quizzes/resources; `{program_id: positive integer or null}` -> updated record; null means shared |
+| PATCH /api/models/:id/thumbnail | teacher | existing PNG request; student writes now forbidden |
+| PATCH /api/quizzes/:id/timer | teacher | `{time_limit_seconds: 30..86400 integer or null}` -> quiz; null is untimed |
+| POST /api/quizzes/:id/start | student with content access | `{}` -> `{session_id, expires_at, questions}`; server snapshot, answer keys omitted |
+| POST /api/quiz-sessions/:id/cancel | session owner | closes unused session; used by cancel/navigation |
+| POST /api/quizzes/:id/submit | session owner/student | `{session_id, answers:[{question_id,selected_option?,answer_text?}]}`; each snapshot question exactly once; blanks explicitly represented; rejects missing/foreign/duplicate IDs and invalid options |
+| GET /api/quizzes/:id/attempts | teacher | all graded and pending attempts, including student_name |
+| GET /api/attempts/:id and /api/attempts/:id/answers | owner or teacher | other accounts receive 404; answer review includes question/options and grading |
+| PATCH /api/attempt-answers/:id/grade | teacher | finite `{teacher_score:0..100}`, open-ended answers only; transactional update/final score |
+| GET /api/question-bank | teacher | bank records including category and keys |
+| POST /api/question-bank/from-question/:id | teacher | `{category?: string}` -> independent bank copy |
+| PUT /api/question-bank/:id | teacher | complete question/format/category and MCQ options/key or model_answer |
+| DELETE /api/question-bank/:id | teacher | removes bank record; quiz copies retained |
+| POST /api/quizzes/:id/bank-questions/:bankId | teacher | independent per-quiz copy, including category; quiz type derived |
+
+Starting an attempt and changing its questions coordinate through parent-quiz locks. Question CRUD/imports reject quizzes with existing attempts or active sessions (409); use a new quiz for revised assessments. Submission locks and consumes its session in one transaction with attempt/answers. Replays and expired sessions return 409; validation returns 400; database failures roll back all writes. Timed sessions allow a ten-second delivery grace after their deadline; the browser auto-submits on timeout. Open-ended results remain pending until graded.
+
+Model upload adds USDZ and validates GLB/glTF/OBJ/USDZ headers/content structure. New glTF uploads must embed their dependencies or be converted to GLB; unsupported UASSET returns an export instruction. Resource upload adds `resource_type=image` for PNG/JPEG/WebP and checks basic signatures/type consistency. External links must use HTTP(S). Failed uploads clean up their new files. Model downloading returns the original file; separate JSON/CSV annotations are not embedded into it.
+
+
+## Session lifecycle update — 22 October 2026
+
+Login retains `{token,user}` and the media cookie, adding a UUID `sid` JWT claim backed by auth_sessions. Authenticated API and asset requests require an unrevoked, unexpired stored session; current role/programme are read from users. Tokens without sid require re-login. Logout revokes the presented bearer/cookie session and clears its cookie; repeating logout with an invalid/expired token still clears the cookie. Other sessions remain signed in.
+
+`POST /api/quizzes/:id/start` additionally returns `server_now` and `session_expires_at`. The UI uses server_now to correct clock offset. `expires_at` remains the optional assessment timer; the independent lease prevents abandoned untimed sessions from lasting indefinitely. Submission returns 409 after either the lease or timed deadline plus ten seconds. Question edits stay blocked during this transport grace. Maintenance closes expired sessions and later removes closed session records, without deleting historical attempts/answers.

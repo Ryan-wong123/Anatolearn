@@ -1,19 +1,8 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { AppContext } from './AppContextState';
+import type { AuthUser, Theme, Role, Program } from './AppContextState';
+import { useEffect, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import { TOKEN_STORAGE_KEY } from '../api/api';
-
-type Role = 'student' | 'teacher';
-type Program = string;
-type Theme = 'light' | 'dark';
-
-// What the backend's /api/auth/login and /api/auth/register return as `user`.
-interface AuthUser {
-  id: number;
-  name: string;
-  email: string;
-  role: Role;
-  program_id: number | null;
-}
+import { api, TOKEN_STORAGE_KEY } from '../api/api';
 
 const USER_STORAGE_KEY = 'anatolearn_user';
 const THEME_STORAGE_KEY = 'anatolearn_theme';
@@ -38,30 +27,12 @@ function loadStoredTheme(): Theme {
   return 'light';
 }
 
-interface AppContextType {
-  role: Role;
-  setRole: (role: Role) => void;
-  program: Program;
-  setProgram: (program: Program) => void;
-  token: string | null;
-  user: AuthUser | null;
-  login: (token: string, user: AuthUser) => void;
-  logout: () => void;
-  // True only in `npm run dev` (Vite's built-in dev flag) — false in a
-  // production build. The Student|Teacher nav toggle checks this so it
-  // cannot appear (or do anything) outside of local development.
-  isDevMode: boolean;
-  theme: Theme;
-  toggleTheme: () => void;
-}
-
-const AppContext = createContext<AppContextType | undefined>(undefined);
-
 export function AppProvider({ children }: { children: ReactNode }) {
   const storedUser = loadStoredUser();
 
   const [role, setRole] = useState<Role>(storedUser?.role ?? 'student');
-  const [program, setProgram] = useState<Program>('Physiotherapy');
+  const [program, updateProgram] = useState<Program>(() => sessionStorage.getItem('anatolearn_program') || 'Physiotherapy');
+  const setProgram = useCallback((value: string) => { sessionStorage.setItem('anatolearn_program', value); updateProgram(value); }, []);
   const [token, setToken] = useState<string | null>(() =>
     sessionStorage.getItem(TOKEN_STORAGE_KEY)
   );
@@ -69,6 +40,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(loadStoredTheme);
 
   const isDevMode = import.meta.env.DEV;
+  useEffect(() => {
+    const expire = () => { setToken(null); setUser(null); setRole('student'); };
+    window.addEventListener('anatolearn-session-expired',expire);
+    return () => window.removeEventListener('anatolearn-session-expired',expire);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -92,7 +68,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRole(newUser.role);
   }
 
-  function logout() {
+  async function logout() {
+    await api.logout();
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
     sessionStorage.removeItem(USER_STORAGE_KEY);
     setToken(null);
@@ -107,10 +84,4 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {children}
     </AppContext.Provider>
   );
-}
-
-export function useAppContext() {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useAppContext must be used within AppProvider');
-  return context;
 }

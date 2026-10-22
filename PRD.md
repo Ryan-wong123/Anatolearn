@@ -371,3 +371,39 @@ The following are noted for future phases and are not required for the initial b
 - Advanced quiz analytics and reporting dashboards
 - Real-time collaboration between teachers
 - Email-based password reset
+
+---
+
+## 13. Product Acceptance and Verification
+
+This section consolidates product and QA obligations formerly listed in Agents.md. It supplements the functional requirements, role table and MVP scope above; it does not mark existing implementation gaps as completed or change requirement priorities.
+
+### 13.1 Product and role acceptance
+
+- Features must satisfy the applicable requirements and scope in this PRD, including the student/teacher permissions in section 6.
+- All application pages require authentication. Shared sections remain accessible to both roles, with only the permitted controls and workflows available to each role. Exclusively student-only or teacher-only workflows must enforce their respective access restrictions.
+- Role and programme behavior must follow the authenticated identity requirements in section 9. Development preview controls must not grant backend permissions.
+- Relevant features must work for both student and teacher accounts and across Physiotherapy, Occupational Therapy, Radiography and Nursing, subject to each role's permissions.
+- The programme selector must update the visible programme text. This check is additional to, and does not replace, programme-specific content requirements FR-24 and FR-49b/c.
+- Prototype/demo content must match the models, labels, videos, quizzes and library fixtures in section 10 when verifying that prototype dataset. A move to API-backed content does not itself establish that these fixtures match.
+- User-facing terminology, descriptions and workflows must preserve the platform's anatomy-education purpose.
+
+### 13.2 Visual and interaction acceptance
+
+- UI must follow the applicable theme, layout, component interaction and responsive references in design.md.
+- Interactive elements must provide hover and focus feedback, with keyboard-usable interactions where applicable.
+- Images must have appropriate alt attributes.
+- Verify affected layouts at mobile, tablet and desktop sizes using the breakpoint reference in design.md section 16. Advanced mobile optimisation remains outside the current phase as stated in section 12.
+
+### 13.3 Viewer and release verification
+
+- Test label rendering, selection, description and linked-video behavior for both authenticated roles, including permission differences.
+- Navigate into and out of the Viewer and verify scene teardown, removed subscriptions and stopped animation work. Detailed resource implementation requirements belong in coding_guidelines.md.
+- Verify the applicable prototype data renders correctly and programme selection updates visible text.
+- TypeScript must compile without errors, and affected browser workflows must have no console errors before they are reported as verified.
+- Record actual verification evidence and unresolved limitations in anatolearn/docs/testing_log.md. A source review or historical passing result does not establish a newly executed browser, role/programme, compatibility or performance check.
+
+
+## Confirmed account policies — 22 October 2026
+
+The user confirmed that teachers continue to self-register. An invitation or approval gate is not required. Students may access published content assigned to their account programme and published shared content; changing a display filter never grants access to another programme. Teachers retain content management and draft preview access.

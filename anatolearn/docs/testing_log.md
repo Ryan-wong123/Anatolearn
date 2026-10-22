@@ -574,3 +574,137 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs, p
 - Found and fixed a pre-existing lint error in `Videos.tsx` while working in the file, unrelated to this task's new code: `loadVideos` was referenced inside a `useEffect` before its own declaration further down the file — same exact pattern as the one fixed in `ModelGallery.tsx` earlier this round. Fixed the same way, by moving the function declaration above the effect that uses it.
 - Not yet tested in the real Docker environment or a real browser — same "next step" pattern as everything else built this round.
 - The "linked annotation shown in the video management table/grid" part of Task 7.6's checklist was not built — the dropdown and save work, but there's no visual indicator on the video card/row showing which annotation (if any) it's linked to. Minor, could be added later.
+## optimizingViewer further refactor — 21 Oct 2026
+Implemented typed annotation/domain boundaries, shared serialization/draft updates, one exclusive tool mode, guarded model/video fetching, consolidated create/edit handling, duplicate-save protection, and model/thumbnail lifecycle cleanup. Scene-mutating annotation helpers returned to Viewer.tsx; UI panels no longer receive OrbitControls, and role controls read AppContext. Removed unused isolation state and dead camera clamp helper. Shared LinkedVideo definition replaced the duplicate panel definition.
+
+Verification:
+- npm run test:viewer: 10/10 pass. Covers API JSON round trips for point/legacy draw/legacy region/projected highlight/projected region, cached geometry/view/opacity retention, nullable legacy data, draft editing semantics, default colors, all tool transitions, and projection frame calculations without input mutation.
+- npm run build: passes; existing bundle-size warning remains.
+- Focused ESLint on touched TS/TSX/test files: zero errors; two inherited Viewer effect dependency warnings remain. Full unrelated application lint was not used as a completion gate.
+- Browser teacher account: real GLB loads; exclusive highlight/region switching and cancel; select/edit saved annotation; create/save/delete a point; sequential numbering; linked video modal; neutral-view save; create/save projected highlight; draggable panel moves. Database re-fetch confirms edited text, deletion, generated projected geometry cache and opacity.
+- Browser student account: same model/annotation/linked-video controls without teacher edit/draw actions. All four program selectors exercised. Invalid model identifier displays an error. Canvas count is one in Viewer and zero after navigation to gallery, including immediate exit from a second model load. No browser warnings/errors captured.
+- Evidence: docs/verification/viewer-refactor.png. Temporary QA accounts, records, and generated QA thumbnails removed; existing content retained.
+Limits: no GPU-memory benchmark, comprehensive mobile/tablet or cross-browser sweep, injected network-failure/double-click test, or full region-fill gesture test. Lifecycle safety is supported by guards/disposal review and canvas/navigation checks, not a measured zero-leak guarantee.
+
+## Shorter Viewer.tsx — 21 Oct 2026
+Reduced the prior working Viewer from 1,413 to 1,167 lines. Extracted useAnnotationEditor (form/persistence workflow), ViewerOverlay (presentational composition/list/video UI state), and createAnnotationBadge (canvas painting only). Reused hit-target cleanup for annotation deletion; removed the unused model-radius ref. Scene mutations, textures/materials/geometry, and raycasting remain in Viewer.
+- npm run test:viewer: all 10 pass; npm run build: passes, existing bundle warning remains.
+- Focused lint: zero errors; two existing effect-dependency warning sites remain. The scene effect's warning now includes editor; adding the changing controller object as a dependency would recreate the scene on form input, so no suppression or broad dependency change was made.
+- Browser teacher test: actual GLB load; collapse/expand list; edit and save seeded annotation; edit again then cancel; draw/save a new projected highlight; reopen seeded annotation's linked video; close dialogs. Database check confirms edited label preserved, canceled text absent, second annotation inserted with projected cached geometry. Student account has view-only controls. Returning to gallery leaves zero canvas elements. No captured browser warnings/errors. Screenshot: docs/verification/viewer-shorter.png.
+- Isolated QA users/content and generated thumbnail removed afterward. Existing content retained. No API, schema or uploaded-file format change.
+Limits: full region-fill gesture, injected API-failure/double-submission, repeat mobile/tablet/cross-browser sweeps and GPU memory profiling were not repeated for this extraction. Existing baseline tests and the prior Viewer regression log remain applicable.
+
+## Viewer further reduction to 972 lines — 21 Oct 2026
+Before this step: 1,167 lines; after: 972 lines. Extracted loadViewerAnnotations with injected typed repository and plain-record rendering callbacks. Reused data/editor hooks for neutral-view and delete persistence. Centralized selected/hovered identity matching and camera application. Replaced three tool-state mirror refs/effects with one mode ref.
+- Expanded focused Node suite: 16/16 pass, including existing serialization/projection/mode tests plus loading/cache/selection cases. Specifically tests no rendering after a late response or navigation during cache persistence, continuing after a cache-save error, cache reuse, and reporting load failures without changing the view.
+- Build passes (existing bundle-size warning); focused lint has zero errors/two previously tracked effect-dependency warnings. Whitespace diff check passes.
+- Browser: teacher model and annotation loading; select/delete loaded point; create replacement point with single mode ref; save neutral view; reload preserves point and neutral view. Actual student sees loaded point without teacher edit actions. Returning to gallery leaves zero canvas elements; no captured browser errors/warnings. Database re-fetch verifies original point deleted, one replacement and neutral view persisted.
+- QA users/model/annotations/generated thumbnail removed; existing user content retained. Evidence: docs/verification/viewer-under-1000.png.
+Scope limits: projected-region gestures, all-program/mobile/cross-browser sweeps and GPU profiling were not repeated; prior regression records remain separate evidence. No API/database contract changes, and no measured rendering-performance claim.
+
+## Viewer reduced from 972 to 859 lines — 21 Oct 2026
+Extracted plain drawing sample storage/preview state and DOM event subscriptions. Centralized projected draft defaults, painted-hit acceptance, non-projected visual setup and shared-geometry-aware mesh cleanup. Added cleanup cancellation/guard for the existing deferred region-generation timer. Scene resources remain local to Viewer.
+- Build passes; all 21 focused tests pass. New tests cover pointer offsets/zero-sized canvas, jitter rejection, aligned sample arrays, copying inputs/snapshots, reset between drawings, every event listener removed including both pointermove handlers and resize, idempotent unsubscribe, and projected fill/stroke defaults.
+- Focused ESLint: zero errors/two inherited Viewer effect-dependency warning sites. Scene warning now lists drawing and callback dependencies; no warning suppression or changing controller-object dependency was added. Diff whitespace check passes.
+- Actual teacher browser: GLB load; seeded legacy draw/filled-region selection; drag and save projected highlight through extracted sampler; generated geometry cache and 0.32 opacity verified in database; delete highlight; reload preserves both legacy annotations and allows selection. Student account sees legacy annotations without edit/draw controls. Returning to gallery leaves zero canvas elements. No captured browser errors/warnings. Evidence: docs/verification/viewer-859.png.
+- QA users/model/annotations/generated thumbnail removed afterward; existing content preserved.
+Limits: no full region-fill gesture, GPU profiling, new cross-browser/mobile/program sweep, or direct masked hover/click coordinate automation in this pass. Sampling/event tests and actual highlight drawing support this refactor; no measured speedup or exhaustive leak guarantee is claimed. API/schema/storage formats unchanged.
+
+### Viewer basic-renderer consolidation � 21 Oct 2026
+Reduced Viewer.tsx from 859 to 810 lines. Production TypeScript/Vite build passes; 22 viewer tests pass. Added coverage preserving point position/size, legacy drawing samples, triangle coordinates, colors, transparency and missing-data handling. Focused ESLint: zero errors, two inherited effect-dependency warnings. Existing large-bundle warning remains. Docker images rebuilt and login page renders in the browser. Browser scope for this pass is startup only; teacher/student annotation interaction, responsive layouts and four-program checks were not rerun. Previous interaction verification remains recorded above. No API, schema or storage changes.
+
+### Final Viewer consolidation - 21 Oct 2026
+Reduced Viewer.tsx from 810 to 760 physical lines by consolidating scene registration, hotspot/hit-target construction, point conversion and camera synchronization. Production build and all 22 Viewer tests pass. Focused ESLint reports zero errors and the same two effect-dependency warnings; the existing large-bundle warning remains. Docker images rebuilt and all three services started. Browser verification used a temporary teacher and point annotation to confirm model loading, numbered annotation rendering, list selection, camera focus and details rendering with no console warnings/errors. Both temporary records were deleted afterward. Responsive and four-program checks were not repeated. No API, schema or storage changes.
+
+## Architecture and design documentation audit - 21 October 2026
+
+Rewrote repository-root Architecture.md against the current frontend, viewer modules, API client, Express server, SQL scripts, manifests and Docker configuration. Replaced the earlier design specification with the implemented light/dark palette, typography, page layouts, role controls, viewer panels, dialogs and breakpoint behavior. Added current-reference guidance to docs/README.md. No application, API, schema or asset behavior changed.
+
+Verification for this pass:
+- Cross-checked route paths/provider order, session/theme persistence, role/program behavior, API authorization, storage formats/limits, annotation mappings/cache/disposal and quiz grading against source.
+- Cross-checked UI classes, page grids, theme variants and modal/panel structure against source; documented limitations rather than claiming browser-verified responsive/accessibility coverage.
+- Attempted npm run build: could not run TypeScript because tsc is not installed in this checkout.
+- Attempted npm run test:viewer: stopped at module loading because package three is not installed. The 22 source-defined cases were not executed successfully in this pass; prior passing records above are historical.
+- No browser, API, database or GPU checks performed for this documentation-only change.
+- tasks.md was already deleted in the incoming working tree; preserved that deletion instead of restoring or replacing the user's task file.
+
+## Main-agent instruction and requirement reorganisation - 21 October 2026
+
+Replaced the multi-role Agents.md with a main-agent role, reference map, workflow, documentation responsibilities and task-status rules. Moved product/role, prototype-content, visual and QA acceptance obligations into PRD.md section 13. Preserved the former Agents.md engineering sections (architecture layers, implementation rules, development order, naming, expected types and viewer checklist) in coding_guidelines.md section 17, with additional boundary guidance and no relaxation of existing requirements. Updated docs/README.md with document ownership.
+
+Verification: compared the original Agents.md sections against their new destinations, checked local Markdown links in the revised agent instructions, and ran git diff --check. No runtime code changed; build, browser, API and regression tests were not rerun for this documentation reorganisation. Existing implementation/requirement differences remain. The incoming tasks.md deletion was preserved.
+
+## Access, programme, assessment and usability implementation — 22 October 2026
+
+Implemented the seven requested work areas: authenticated teaching files; publication/programme/attempt ownership and thumbnail permissions; teacher-controlled downloads; programme assignment/filtering; transactional assessment submission/grading and complete teacher results; label movement/question bank/timers/photo materials; model-format and keyboard/mobile/error-feedback improvements. Updated root Architecture.md/design.md plus README/API/schema/storage/model-format documentation. Migration 008 was applied additively to the local PostgreSQL database; existing models begin with downloads disabled and existing quizzes remain untimed. Incoming task-file deletion and unrelated documentation work were retained.
+
+### Automated verification
+
+- Production TypeScript/Vite build passes in the existing Node 22 frontend container. The existing large-bundle warning remains (about 1.12 MB minified after adding USDLoader).
+- ESLint: zero errors, two existing Viewer effect-dependency warning sites. Provider/context/hook definitions were separated instead of suppressing refresh rules; development hot-reload context identity errors observed while editing were resolved. Final clean-load browser checks captured no warnings/errors.
+- `npm run test:viewer`: 22/22 pass.
+- `npm run test:models`: 2/2 pass, real OBJ triangle and embedded USDA-in-USDZ archive parsing.
+- Backend `node --test tests/access.test.js tests/integration.test.js`: 17/17 pass (four policy/validation cases plus the integration parent and twelve workflow subtests). Tests exercise all four programme IDs at policy level, cookie/bearer asset access and byte ranges, publication enforcement, forbidden thumbnail writes, explicit download flags, programme reassignment, timer sessions/hidden keys, duplicate/malformed submissions, owned results, grading/final scores, expiry, question-bank copies/category/edit/delete, active-session question locks/cancellation, favourite-deletion triggers and photo delivery/logout.
+- Injected an answer-insert foreign-key failure: response 500, attempt/answer writes rolled back and session remained unconsumed. The expected database-error log is part of that test. A guarded question edit returns the expected 409, also logged by error middleware.
+- Actual frontend proxy checks from its localhost origin: unauthenticated video/model URLs returned 401; authenticated cookie requests returned 200. `/public/videos/s.mp4`, `/@fs/app/public/videos/s.mp4`, backend source and compose-file aliases returned 403. Earlier requests using the Docker service hostname were rejected by Vite's Host allowlist and were not counted as authorization evidence.
+- Local host npm install failed; verification used the already-installed container dependencies rather than claiming a successful host installation.
+
+### Browser verification
+
+Used isolated temporary teacher/student accounts, a triangle OBJ, point annotation/linked existing sample video and a timed MCQ quiz. Verified mobile navigation expansion, authenticated OBJ rendering, annotation selection and Move placement, linked native video controls, programme selection filtering, teacher download permission persistence/enabled action, student timer/countdown, 100% score, persisted history and owned answer review after a clean reload. Verified Escape closes a result dialog and restores the invoking control's focus. Teacher View Results displayed the graded student's score; Edit Questions saved the temporary question to the bank with its category; saved timer/programme settings were visible. Narrow-viewer overlap found during QA was corrected by moving instructions down and reserving toolbar/list space.
+
+Evidence: [access-assessment.png](verification/access-assessment.png). Model position update and assessment results persisted through API/database-backed workflows. Logged out of both test accounts and removed recorded QA users/model/video/quiz/annotations/bank copies/generated OBJ/thumbnail afterward; pre-existing content retained. Integration tests independently remove their temporary records/files.
+
+### Scope limits
+
+Browser checks used the in-app Chromium browser at its narrow viewport. A full desktop/tablet/four-programme browser sweep, Chrome/Edge/Firefox/Safari matrix, GPU leak profiling, concurrent teaching-session load tests and complex/binary USDZ exporter coverage were not performed. USDLoader's USDA parser requires compatible formatting in the tested fixture; UASSET still requires export to GLB and multi-file glTF needs embedding/conversion. Basic upload signatures are not antivirus scanning. Download flags govern the attachment feature and cannot stop an authorised viewer extracting model bytes delivered for rendering. Cloud storage adapters, embedded model annotation exports, backup automation, old orphan-file cleanup and complete accessibility certification remain separate PRD/operational work. No claim of full PRD compliance is made.
+
+
+## 22 October 2026 — follow-up regression, session lifecycle and recovery
+
+Confirmed product choices: teachers may self-register; students see published assigned-programme and shared content. Applied additive migration 009 to the local PostgreSQL volume. No volume reset or live-data restore was performed.
+
+| Check actually run | Result |
+|---|---|
+| Frontend TypeScript + Vite production build | Passed; initial JS 366.38 kB / gzip 97.32 kB, lazy Viewer 749.95 kB / gzip 195.44 kB. Viewer chunk still exceeds warning threshold. |
+| Frontend ESLint | 0 errors; 2 existing Viewer effect-dependency warnings. |
+| Viewer regression suite | 22 passed. |
+| OBJ/USDZ parser suite | 2 passed; no claim of broad binary-USDC support. |
+| Backend policy suite | 4 passed. |
+| Backend real-DB integration | 14 scenarios passed (15 TAP tests including parent). Covers four actual student and teacher programme accounts, assigned/shared list/direct reads, revoked bearer/cookie denial, independent teacher session, abandoned untimed expiry, active-session preservation and question-edit lock during transport grace, alongside prior transactional/access checks. |
+| Responsive Chromium smoke | 30 page/role/width combinations: Dashboard, Models, Videos, Quizzes, Library; student + teacher; 375/768/1440px iframe viewport. No horizontal document overflow after fix; no rendered img missing alt. These are layout smoke checks, not complete workflow/accessibility certification. |
+| Tablet navigation | Found 992px document width in a 768px quiz viewport. After moving desktop navigation to xl, document fits (753px with scrollbar). Mobile menu opens and navigates. Search controls and logo now have accessible names. |
+| Student timed quiz browser workflow | Disposable PT student started 60s quiz, selected answer, submitted, received 100% and a history entry. Saved verification/responsive-quiz.png. |
+| Backup + isolated restore | ops/Backup.ps1 -VerifyRestore succeeded: snapshot-20261022-022729; pg_restore into restore_snapshot_20261022_022729; every asset hash and selected table row count matched. Backend restarted. Restored data remains isolated for inspection. |
+| Backup exposure protection | Frontend-origin requests to /backups/.../database.dump and /@fs/app/backups/.../database.dump both returned 403. Backups are ignored by Git and Docker context. |
+
+The first expanded programme-matrix test run exposed duplicate synthetic email generation in the test helper; unique fixture suffixes fixed it and the full integration suite passed on rerun. Expected injected SQL-FK failures and protected-edit 409 messages still appear in test output and are asserted regression cases. Temporary browser users, models, videos, quiz/attempts and generated files were removed using the fixture cleanup script before the backup.
+
+Only in-app Chromium was connected. Chrome/Edge/Firefox/Safari, real mobile hardware, every programme through every browser workflow, textured-model annotation stress, GPU/concurrent load and complete assistive-technology checks remain unverified. The harness browser log captured one MutationObserver parameter error without an app source location during frame navigation; no source usage was found, so its origin is unresolved and this run does not claim a clean console certification. Backup scheduling/off-site replication, orphan cleanup, embedded annotation exports and a complete cloud storage adapter remain separate work.
+
+
+## 22 October 2026 — viewer reliability pass
+
+Implemented model-ID/file-path scene lifetime, current callbacks via Effect Events, stale-mutation guards/editor reset, numbered-hotspot picking, pointer capture/cancellation, orbit-drag click suppression, nearly collinear region rejection, responsive camera framing/clipping, damping-safe explicit poses, resource/context disposal, loading feedback and inline annotation errors. API routes, database schema and supported file formats did not change.
+
+| Verification actually run | Result |
+|---|---|
+| Frontend ESLint | Passed: 0 errors, 0 warnings. Both former Viewer dependency warnings resolved without suppressions. |
+| Viewer unit/regression suite | 26 passed, including portrait/extreme-aspect framing, scale-dependent clipping, immutable move payloads preserving IDs while invalidating cache, thin/collinear region rejection, cancellation/unsubscription and click-vs-drag behavior. |
+| Format parser suite | 2 passed (OBJ and USDA in USDZ). |
+| TypeScript + Vite build | Passed; initial JS 366.43 kB, lazy Viewer 754.14 kB. Viewer chunk warning remains. |
+| Existing anatomy GLB | A1's 3.74 MB textured model loaded in connected Chromium. Rotate/zoom/reset verified visually. Found and fixed damping causing motion after reset; reset now restores the initial view immediately. No original model/annotation edits were made. |
+| Teacher textured glTF | Two transformed meshes with embedded checker texture rendered. Clicking a numbered canvas hotspot opened its annotation. Linked video reached readyState 4, advanced playback and had no media error; Escape closed the dialog and restored focus. |
+| Annotation creation/move | Drew and saved a projected highlight. Empty label produced an inline error. Moved point and highlight to the second mesh, retained point ID 15 and video link, and reloaded. Stored polygon rendered; edited opacity to 100%, moved region to mesh 1 and reloaded. Teacher-generated projected caches persisted with 99/72 position values. |
+| Region invalid input | Near-straight drag produced 'Draw a region with an enclosed area' instead of a save form. Full polygon authoring was not automated. |
+| Metadata update | Saving the fixture's neutral view preserved the active scene/annotation selection and showed a toast. |
+| Repeated SPA navigation | Five gallery -> textured viewer -> gallery cycles: canvas count 1 inside, 0 outside. No new warning/error during these cycles after correcting fixture PNG. |
+| Student workflow | Authoring controls absent; all three saved labels rendered; linked video played (readyState 4, no error) and Escape restored focus. |
+| Responsive viewer | 375/768/1440px iframe widths had matching document width and canvas CSS widths; draw buffers tracked device pixel ratio (468/960/1800px). No document overflow. |
+| Final fresh-load console | No new errors/warnings during final student load/playback/resizing checks. |
+
+During development, the initial one-pixel fixture PNG failed decoding; it was replaced with a valid generated checker texture. Adding a hook to useViewerContent during live HMR caused a hook-order error; a full reload resolved the development refresh state, and the final fresh-load checks were clean. Colour-input automation changed the native control value without updating React's draft, so this pass does not claim a successful browser colour-change verification. Opacity persistence was verified.
+
+Saved proof: verification/viewer-textured-region.png. Fixture setup refuses to overwrite an existing manifest and cleanup removed the temporary users, two models, annotations, linked video, generated model files and thumbnails. Existing teaching records were preserved.
+
+Limits: only connected in-app Chromium; no Firefox/Safari/standalone Edge/Chrome certification, real-touch hardware, complete freehand polygon authoring, delayed-network CRUD stress, skinned/animated browser fixture or GPU-memory/concurrency benchmark. Resource disposal paths were reviewed, not measured with a GPU profiler. Cross-mesh drawing still uses a dominant source mesh, and the existing projected-surface fallback behavior remains unchanged. Broader accessibility, content organisation, portable exports and production deployment work remain separate follow-ups.

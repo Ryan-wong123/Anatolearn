@@ -262,3 +262,158 @@ A clean implementation means:
 - The Three.js scene is fully torn down when Viewer unmounts
 - No page imports from another page
 - No context values are modified from inside shared UI components
+
+---
+
+## 17. Engineering Contract Relocated from Agents.md
+
+The following sections preserve the engineering instructions previously held in Agents.md. Product behavior and acceptance criteria belong in PRD.md; agent operation belongs in Agents.md. These engineering constraints are prescriptive, whereas Architecture.md describes the implementation and its current deviations. Relocation does not mean those deviations have been fixed or that a technical-policy change has been approved.
+
+When extending AppContext, review whether the proposed state is genuinely global; do not duplicate page-local state across contexts. Keep context, routing, layout and pages separated. Use the dependency boundaries described by topic in Architecture.md rather than relying on its former section numbers.
+
+UI implementation continues to use Tailwind classes except where custom CSS is unavoidable, and icons are to be imported from lucide-react. The existing code's exceptions are recorded in design.md. Product hover/focus, image and responsive acceptance checks are in PRD.md section 13.
+
+### Required Architecture Style
+
+Follow the layered architecture defined in `Architecture.md`:
+
+1. **Context Layer** — `AppContext.tsx` — role and program only
+2. **Routing Layer** — `App.tsx` and `ProtectedRoute.tsx` — public auth routes plus protected app routes
+3. **Layout Layer** — `Layout.tsx` — persistent nav shell
+4. **Page Layer** — `Dashboard`, `Viewer`, `Videos`, `Quizzes`, `Library`
+5. **Three.js Layer** — isolated inside `Viewer.tsx` useEffect
+
+---
+
+### Important Implementation Rules
+
+#### Do
+- Read `role` from `useAppContext()` — never from props, URLs, or local state
+- Read `program` from `useAppContext()` — never duplicated in local state
+- Store Three.js objects in refs — never in React state
+- Use the `three/addons/controls/OrbitControls.js` import path
+- Use Tailwind responsive prefixes for breakpoints — not JS checks
+- Implement card hover behavior according to `design.md`
+- Use `useLocation().pathname` for active nav link detection
+- Guard all Three.js operations with null checks on refs and mountRef
+
+#### Do Not
+- Do not put role logic in route guards except for pages or workflows that are exclusively student-only or teacher-only
+- Do not put role logic in context — only in JSX conditionals
+- Do not call `setState` inside the Three.js animation loop
+- Do not store `THREE.Mesh`, `THREE.Scene`, or renderer in React state
+- Do not leave Three.js event listeners or animation frames on unmount
+- Do not import from one page file inside another page file
+- Do not use inline `style={{}}` for values that have Tailwind equivalents
+- Do not use `any` type in TypeScript
+
+---
+
+### Development Order
+
+Agents should implement in this order:
+
+1. Project setup (Vite, Tailwind, dependencies)
+2. `AppContext` (role + program state)
+3. Auth flow (`Login.tsx`, `Register.tsx`, JWT decoding, `ProtectedRoute.tsx`)
+4. `App.tsx` router
+5. `Layout.tsx` (nav shell, role/program display and controls following `design.md`)
+6. `Dashboard.tsx` (student + teacher views)
+7. `Videos.tsx`
+8. `Quizzes.tsx`
+9. `Library.tsx` (including materials and links)
+10. `Viewer.tsx` (Three.js setup, raycasting, detail panel, cleanup)
+11. Responsive check and role/program verification
+
+---
+
+### Naming Conventions
+
+#### Files
+- One component per file
+- File name matches exported component name exactly
+
+```
+AppContext.tsx   → export function AppProvider, export function useAppContext
+Layout.tsx       → export function Layout
+ProtectedRoute.tsx → export function ProtectedRoute
+Login.tsx        → export function Login
+Register.tsx     → export function Register
+Dashboard.tsx    → export function Dashboard
+Viewer.tsx       → export function Viewer
+Videos.tsx       → export function Videos
+Quizzes.tsx      → export function Quizzes
+Library.tsx      → export function Library
+App.tsx          → export function App
+```
+
+#### Types and Interfaces
+PascalCase:
+- `Role`
+- `Program`
+- `AppContextType`
+- `AnatomyPart`
+- `NavItem`
+
+#### Constants (outside components)
+SCREAMING_SNAKE_CASE:
+- `ANATOMY_PARTS`
+- `DEFAULT_HAND_SIZE` (if needed)
+
+#### State and Variables
+camelCase:
+- `selectedPart`
+- `isAddingLabel`
+- `showVideo`
+
+---
+
+### Expected Core Types
+
+Agents should create or maintain:
+
+```tsx
+type Role = 'student' | 'teacher';
+type Program = 'PT' | 'OT' | 'Radiography' | 'Nursing';
+
+interface AppContextType {
+  role: Role;
+  setRole: (role: Role) => void;
+  program: Program;
+  setProgram: (program: Program) => void;
+}
+
+interface AnatomyPart {
+  id: string;
+  name: string;
+  description: string;
+  videoUrl: string;
+  color: number;
+  position: [number, number, number];
+}
+
+interface NavItem {
+  path: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+```
+
+---
+
+### Three.js Implementation Checklist
+
+Before marking the Viewer task done, verify:
+
+- [ ] Scene, camera, renderer, controls, and meshes stored in refs (not state)
+- [ ] All created inside a single `useEffect`
+- [ ] Resize handler added to `window` inside effect, removed in cleanup
+- [ ] Click handler added to `mountRef.current` inside effect, removed in cleanup
+- [ ] Renderer DOM element removed from `mountRef.current` in cleanup
+- [ ] All geometries disposed in cleanup
+- [ ] All materials disposed in cleanup
+- [ ] `renderer.dispose()` called in cleanup
+- [ ] `requestAnimationFrame` loop does not call `setState`
+- [ ] `OrbitControls` imported from `three/addons/controls/OrbitControls.js`
+
+---

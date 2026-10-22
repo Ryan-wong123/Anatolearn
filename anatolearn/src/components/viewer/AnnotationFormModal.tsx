@@ -1,4 +1,7 @@
+import Dialog from '../Dialog';
 interface AnnotationFormModalProps {
+  isSaving: boolean;
+  error: string | null;
   title: string;
   label: string;
   description: string;
@@ -15,6 +18,7 @@ interface AnnotationFormModalProps {
 }
 
 export default function AnnotationFormModal({
+  isSaving, error,
   title,
   label,
   description,
@@ -30,14 +34,15 @@ export default function AnnotationFormModal({
   onSave,
 }: AnnotationFormModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+    <Dialog onClose={() => { if (!isSaving) onCancel(); }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+      <div aria-busy={isSaving} className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
         <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
         <div className="mt-4">
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Label
           </label>
           <input
+            aria-label="Label"
             value={label}
             onChange={(event) => onLabelChange(event.target.value)}
             placeholder="e.g. Masseter muscle"
@@ -49,6 +54,7 @@ export default function AnnotationFormModal({
             Description
           </label>
           <textarea
+            aria-label="Description"
             value={description}
             onChange={(event) => onDescriptionChange(event.target.value)}
             placeholder="Short explanation"
@@ -63,6 +69,7 @@ export default function AnnotationFormModal({
 
             <div className="flex items-center gap-3">
               <input
+                aria-label="Fill colour"
                 type="color"
                 value={color}
                 onChange={(event) => onColorChange(event.target.value)}
@@ -88,6 +95,7 @@ export default function AnnotationFormModal({
             </div>
 
             <input
+              aria-label="Opacity"
               type="range"
               min="0.05"
               max="1"
@@ -100,18 +108,20 @@ export default function AnnotationFormModal({
             />
           </div>
         )}
+        {error && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="mt-6 flex items-center justify-between">
-          <button onClick={onCancel} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">
+          <button disabled={isSaving} onClick={onCancel} className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-wait">
             Cancel
           </button>
           <button
             onClick={onSave}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            disabled={isSaving}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-wait"
           >
-            Save
+            {isSaving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

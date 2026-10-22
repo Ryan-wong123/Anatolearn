@@ -1,23 +1,17 @@
 import type { RefObject } from 'react';
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { useAppContext } from '../../context/AppContextState';
 import DraggablePanel from './DraggablePanel';
-import type { Annotation } from './types';
-
-interface LinkedVideo {
-  id: number;
-  title: string;
-  video_path: string;
-  annotation_id: number | null;
-}
+import type { Annotation, LinkedVideo } from './types';
 
 interface AnnotationDetailsPanelProps {
   boundaryRef: RefObject<HTMLDivElement | null>;
-  controlsRef: RefObject<OrbitControls | null>;
+  onDragStateChange: (dragging: boolean) => void;
   annotation: Annotation;
-  role: string;
+  busy: boolean;
   linkedVideo?: LinkedVideo | null;
   onPlayVideo?: (video: LinkedVideo) => void;
   onEdit: () => void;
+  onReposition: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -32,19 +26,20 @@ function annotationTypeLabel(annotation: Annotation) {
 
 export default function AnnotationDetailsPanel({
   boundaryRef,
-  controlsRef,
-  annotation,
-  role,
+  onDragStateChange,
+  annotation, busy,
   linkedVideo,
   onPlayVideo,
   onEdit,
+  onReposition,
   onDelete,
   onClose,
 }: AnnotationDetailsPanelProps) {
+  const { role } = useAppContext();
   return (
     <DraggablePanel
       boundaryRef={boundaryRef}
-      controlsRef={controlsRef}
+      onDragStateChange={onDragStateChange}
       initialPosition={{ x: 9999, y: 390 }}
       className="w-80 max-w-[calc(100%-3rem)]"
     >
@@ -78,10 +73,11 @@ export default function AnnotationDetailsPanel({
         <div className="mt-4 flex gap-2">
           {role === 'teacher' && (
             <>
-              <button onClick={onEdit} className="text-slate-900 dark:text-slate-100 flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
+              <button disabled={busy} onClick={onReposition} className="flex-1 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Move</button>
+              <button disabled={busy} onClick={onEdit} className="text-slate-900 dark:text-slate-100 flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
                 Edit
               </button>
-              <button onClick={onDelete} className="flex-1 rounded-lg border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40">
+              <button disabled={busy} onClick={onDelete} className="flex-1 rounded-lg border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40">
                 Delete
               </button>
             </>

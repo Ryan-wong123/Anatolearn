@@ -31,3 +31,6 @@ public/resources/
 # backend .env
 backend/.env
 .env
+
+# Private database and teaching-asset snapshots
+backups/

@@ -1,5 +1,7 @@
+import { useAppContext } from '../../context/AppContextState';
+
 interface ViewerToolbarProps {
-  role: string;
+  disabled: boolean;
   addMode: boolean;
   drawMode: boolean;
   regionMode: boolean;
@@ -16,7 +18,7 @@ interface ViewerToolbarProps {
 }
 
 export default function ViewerToolbar({
-  role,
+  disabled,
   addMode,
   drawMode,
   regionMode,
@@ -31,17 +33,19 @@ export default function ViewerToolbar({
   onSaveNeutralView,
   onReturnToNeutralView,
 }: ViewerToolbarProps) {
+  const { role } = useAppContext();
   return (
     <div
-      className="absolute right-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap items-center justify-end gap-2"
+      className="absolute left-4 md:left-auto right-4 top-4 z-20 flex max-h-40 overflow-y-auto max-w-[calc(100%-2rem)] flex-wrap items-center justify-end gap-2"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
       {role === 'teacher' && (
         <>
           <button
+            disabled={disabled}
             onClick={onToggleAdd}
-            className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
+            className={`rounded-lg px-3 py-2 text-xs md:text-sm font-medium shadow-sm transition-colors ${
               addMode
                 ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
@@ -51,8 +55,9 @@ export default function ViewerToolbar({
           </button>
 
           <button
+            disabled={disabled}
             onClick={onToggleDraw}
-            className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
+            className={`rounded-lg px-3 py-2 text-xs md:text-sm font-medium shadow-sm transition-colors ${
               drawMode
                 ? 'bg-yellow-300 text-slate-900 dark:text-slate-100 hover:bg-yellow-400'
                 : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -62,8 +67,9 @@ export default function ViewerToolbar({
           </button>
 
           <button
+            disabled={disabled}
             onClick={onToggleRegion}
-            className={`rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors ${
+            className={`rounded-lg px-3 py-2 text-xs md:text-sm font-medium shadow-sm transition-colors ${
               regionMode
                 ? 'bg-cyan-300 text-slate-900 dark:text-slate-100 hover:bg-cyan-400'
                 : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -72,8 +78,9 @@ export default function ViewerToolbar({
             {regionMode ? 'Cancel Region' : 'Region Fill'}
           </button>
           <button
+            disabled={disabled}
             onClick={onSaveNeutralView}
-            className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+            className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             {hasNeutralView
               ? 'Update Neutral View'
@@ -82,25 +89,23 @@ export default function ViewerToolbar({
         </>
       )}
       <button
+            disabled={disabled}
         onClick={onReturnToNeutralView}
-        disabled={!hasNeutralView}
-        className={`rounded-lg border px-4 py-2 text-sm font-medium shadow-sm ${
-          hasNeutralView
-            ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
-            : 'cursor-not-allowed border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
-        }`}
+        className="rounded-lg border px-3 py-2 text-xs md:text-sm font-medium shadow-sm border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         Return to Neutral View
       </button>
       <button
+            disabled={disabled}
         onClick={onToggleAnnotations}
-        className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+        className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         {annotationsVisible ? 'Hide Annotations' : 'Show Annotations'}
       </button>
       <button
+            disabled={disabled}
         onClick={onToggleBackground}
-        className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+        className="text-slate-900 dark:text-slate-100 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800"
       >
         {darkBackground ? 'Light Background' : 'Dark Background'}
       </button>
