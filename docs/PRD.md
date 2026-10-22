@@ -394,18 +394,18 @@ This section consolidates product and QA obligations formerly listed in Agents.m
 
 ### 13.2 Visual and interaction acceptance
 
-- UI must follow the applicable theme, layout, component interaction and responsive references in design.md.
+- UI must follow the applicable theme, layout, component interaction and responsive references in `design.md`.
 - Interactive elements must provide hover and focus feedback, with keyboard-usable interactions where applicable.
 - Images must have appropriate alt attributes.
-- Verify affected layouts at mobile, tablet and desktop sizes using the breakpoint reference in design.md section 16. Advanced mobile optimisation remains outside the current phase as stated in section 12.
+- Verify affected layouts at mobile, tablet and desktop sizes using the breakpoint reference in `design.md` section 16. Advanced mobile optimisation remains outside the current phase as stated in section 12.
 
 ### 13.3 Viewer and release verification
 
 - Test label rendering, selection, description and linked-video behavior for both authenticated roles, including permission differences.
-- Navigate into and out of the Viewer and verify scene teardown, removed subscriptions and stopped animation work. Detailed resource implementation requirements belong in coding_guidelines.md.
+- Navigate into and out of the Viewer and verify scene teardown, removed subscriptions and stopped animation work. Detailed resource implementation requirements belong in `coding_guidelines.md`.
 - Verify the applicable prototype data renders correctly and programme selection updates visible text.
 - TypeScript must compile without errors, and affected browser workflows must have no console errors before they are reported as verified.
-- Record actual verification evidence and unresolved limitations in anatolearn/docs/testing_log.md. A source review or historical passing result does not establish a newly executed browser, role/programme, compatibility or performance check.
+- Record actual verification evidence and unresolved limitations in testing_log.md. A source review or historical passing result does not establish a newly executed browser, role/programme, compatibility or performance check.
 
 
 ## Confirmed account policies — 22 October 2026

@@ -1,6 +1,6 @@
 # AnatoLearn Technical Architecture
 
-Implementation reference, updated 22 October 2026. Paths are relative to `anatolearn/` unless stated otherwise. This document describes implemented behavior; PRD.md remains the product requirements reference and coding_guidelines.md contains engineering constraints.
+Implementation reference, updated 22 October 2026. Paths are relative to `anatolearn/` unless stated otherwise. This document describes implemented behavior; [PRD.md](PRD.md) remains the product requirements reference and [coding_guidelines.md](coding_guidelines.md) contains engineering constraints.
 
 ## 1. System overview
 
@@ -217,7 +217,7 @@ Fresh PostgreSQL volumes run 001 schema, 002 seed, 003 users, 004 model metadata
 | Materials | resources | PDF, DOC/DOCX, PNG/JPEG/WebP; HTTP(S) links store URL | 50 MiB |
 | Thumbnails | thumbnails/model-ID.png | teacher PNG-data submission | 10 MB JSON request limit |
 
-Upload filenames use UUIDs. Model validation checks GLB structure headers, glTF version/embedded dependencies, OBJ vertices/faces or USDZ archive signature. Material validation checks selected type, extension and basic file signatures. Legacy local glTF companions can be served through ownership checks; new multi-file glTF uploads must be converted to GLB or embedded glTF. OBJ currently loads geometry without a companion MTL upload workflow. USDZ support depends on the installed USDLoader's format subset; Unreal .uasset is rejected with an export-to-GLB instruction. See docs/3d_model_tools.md.
+Upload filenames use UUIDs. Model validation checks GLB structure headers, glTF version/embedded dependencies, OBJ vertices/faces or USDZ archive signature. Material validation checks selected type, extension and basic file signatures. Legacy local glTF companions can be served through ownership checks; new multi-file glTF uploads must be converted to GLB or embedded glTF. OBJ currently loads geometry without a companion MTL upload workflow. USDZ support depends on the installed USDLoader's format subset; Unreal .uasset is rejected with an export-to-GLB instruction. See 3d_model_tools.md.
 
 storage.js centralizes the configured local root, safe resolution and validation, but local Multer/fs operations still remain in server.js. A full cloud storage adapter is future work. Database deletion generally does not delete old uploaded files automatically; ops/Backup.ps1 creates consistent database-and-file snapshots and optionally verifies an isolated restore; orphan-file maintenance remains future work.
 
@@ -227,7 +227,7 @@ Production must serve the SPA/build plus the same-origin authenticated API/asset
 
 ## 13. Verification and remaining limits
 
-Current checks include TypeScript/Vite build, ESLint, 26 viewer helper tests, two OBJ/USDZ parser tests and database-backed policy/assessment integration tests. Browser QA covers teacher/student flows, native media, OBJ viewing/label movement, permissions, programme filtering, timed MCQ submission/history/review and keyboard dialog behavior. Exact evidence, counts and scope are in docs/testing_log.md.
+Current checks include TypeScript/Vite build, ESLint, 26 viewer helper tests, two OBJ/USDZ parser tests and database-backed policy/assessment integration tests. Browser QA covers teacher/student flows, native media, OBJ viewing/label movement, permissions, programme filtering, timed MCQ submission/history/review and keyboard dialog behavior. Exact evidence, counts and scope are in testing_log.md.
 
 The Viewer route is lazy-loaded: the current build separates a 374.66 kB initial JS bundle from a 754.28 kB viewer chunk. Remaining limits include the viewer chunk size warning, incomplete general API response typing, no exhaustive Chrome/Edge/Firefox/Safari sweep, no full four-programme browser matrix, no GPU/concurrency performance certification, no binary USDC/USDZ compatibility matrix, and legacy requirements such as embedded annotation exports/cloud adapters that are outside this change. Documented current behavior does not waive unmet PRD requirements.
 
@@ -236,7 +236,7 @@ The Viewer route is lazy-loaded: the current build separates a 374.66 kB initial
 
 maintenance.js runs once at backend startup and hourly with an advisory transaction lock. It closes expired quiz sessions and removes closed quiz/auth sessions after 30 days. `QUIZ_SESSION_LIFETIME_HOURS` accepts 1–168 (default 24); `SESSION_RETENTION_DAYS` accepts 1–365 (default 30). `npm run maintenance` runs the same job manually. Quiz attempts and answers are retained independently. Active question-edit guards include the ten-second submission grace.
 
-`ops/Backup.ps1 -VerifyRestore` pauses the running backend, creates a PostgreSQL custom dump plus teaching-assets tar archive, hashes and row-count manifest, and restarts the backend in a finally block. The optional verification creates a fresh database and separate extracted asset directory; it never replaces live data. The Compose operations profile uses the PostgreSQL tools image with read-only source assets. Backups are ignored by Git and Docker builds and denied by Vite. See docs/README.md for operation and recovery limitations.
+`ops/Backup.ps1 -VerifyRestore` pauses the running backend, creates a PostgreSQL custom dump plus teaching-assets tar archive, hashes and row-count manifest, and restarts the backend in a finally block. The optional verification creates a fresh database and separate extracted asset directory; it never replaces live data. The Compose operations profile uses the PostgreSQL tools image with read-only source assets. Backups are ignored by Git and Docker builds and denied by Vite. See README.md for operation and recovery limitations.
 
 22 October follow-up verification: both roles across five pages at 375/768/1440 in in-app Chromium; assigned/shared content enforced through actual API accounts for all four programmes; timed quiz browser submission; revoked-session and expired-session regressions; successful database/file restore with hash and row-count equality. Other browser engines and the complete programme-by-browser matrix remain unverified.
 
@@ -251,7 +251,7 @@ Container ResizeObserver updates the camera and renderer alongside the window re
 
 Cleanup additionally releases decoded ImageBitmaps and skinned-model skeleton buffers, deduplicating shared resources, and explicitly releases the WebGL context after renderer disposal. Thumbnail capture occurs after the animation loop's render. Empty models/WebGL creation failures show visible errors; model/annotation loading has status feedback and disables authoring until ready. Annotation validation/save failures are inline; neutral-view/delete/projection feedback uses accessible toasts.
 
-Numeric framing and annotation-translation helpers own no scene state. A disposable backend/tests/viewer-fixture.js supplies embedded checker-textured glTF with transformed meshes, an OBJ comparison, stored region, linked video and two roles. All generated records/files were cleaned after verification. See docs/testing_log.md for actual browser coverage and limits.
+Numeric framing and annotation-translation helpers own no scene state. A disposable backend/tests/viewer-fixture.js supplies embedded checker-textured glTF with transformed meshes, an OBJ comparison, stored region, linked video and two roles. All generated records/files were cleaned after verification. See testing_log.md for actual browser coverage and limits.
 
 
 ## 16. Accessibility and request-state follow-up — 22 October 2026
@@ -271,7 +271,7 @@ This pass improves usability without claiming WCAG certification. Real screen-re
 
 `RouteAnnouncement` stays mounted inside BrowserRouter. It supplies page-specific document titles and a polite, atomic status region for SPA navigation, including auth and model/video detail pages. Layout retains its route-change main focus behavior. Login and Register expose named main landmarks; the registration password requirement is associated through aria-describedby. The annotation list exposes expanded and pressed states, and the selected annotation details are a named region available independently of the WebGL canvas.
 
-New checks passed in the connected in-app Chromium browser: login/register titles and landmarks, authenticated dashboard/viewer titles, keyboard annotation selection, selected state, named details region and collapse state. Build and lint passed. These are accessibility-tree/DOM/keyboard checks, not spoken-output verification. Windows Chrome and Edge exist but are not connected to the browser-control interface; Firefox and NVDA were not found in their checked standard installation paths. Native app control is unavailable in this session. Safari requires a supported Apple environment. Consequently real screen-reader and four-browser acceptance remain pending, with concrete procedures and evidence requirements in anatolearn/docs/accessibility_compatibility.md. No requirement has been removed or marked passed without execution.
+New checks passed in the connected in-app Chromium browser: login/register titles and landmarks, authenticated dashboard/viewer titles, keyboard annotation selection, selected state, named details region and collapse state. Build and lint passed. These are accessibility-tree/DOM/keyboard checks, not spoken-output verification. Windows Chrome and Edge exist but are not connected to the browser-control interface; Firefox and NVDA were not found in their checked standard installation paths. Native app control is unavailable in this session. Safari requires a supported Apple environment. Consequently real screen-reader and four-browser acceptance remain pending, with concrete procedures and evidence requirements in accessibility_compatibility.md. No requirement has been removed or marked passed without execution.
 
 
 ## 18. Automated browser and accessibility verification — 22 October 2026
@@ -282,7 +282,7 @@ New checks passed in the connected in-app Chromium browser: login/register title
 
 Axe identified low-contrast secondary text; the shared slate-400/dark-slate-500 usage was strengthened to slate-600/dark-slate-400 in affected pages/viewer panels. WebKit keyboard testing identified the skip link's need for explicit tabindex=0. The suite waits for the actual dashboard render before starting keyboard checks and invokes modal/quiz actions through keyboard events. Downloaded browser/report directories initially overwhelmed the Windows bind-mounted polling watcher; explicit watch exclusions removed that QA-induced slowdown. Viewer readiness has a bounded 45-second test wait, not a performance guarantee.
 
-Windows Playwright WebKit rejected the fixture's H.264 Main/AAC LC MP4 with NotSupportedError, despite authenticated HTTP 206 delivery. The viewer's visible media-error path is tested there; the separate playback test is explicitly skipped on Windows WebKit. Actual Safari/macOS playback and spoken NVDA/VoiceOver behavior remain unverified. This supersedes the earlier lack of automated browser-engine access; it does not waive PRD NFR-17 or constitute WCAG certification. Dated outcomes are in docs/testing_log.md and docs/verification/browser-accessibility-summary.json.
+Windows Playwright WebKit rejected the fixture's H.264 Main/AAC LC MP4 with NotSupportedError, despite authenticated HTTP 206 delivery. The viewer's visible media-error path is tested there; the separate playback test is explicitly skipped on Windows WebKit. Actual Safari/macOS playback and spoken NVDA/VoiceOver behavior remain unverified. This supersedes the earlier lack of automated browser-engine access; it does not waive PRD NFR-17 or constitute WCAG certification. Dated outcomes are in testing_log.md and verification/browser-accessibility-summary.json.
 
 
 ## 19. English WebVTT caption tracks — 22 October 2026

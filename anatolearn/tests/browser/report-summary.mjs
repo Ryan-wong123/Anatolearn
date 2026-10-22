@@ -28,5 +28,5 @@ const summary = {
   scope: 'Local Docker app; WCAG 2 A/AA and 2.1 A/AA tagged automated checks. No spoken screen-reader or actual Safari certification.',
   projects,
 };
-writeFileSync('docs/verification/browser-accessibility-summary.json', `${JSON.stringify(summary, null, 2)}\n`);
+writeFileSync('../docs/verification/browser-accessibility-summary.json', `${JSON.stringify(summary, null, 2)}\n`);
 console.log(JSON.stringify(Object.fromEntries(Object.entries(projects).map(([name, result]) => [name, { passed: result.passed, failed: result.failed, skipped: result.skipped, audits: result.audits, violations: result.violations }]))));

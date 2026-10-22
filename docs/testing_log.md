@@ -146,7 +146,7 @@ Weighted score calculation in `PATCH /api/attempt-answers/:id/grade` divided MCQ
 | sessionStorage workaround: student sees "Awaiting teacher review" immediately after submitting, then sees the actual graded result (including per-question open-ended scores) when revisiting the same quiz in the same browser after teacher grading | Pass |
 
 ### Notes
-- The sessionStorage-based result visibility is an explicitly documented stopgap, not real quiz history — see `docs/api_endpoints.md` for the limitation note. Task 8.8 and real student attribution remain blocked on Task 9 (auth).
+- The sessionStorage-based result visibility is an explicitly documented stopgap, not real quiz history — see `api_endpoints.md` for the limitation note. Task 8.8 and real student attribution remain blocked on Task 9 (auth).
 - Removed a results-screen summary sentence ("MCQ: X/Y correct · N open-ended reviewed") after review — deemed redundant given the per-question feedback cards below it already convey the same information more clearly.
 
 ---
@@ -165,7 +165,7 @@ Before starting Task 7.1 (video upload), reviewed the group chat and a private c
 
 | File | Status found | Notes |
 |---|---|---|
-| `Viewer.tsx` | Substantially built | Full annotation system (point/draw/region), teacher add/edit/delete modes, persistent CRUD to backend, camera framing, thumbnail auto-generation. Diverges significantly from the `labels`-based design originally in `Architecture.md`/`design.md` — see `docs/database_schema.md` open question #3. |
+| `Viewer.tsx` | Substantially built | Full annotation system (point/draw/region), teacher add/edit/delete modes, persistent CRUD to backend, camera framing, thumbnail auto-generation. Diverges significantly from the `labels`-based design originally in `Architecture.md`/`design.md` — see `database_schema.md` open question #3. |
 | `ModelGallery.tsx` | Exists | Not reviewed in detail this round — referenced by `App.tsx` routing (`/3dviewer`) but file contents not pulled. |
 | `Videos.tsx` | Real, working (pre-session) | Fetched from `GET /api/videos`, working search, links to detail page. Upload was an explicit stub ("Upload flow not wired yet") before this round's work. |
 | `VideoPlayer.tsx` | Real, working (pre-session) | Full HTML5 `<video>` player with controls, autoplay, poster thumbnail, back navigation. Confirms Task 7.3 and 7.4 were already functionally complete before this round touched anything. |
@@ -188,7 +188,7 @@ Manual testing through the running app as Teacher and Student roles, plus direct
 - Chrome (app testing), PowerShell 7.6.3 (API testing)
 
 ### Bug Found and Fixed
-`express.static` was never configured — see `docs/database_schema.md` "Static file serving" section for the full writeup. This was a pre-existing bug (predates this round), not something introduced by the upload work, but it was blocking video playback entirely and had to be fixed before upload testing could be considered meaningful.
+`express.static` was never configured — see `database_schema.md` "Static file serving" section for the full writeup. This was a pre-existing bug (predates this round), not something introduced by the upload work, but it was blocking video playback entirely and had to be fixed before upload testing could be considered meaningful.
 
 ### Results
 
@@ -211,7 +211,7 @@ Manual testing through the running app as Teacher and Student roles, plus direct
 
 ### Notes
 - PowerShell 5.1 (default on Windows) does not support `Invoke-RestMethod -Form` for multipart uploads — required upgrading to PowerShell 7 via `winget install --id Microsoft.PowerShell` mid-session.
-- `DELETE /api/videos/:id` removes the database row only, not the file from disk — flagged as a known gap in `docs/api_endpoints.md`.
+- `DELETE /api/videos/:id` removes the database row only, not the file from disk — flagged as a known gap in `api_endpoints.md`.
 - Test video and its file were not manually cleaned from disk after testing (only the DB row was deleted) — low priority, but noted in case disk usage becomes relevant later.
 ---
 
@@ -303,8 +303,8 @@ Reused the same local Postgres + backend setup from the 9.1/9.2 test sessions. R
 The automated script used to add `authenticate`/`requireTeacher` to all 35 protected routes had a regex bug that dropped the trailing newline from each edited line, silently merging it with the next line's code (e.g. `app.get(...) => { const { published } = req.query;` all on one line instead of two). Caught immediately via `node --check` output looking suspicious combined with a manual `view` of the file, before any test traffic was sent. Fixed by restoring the pre-patch file from the previous session's delivered zip and re-running the corrected script. Full `diff` against the pre-patch version afterward confirmed only the intended 36 lines changed and nothing else moved.
 
 ### Notes
-- **Important, not yet resolved:** `src/api/api.ts` sends no `Authorization` header on any request, and there's no logged-in state yet (`Login.tsx` is a stub). This means the currently-running frontend (Dashboard, Videos, Quizzes, Library, 3D Viewer — everything) will start receiving 401s on every page the moment this backend change is deployed. This is expected given the task sequence (9.4-9.6 are the frontend wiring), but it's a real, visible breakage, not just a documentation gap — see `docs/api_endpoints.md`'s Auth section for the full note.
-- Two routes were classified as `authenticate`-only rather than `requireTeacher` as judgment calls, not explicit spec: `PATCH /api/models/:id/thumbnail` (auto-triggered for any viewer, not just teachers) and `GET /api/attempts/:id` / `GET /api/attempts/:id/answers` (used by both the teacher grading UI and the student sessionStorage result-check workaround). See `docs/api_endpoints.md` for the reasoning.
+- **Important, not yet resolved:** `src/api/api.ts` sends no `Authorization` header on any request, and there's no logged-in state yet (`Login.tsx` is a stub). This means the currently-running frontend (Dashboard, Videos, Quizzes, Library, 3D Viewer — everything) will start receiving 401s on every page the moment this backend change is deployed. This is expected given the task sequence (9.4-9.6 are the frontend wiring), but it's a real, visible breakage, not just a documentation gap — see `api_endpoints.md`'s Auth section for the full note.
+- Two routes were classified as `authenticate`-only rather than `requireTeacher` as judgment calls, not explicit spec: `PATCH /api/models/:id/thumbnail` (auto-triggered for any viewer, not just teachers) and `GET /api/attempts/:id` / `GET /api/attempts/:id/answers` (used by both the teacher grading UI and the student sessionStorage result-check workaround). See `api_endpoints.md` for the reasoning.
 - Only tested in the sandboxed environment so far, not yet re-confirmed in the team's actual Docker stack — same caveat as 9.1/9.2, though 9.1 and 9.2 were both since confirmed there.
 
 ---
@@ -583,14 +583,14 @@ Verification:
 - Focused ESLint on touched TS/TSX/test files: zero errors; two inherited Viewer effect dependency warnings remain. Full unrelated application lint was not used as a completion gate.
 - Browser teacher account: real GLB loads; exclusive highlight/region switching and cancel; select/edit saved annotation; create/save/delete a point; sequential numbering; linked video modal; neutral-view save; create/save projected highlight; draggable panel moves. Database re-fetch confirms edited text, deletion, generated projected geometry cache and opacity.
 - Browser student account: same model/annotation/linked-video controls without teacher edit/draw actions. All four program selectors exercised. Invalid model identifier displays an error. Canvas count is one in Viewer and zero after navigation to gallery, including immediate exit from a second model load. No browser warnings/errors captured.
-- Evidence: docs/verification/viewer-refactor.png. Temporary QA accounts, records, and generated QA thumbnails removed; existing content retained.
+- Evidence: verification/viewer-refactor.png. Temporary QA accounts, records, and generated QA thumbnails removed; existing content retained.
 Limits: no GPU-memory benchmark, comprehensive mobile/tablet or cross-browser sweep, injected network-failure/double-click test, or full region-fill gesture test. Lifecycle safety is supported by guards/disposal review and canvas/navigation checks, not a measured zero-leak guarantee.
 
 ## Shorter Viewer.tsx — 21 Oct 2026
 Reduced the prior working Viewer from 1,413 to 1,167 lines. Extracted useAnnotationEditor (form/persistence workflow), ViewerOverlay (presentational composition/list/video UI state), and createAnnotationBadge (canvas painting only). Reused hit-target cleanup for annotation deletion; removed the unused model-radius ref. Scene mutations, textures/materials/geometry, and raycasting remain in Viewer.
 - npm run test:viewer: all 10 pass; npm run build: passes, existing bundle warning remains.
 - Focused lint: zero errors; two existing effect-dependency warning sites remain. The scene effect's warning now includes editor; adding the changing controller object as a dependency would recreate the scene on form input, so no suppression or broad dependency change was made.
-- Browser teacher test: actual GLB load; collapse/expand list; edit and save seeded annotation; edit again then cancel; draw/save a new projected highlight; reopen seeded annotation's linked video; close dialogs. Database check confirms edited label preserved, canceled text absent, second annotation inserted with projected cached geometry. Student account has view-only controls. Returning to gallery leaves zero canvas elements. No captured browser warnings/errors. Screenshot: docs/verification/viewer-shorter.png.
+- Browser teacher test: actual GLB load; collapse/expand list; edit and save seeded annotation; edit again then cancel; draw/save a new projected highlight; reopen seeded annotation's linked video; close dialogs. Database check confirms edited label preserved, canceled text absent, second annotation inserted with projected cached geometry. Student account has view-only controls. Returning to gallery leaves zero canvas elements. No captured browser warnings/errors. Screenshot: verification/viewer-shorter.png.
 - Isolated QA users/content and generated thumbnail removed afterward. Existing content retained. No API, schema or uploaded-file format change.
 Limits: full region-fill gesture, injected API-failure/double-submission, repeat mobile/tablet/cross-browser sweeps and GPU memory profiling were not repeated for this extraction. Existing baseline tests and the prior Viewer regression log remain applicable.
 
@@ -599,14 +599,14 @@ Before this step: 1,167 lines; after: 972 lines. Extracted loadViewerAnnotations
 - Expanded focused Node suite: 16/16 pass, including existing serialization/projection/mode tests plus loading/cache/selection cases. Specifically tests no rendering after a late response or navigation during cache persistence, continuing after a cache-save error, cache reuse, and reporting load failures without changing the view.
 - Build passes (existing bundle-size warning); focused lint has zero errors/two previously tracked effect-dependency warnings. Whitespace diff check passes.
 - Browser: teacher model and annotation loading; select/delete loaded point; create replacement point with single mode ref; save neutral view; reload preserves point and neutral view. Actual student sees loaded point without teacher edit actions. Returning to gallery leaves zero canvas elements; no captured browser errors/warnings. Database re-fetch verifies original point deleted, one replacement and neutral view persisted.
-- QA users/model/annotations/generated thumbnail removed; existing user content retained. Evidence: docs/verification/viewer-under-1000.png.
+- QA users/model/annotations/generated thumbnail removed; existing user content retained. Evidence: verification/viewer-under-1000.png.
 Scope limits: projected-region gestures, all-program/mobile/cross-browser sweeps and GPU profiling were not repeated; prior regression records remain separate evidence. No API/database contract changes, and no measured rendering-performance claim.
 
 ## Viewer reduced from 972 to 859 lines — 21 Oct 2026
 Extracted plain drawing sample storage/preview state and DOM event subscriptions. Centralized projected draft defaults, painted-hit acceptance, non-projected visual setup and shared-geometry-aware mesh cleanup. Added cleanup cancellation/guard for the existing deferred region-generation timer. Scene resources remain local to Viewer.
 - Build passes; all 21 focused tests pass. New tests cover pointer offsets/zero-sized canvas, jitter rejection, aligned sample arrays, copying inputs/snapshots, reset between drawings, every event listener removed including both pointermove handlers and resize, idempotent unsubscribe, and projected fill/stroke defaults.
 - Focused ESLint: zero errors/two inherited Viewer effect-dependency warning sites. Scene warning now lists drawing and callback dependencies; no warning suppression or changing controller-object dependency was added. Diff whitespace check passes.
-- Actual teacher browser: GLB load; seeded legacy draw/filled-region selection; drag and save projected highlight through extracted sampler; generated geometry cache and 0.32 opacity verified in database; delete highlight; reload preserves both legacy annotations and allows selection. Student account sees legacy annotations without edit/draw controls. Returning to gallery leaves zero canvas elements. No captured browser errors/warnings. Evidence: docs/verification/viewer-859.png.
+- Actual teacher browser: GLB load; seeded legacy draw/filled-region selection; drag and save projected highlight through extracted sampler; generated geometry cache and 0.32 opacity verified in database; delete highlight; reload preserves both legacy annotations and allows selection. Student account sees legacy annotations without edit/draw controls. Returning to gallery leaves zero canvas elements. No captured browser errors/warnings. Evidence: verification/viewer-859.png.
 - QA users/model/annotations/generated thumbnail removed afterward; existing content preserved.
 Limits: no full region-fill gesture, GPU profiling, new cross-browser/mobile/program sweep, or direct masked hover/click coordinate automation in this pass. Sampling/event tests and actual highlight drawing support this refactor; no measured speedup or exhaustive leak guarantee is claimed. API/schema/storage formats unchanged.
 
@@ -618,7 +618,7 @@ Reduced Viewer.tsx from 810 to 760 physical lines by consolidating scene registr
 
 ## Architecture and design documentation audit - 21 October 2026
 
-Rewrote repository-root Architecture.md against the current frontend, viewer modules, API client, Express server, SQL scripts, manifests and Docker configuration. Replaced the earlier design specification with the implemented light/dark palette, typography, page layouts, role controls, viewer panels, dialogs and breakpoint behavior. Added current-reference guidance to docs/README.md. No application, API, schema or asset behavior changed.
+Rewrote repository-root Architecture.md against the current frontend, viewer modules, API client, Express server, SQL scripts, manifests and Docker configuration. Replaced the earlier design specification with the implemented light/dark palette, typography, page layouts, role controls, viewer panels, dialogs and breakpoint behavior. Added current-reference guidance to README.md. No application, API, schema or asset behavior changed.
 
 Verification for this pass:
 - Cross-checked route paths/provider order, session/theme persistence, role/program behavior, API authorization, storage formats/limits, annotation mappings/cache/disposal and quiz grading against source.
@@ -630,7 +630,7 @@ Verification for this pass:
 
 ## Main-agent instruction and requirement reorganisation - 21 October 2026
 
-Replaced the multi-role Agents.md with a main-agent role, reference map, workflow, documentation responsibilities and task-status rules. Moved product/role, prototype-content, visual and QA acceptance obligations into PRD.md section 13. Preserved the former Agents.md engineering sections (architecture layers, implementation rules, development order, naming, expected types and viewer checklist) in coding_guidelines.md section 17, with additional boundary guidance and no relaxation of existing requirements. Updated docs/README.md with document ownership.
+Replaced the multi-role Agents.md with a main-agent role, reference map, workflow, documentation responsibilities and task-status rules. Moved product/role, prototype-content, visual and QA acceptance obligations into PRD.md section 13. Preserved the former Agents.md engineering sections (architecture layers, implementation rules, development order, naming, expected types and viewer checklist) in coding_guidelines.md section 17, with additional boundary guidance and no relaxation of existing requirements. Updated README.md with document ownership.
 
 Verification: compared the original Agents.md sections against their new destinations, checked local Markdown links in the revised agent instructions, and ran git diff --check. No runtime code changed; build, browser, API and regression tests were not rerun for this documentation reorganisation. Existing implementation/requirement differences remain. The incoming tasks.md deletion was preserved.
 

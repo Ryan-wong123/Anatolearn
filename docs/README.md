@@ -100,10 +100,11 @@ anatolearn/
 │   ├── App.tsx
 │   ├── main.tsx
 │   └── index.css
-├── docs/                # Project documentation (this folder)
 ├── public/
 └── package.json
 ```
+
+Project-wide and application documentation live in the repository-root `docs/` directory.
 
 ## Documentation Index
 
@@ -138,13 +139,13 @@ Viewer.tsx is now 760 physical lines, down from 810 (50 fewer). Scene insertion 
 
 ## Current architecture and design reference (21 October 2026)
 
-The repository-root [Architecture.md](../../Architecture.md) now documents the implemented React/Express/PostgreSQL system, routes, contexts, authentication, API/storage boundaries, quiz grading and modular viewer. [design.md](../../design.md) records the current light/dark slate-and-blue theme, page layouts, viewer overlays and source-defined responsive behavior. Both explicitly distinguish current limitations from original requirements; the historical viewer refactor entries below describe earlier snapshots.
+The repository-wide [Architecture.md](Architecture.md) documents the implemented React/Express/PostgreSQL system, routes, contexts, authentication, API/storage boundaries, quiz grading and modular viewer. [design.md](design.md) records the current light/dark slate-and-blue theme, page layouts, viewer overlays and source-defined responsive behavior. [PRD.md](PRD.md) defines product requirements and acceptance criteria, while [coding_guidelines.md](coding_guidelines.md) defines engineering conventions. These documents distinguish current implementation from requirements and known limitations; the historical viewer refactor entries below describe earlier snapshots.
 
 The backend is implemented in `backend/src/server.js` with `pg`, JWT/bcrypt authentication and Multer uploads. Docker runs PostgreSQL 16 and Node 22 development services. Registration returns an account and redirects to Login; Login returns the bearer token and user. Frontend role comes from that user response, and programme selection filters lists; backend student access remains scoped to the authenticated account programme and shared content. `npm run test:viewer` currently defines 22 focused cases; earlier test counts in this document are historical.
 
 ## Documentation ownership (21 October 2026)
 
-Root Agents.md now defines one main coding agent and its workflow. Product/role, visual and QA acceptance obligations moved into PRD.md section 13; detailed engineering rules, core type contracts and the initial-build sequence moved into coding_guidelines.md section 17. Architecture.md remains a description of the current implementation. This reorganisation does not change product scope or resolve existing differences between requirements and code.
+Root `Agents.md` now defines one main coding agent and its workflow. Product/role, visual and QA acceptance obligations are in [`PRD.md`](PRD.md) section 13; detailed engineering rules, core type contracts and the initial-build sequence are in [`coding_guidelines.md`](coding_guidelines.md) section 17. [`Architecture.md`](Architecture.md) remains a description of the current implementation. This reorganisation does not change product scope or resolve existing differences between requirements and code.
 
 
 ## Access, assessments and materials update — 22 October 2026
@@ -175,7 +176,7 @@ docker compose exec -T backend npm test
 docker compose exec -T backend npm run test:integration
 ```
 
-Integration tests create and clean only isolated temporary records/files; they require the migrated local database. Historical viewer test counts and architecture notes earlier in this file describe older snapshots. Current behavior is documented in root Architecture.md/design.md and the latest testing_log.md entry.
+Integration tests create and clean only isolated temporary records/files; they require the migrated local database. Historical viewer test counts and architecture notes earlier in this file describe older snapshots. Current behavior is documented in [`Architecture.md`](Architecture.md), [`design.md`](design.md) and the latest [testing log](testing_log.md) entry.
 
 
 ## Session lifecycle and backups (22 October 2026)
@@ -235,4 +236,4 @@ Chrome and Edge projects use the installed stable browser channels. `npm run tes
 
 The suite checks auth semantics, five sections for both roles in both themes, modal focus/isolation, compact navigation, viewer annotation/video interaction, keyboard quiz submission/results and simulated read failure/retry. Axe reports use WCAG 2 A/AA and 2.1 A/AA tags. Reports include incomplete/manual-review findings as well as violations; passing automated checks is not complete accessibility certification. WebKit is an engine check, not an actual Safari/VoiceOver run. Test traces may contain temporary authentication data: generated binaries, manifests and reports are ignored by Git/Docker, excluded from lint and Vite polling, and denied by Vite. Do not publish raw traces.
 
-The summary command writes a sanitized, shareable outcome to `docs/verification/browser-accessibility-summary.json`, without raw page HTML, request headers or authentication traces. It retains explicit skipped/limited checks and axe manual-review rule IDs.
+The summary command writes a sanitized, shareable outcome to `verification/browser-accessibility-summary.json`, without raw page HTML, request headers or authentication traces. It retains explicit skipped/limited checks and axe manual-review rule IDs.

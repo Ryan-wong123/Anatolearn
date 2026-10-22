@@ -1,6 +1,6 @@
 # AnatoLearn Design Reference
 
-Current implementation, updated 22 October 2026. This document records the visual theme and interactions in `anatolearn/src`, rather than the earlier wireframe specification. Paths below are relative to `anatolearn/`. Dimensions and breakpoints are derived from source classes; browser verification scope is recorded in anatolearn/docs/testing_log.md.
+Current implementation, updated 22 October 2026. This document records the visual theme and interactions in `anatolearn/src`, rather than the earlier wireframe specification. Paths below are relative to `anatolearn/`. Dimensions and breakpoints are derived from source classes; browser verification scope is recorded in testing_log.md.
 
 ## 1. Visual direction
 
@@ -251,7 +251,7 @@ These controls read AppContext role; the development role preview does not grant
 
 Lucide provides most icons: GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun/Moon, Search, Upload/Download, FileJson/FileText, ExternalLink, Heart, Play, Trophy, Activity, Clock and X. Common sizes are 16px for actions/navigation, 20px for controls, 24px for metrics, and 32–40px for resource/model fallbacks. The viewer also contains an inline SVG play mark, SVG drawing preview and text +/- controls.
 
-Keyboard-activatable model/video cards, shared focus rings, mobile navigation and Dialog focus/Escape/return-focus behavior are implemented. Core form labels and error feedback have been updated; broader accessibility verification remains incomplete; no certification or complete cross-browser/mobile matrix is claimed. SVG drawing previews and a few legacy inline icons remain. Full implementation/verification details are in Architecture.md and anatolearn/docs/testing_log.md.
+Keyboard-activatable model/video cards, shared focus rings, mobile navigation and Dialog focus/Escape/return-focus behavior are implemented. Core form labels and error feedback have been updated; broader accessibility verification remains incomplete; no certification or complete cross-browser/mobile matrix is claimed. SVG drawing previews and a few legacy inline icons remain. Full implementation/verification details are in [Architecture.md](Architecture.md) and [the testing log](testing_log.md).
 
 
 ## Responsive verification follow-up — 22 October 2026
@@ -275,12 +275,12 @@ A focus-visible Skip to content link targets the main region. SPA navigation foc
 
 ## Screen-reader semantics follow-up — 22 October 2026
 
-Page titles use “Page name | AnatoLearn”. A visually hidden, persistent polite/atomic status region identifies the destination after SPA navigation. Auth pages expose named main landmarks. Registration password guidance is associated with its input and uses slate-600/slate-400 text. Annotation list buttons expose pressed selection and expanded/collapsed state; selected annotation details have a named region. These semantics preserve the current visual theme. Spoken output and other browser engines require the compatibility procedure in anatolearn/docs/accessibility_compatibility.md.
+Page titles use “Page name | AnatoLearn”. A visually hidden, persistent polite/atomic status region identifies the destination after SPA navigation. Auth pages expose named main landmarks. Registration password guidance is associated with its input and uses slate-600/slate-400 text. Annotation list buttons expose pressed selection and expanded/collapsed state; selected annotation details have a named region. These semantics preserve the current visual theme. Spoken output and other browser engines require the compatibility procedure in accessibility_compatibility.md.
 
 
 ## Automated accessibility findings — 22 October 2026
 
-Low-emphasis text in dashboard empty states, content descriptions, quiz details, upload guidance and annotation panels now uses text-slate-600/dark:text-slate-400 in place of text-slate-400/dark:text-slate-500. The linked-video Close action also has contrasting light/dark text. This keeps the slate/blue palette while making the audited small text readable. Skip to content has explicit tabindex=0 for WebKit keyboard reachability. Playwright/axe coverage and manual-review limits are documented in anatolearn/docs/accessibility_compatibility.md; a dark dashboard screenshot is saved at anatolearn/docs/verification/playwright-dashboard-dark.png.
+Low-emphasis text in dashboard empty states, content descriptions, quiz details, upload guidance and annotation panels now uses text-slate-600/dark:text-slate-400 in place of text-slate-400/dark:text-slate-500. The linked-video Close action also has contrasting light/dark text. This keeps the slate/blue palette while making the audited small text readable. Skip to content has explicit tabindex=0 for WebKit keyboard reachability. Playwright/axe coverage and manual-review limits are documented in accessibility_compatibility.md; a dark dashboard screenshot is saved at verification/playwright-dashboard-dark.png.
 
 Placeholder text uses slate-500 in light mode and slate-400 in dark mode. Source-token contrast calculations give 4.76:1 and 6.96:1 respectively on the form surfaces. Representative viewer text on 90%-opaque panel surfaces has at least 5.11:1 in dark mode and 6.07:1 in light mode under the worst-case opposite-color background blend; white text on blue-600 actions is 5.17:1. These manual representative checks supplement axe scans and do not constitute a complete rendered-state audit or certification.
 

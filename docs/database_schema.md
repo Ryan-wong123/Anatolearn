@@ -32,7 +32,7 @@ Differs from the original Task 1.2 proposal in one way: `program` is `program_id
 | role | user_role (enum) | `'student'` \| `'teacher'`, NOT NULL, default `'student'` |
 | created_at | TIMESTAMP | default `CURRENT_TIMESTAMP` |
 
-Tested end-to-end against a real Postgres instance: valid registration (201, password_hash correctly excluded from response, confirmed 60-char bcrypt hash in db), duplicate email (409), missing required fields (400), invalid `role` value (400), password under 8 characters (400). See `docs/testing_log.md`.
+Tested end-to-end against a real Postgres instance: valid registration (201, password_hash correctly excluded from response, confirmed 60-char bcrypt hash in db), duplicate email (409), missing required fields (400), invalid `role` value (400), password under 8 characters (400). See `testing_log.md`.
 
 **Status: fully built and confirmed 20 Jul 2026.** Every piece of Week 9 is now in place and confirmed working end-to-end in the real Docker/browser environment: registration, login, route/role middleware, real Login and Register pages, token attached to every request, protected routes, and logout. The `role`/`program` toggle that used to be in `Layout.tsx`'s nav bar is gated behind Vite's `import.meta.env.DEV` flag, confirmed (via inspecting the actual `npm run build` output) to compile to a hardcoded `false` in production, so it cannot appear or function outside local development.
 
@@ -58,7 +58,7 @@ No changes from original Task 1.2 spec.
 
 `is_published` was added 15 Jul 2026 (Task 6.2) — models do have publish gating, same as videos and quizzes; the earlier note in this file claiming otherwise was stale. `body_system`/`body_part` were added 20 Jul 2026 via `004_add_model_fields_and_downloads.sql` (Tasks 4.1/4.4) — free-text columns, not constrained to a fixed enum, so their possible values are whatever teachers actually type in the upload/edit form.
 
-Full CRUD, publish toggle, search (`?q=`), and system/part filtering are all built and tested against `GET`/`POST`/`PUT`/`DELETE /api/models...` — see `docs/api_endpoints.md`. Models are viewed via a `ModelGallery.tsx` page (browsing, now with search/filter and a download button) and `Viewer.tsx` (individual model + annotations), both confirmed working — see the `annotations` section below for how the 3D viewer actually works.
+Full CRUD, publish toggle, search (`?q=`), and system/part filtering are all built and tested against `GET`/`POST`/`PUT`/`DELETE /api/models...` — see `api_endpoints.md`. Models are viewed via a `ModelGallery.tsx` page (browsing, now with search/filter and a download button) and `Viewer.tsx` (individual model + annotations), both confirmed working — see the `annotations` section below for how the 3D viewer actually works.
 
 ---
 
@@ -199,7 +199,7 @@ Uploaded video files (and previously, model thumbnails) were being correctly sav
 
 An attempt becomes `pending_review` if it contains **any** open-ended answers. MCQ portions are still auto-graded and stored immediately (per-answer, in `quiz_attempt_answers`), but the attempt's overall `score` stays null until every open-ended answer in it has been manually scored by a teacher.
 
-**Resolved 20 Jul 2026.** `student_id` added, nullable (`ON DELETE SET NULL` so a deleted account doesn't cascade-delete their quiz history). `POST /api/quizzes/:id/submit` now populates it from `req.user.id`. Powers `GET /api/students/me/attempts` (Task 8.8) — see `docs/api_endpoints.md`. Attempts submitted before this migration keep `student_id: NULL` and can't be retroactively attributed; they were genuinely anonymous when created.
+**Resolved 20 Jul 2026.** `student_id` added, nullable (`ON DELETE SET NULL` so a deleted account doesn't cascade-delete their quiz history). `POST /api/quizzes/:id/submit` now populates it from `req.user.id`. Powers `GET /api/students/me/attempts` (Task 8.8) — see `api_endpoints.md`. Attempts submitted before this migration keep `student_id: NULL` and can't be retroactively attributed; they were genuinely anonymous when created.
 
 ---
 

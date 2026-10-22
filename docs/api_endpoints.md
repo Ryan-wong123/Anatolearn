@@ -173,7 +173,7 @@ Body: `{ answers: [{ question_id, selected_option? , answer_text? }] }` — send
 Returns all attempts for a quiz with `status = 'pending_review'`, ordered by `attempted_at`. Retained as a pending-only API; the teacher UI now uses GET /api/quizzes/:id/attempts to include graded results.
 
 ### `GET /api/students/me/attempts`
-Returns the logged-in student's own quiz attempt history: `[{ id, quiz_id, quiz_title, score, status, attempted_at }]`, newest first. Scoped strictly to `req.user.id` — there's no `:studentId` param, so a student can't view anyone else's history by guessing an ID. `quiz_title` is joined in from `quizzes` so the frontend doesn't need a second lookup per attempt. Task 8.8, resolved 20 Jul 2026 now that auth exists — see `docs/database_schema.md`'s open questions for the history of why this was blocked.
+Returns the logged-in student's own quiz attempt history: `[{ id, quiz_id, quiz_title, score, status, attempted_at }]`, newest first. Scoped strictly to `req.user.id` — there's no `:studentId` param, so a student can't view anyone else's history by guessing an ID. `quiz_title` is joined in from `quizzes` so the frontend doesn't need a second lookup per attempt. Task 8.8, resolved 20 Jul 2026 now that auth exists — see `database_schema.md`'s open questions for the history of why this was blocked.
 
 ### `GET /api/attempts/:id`
 Returns a single attempt's own record (`id`, `quiz_id`, `score`, `total_questions`, `correct_count`, `status`, `attempted_at`). Originally built for the frontend's sessionStorage-based "check my result later" workaround — now redundant with `GET /api/students/me/attempts` above, but still used by that workaround, which wasn't removed.
@@ -182,7 +182,7 @@ Returns a single attempt's own record (`id`, `quiz_id`, `score`, `total_question
 Returns every answer for an attempt, joined with its question (`question`, `format`, `model_answer`, `correct_option`) — used by the teacher grading UI to show what a student wrote alongside the reference answer, and reused by the sessionStorage workaround to reconstruct a student's own past result.
 
 ### `PATCH /api/attempt-answers/:id/grade`
-Body: `{ teacher_score: number }` (0-100). Grades a single open-ended answer, and sets `is_correct = true` if `teacher_score >= 50`. If this was the last ungraded open-ended answer in its attempt, the attempt's final `score` is computed (weighted blend of MCQ % and open-ended average — see `docs/database_schema.md` for the scoring bug fix applied 15 Jul 2026) and `status` flips to `'graded'`. 400 if `teacher_score` isn't a number 0-100, 404 if the answer doesn't exist.
+Body: `{ teacher_score: number }` (0-100). Grades a single open-ended answer, and sets `is_correct = true` if `teacher_score >= 50`. If this was the last ungraded open-ended answer in its attempt, the attempt's final `score` is computed (weighted blend of MCQ % and open-ended average — see `database_schema.md` for the scoring bug fix applied 15 Jul 2026) and `status` flips to `'graded'`. 400 if `teacher_score` isn't a number 0-100, 404 if the answer doesn't exist.
 
 ---
 
@@ -191,7 +191,7 @@ Body: `{ teacher_score: number }` (0-100). Grades a single open-ended answer, an
 ### `POST /api/auth/register`
 Body: `{ name, email, password, role, program_id? }`. `role` must be `'student'` or `'teacher'`. `password` must be at least 8 characters (not currently checked for complexity beyond length). `email` is lowercased and trimmed before storage/lookup. `program_id` is optional (nullable FK).
 
-Hashes the password with bcrypt (10 rounds, via `bcryptjs`) and stores it in the new `users` table (see `docs/database_schema.md`). Returns the created user **without** `password_hash`: `{ id, name, email, role, program_id, created_at }`.
+Hashes the password with bcrypt (10 rounds, via `bcryptjs`) and stores it in the new `users` table (see `database_schema.md`). Returns the created user **without** `password_hash`: `{ id, name, email, role, program_id, created_at }`.
 
 - 400 if `name`/`email`/`password`/`role` missing, if `role` isn't a valid value, or if `password` is under 8 characters
 - 409 if the email is already registered
@@ -212,7 +212,7 @@ Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, co
 - 400 if `email` or `password` is missing
 - 500 if `JWT_SECRET` isn't configured on the server (logged as a startup warning too)
 
-Tested: correct login (200 + token), wrong password (401), non-existent email (401, identical message to wrong password), missing password (400), case-insensitive email match (200). See `docs/testing_log.md`.
+Tested: correct login (200 + token), wrong password (401), non-existent email (401, identical message to wrong password), missing password (400), case-insensitive email match (200). See `testing_log.md`.
 
 ### Auth middleware (Task 9.3)
 Two Express middleware functions, defined near the top of `server.js`:

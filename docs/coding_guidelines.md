@@ -267,15 +267,15 @@ A clean implementation means:
 
 ## 17. Engineering Contract Relocated from Agents.md
 
-The following sections preserve the engineering instructions previously held in Agents.md. Product behavior and acceptance criteria belong in PRD.md; agent operation belongs in Agents.md. These engineering constraints are prescriptive, whereas Architecture.md describes the implementation and its current deviations. Relocation does not mean those deviations have been fixed or that a technical-policy change has been approved.
+The following sections preserve the engineering instructions previously held in `Agents.md`. Product behavior and acceptance criteria belong in `PRD.md`; agent operation belongs in `Agents.md`. These engineering constraints are prescriptive, whereas `Architecture.md` describes the implementation and its current deviations. Relocation does not mean those deviations have been fixed or that a technical-policy change has been approved.
 
-When extending AppContext, review whether the proposed state is genuinely global; do not duplicate page-local state across contexts. Keep context, routing, layout and pages separated. Use the dependency boundaries described by topic in Architecture.md rather than relying on its former section numbers.
+When extending AppContext, review whether the proposed state is genuinely global; do not duplicate page-local state across contexts. Keep context, routing, layout and pages separated. Use the dependency boundaries described by topic in `Architecture.md` rather than relying on its former section numbers.
 
-UI implementation continues to use Tailwind classes except where custom CSS is unavoidable, and icons are to be imported from lucide-react. The existing code's exceptions are recorded in design.md. Product hover/focus, image and responsive acceptance checks are in PRD.md section 13.
+UI implementation continues to use Tailwind classes except where custom CSS is unavoidable, and icons are to be imported from lucide-react. The existing code's exceptions are recorded in `design.md`. Product hover/focus, image and responsive acceptance checks are in `PRD.md` section 13.
 
 ### Required Architecture Style
 
-Follow the layered architecture defined in `Architecture.md`:
+Follow the layered architecture defined in [`Architecture.md`](Architecture.md):
 
 1. **Context Layer** — `AppContext.tsx` — role and program only
 2. **Routing Layer** — `App.tsx` and `ProtectedRoute.tsx` — public auth routes plus protected app routes
@@ -293,7 +293,7 @@ Follow the layered architecture defined in `Architecture.md`:
 - Store Three.js objects in refs — never in React state
 - Use the `three/addons/controls/OrbitControls.js` import path
 - Use Tailwind responsive prefixes for breakpoints — not JS checks
-- Implement card hover behavior according to `design.md`
+- Implement card hover behavior according to [`design.md`](design.md).
 - Use `useLocation().pathname` for active nav link detection
 - Guard all Three.js operations with null checks on refs and mountRef
 
@@ -317,7 +317,7 @@ Agents should implement in this order:
 2. `AppContext` (role + program state)
 3. Auth flow (`Login.tsx`, `Register.tsx`, JWT decoding, `ProtectedRoute.tsx`)
 4. `App.tsx` router
-5. `Layout.tsx` (nav shell, role/program display and controls following `design.md`)
+5. `Layout.tsx` (nav shell, role/program display and controls following [`design.md`](design.md))
 6. `Dashboard.tsx` (student + teacher views)
 7. `Videos.tsx`
 8. `Quizzes.tsx`

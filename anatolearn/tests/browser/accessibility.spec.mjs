@@ -9,7 +9,7 @@ async function audit(page, testInfo, label) {
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   await testInfo.attach(`${label}-axe`, { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
   if (testInfo.project.name === 'chrome' && label === 'student-dark-Dashboard') {
-    await page.screenshot({ path: 'docs/verification/playwright-dashboard-dark.png' });
+    await page.screenshot({ path: '../docs/verification/playwright-dashboard-dark.png' });
   }
   expect.soft(results.violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(n => ({ target: n.target, summary: n.failureSummary })) }))).toEqual([]);
 }
