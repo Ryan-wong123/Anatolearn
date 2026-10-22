@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import RequestState from '../components/RequestState';
+import { useResource } from '../hooks/useResource';
+import { useCallback } from 'react';
 import { Trophy, Activity, Box, Video, BookOpen, Heart, Play } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContextState';
@@ -35,53 +37,22 @@ interface FavoriteQuiz {
 export default function Dashboard() {
   const { role, program, user } = useAppContext();
 
-  const [modelCount, setModelCount] = useState<number | null>(null);
-  const [videoCount, setVideoCount] = useState<number | null>(null);
-  const [quizCount, setQuizCount] = useState<number | null>(null);
-
-  // Student stats
-  const [quizzesTaken, setQuizzesTaken] = useState<number>(0);
-  const [avgScore, setAvgScore] = useState<number | null>(null);
-
-  const [favoriteVideos, setFavoriteVideos] = useState<FavoriteVideo[]>([]);
-  const [favoriteQuizzes, setFavoriteQuizzes] = useState<FavoriteQuiz[]>([]);
-
-  useEffect(() => {
+  const fetchDashboard = useCallback(async () => {
     if (role === 'teacher') {
-      api.getModels()
-        .then((models) => setModelCount(models.length))
-        .catch((err) => console.error('Failed to load model count:', err));
-
-      api.getVideos()
-        .then((videos) => setVideoCount(videos.length))
-        .catch((err) => console.error('Failed to load video count:', err));
-
-      api.getQuizzes()
-        .then((quizzes) => setQuizCount(quizzes.length))
-        .catch((err) => console.error('Failed to load quiz count:', err));
+      const [models,videos,quizzes] = await Promise.all([api.getModels(),api.getVideos(),api.getQuizzes()]);
+      return { modelCount:models.length, videoCount:videos.length, quizCount:quizzes.length,
+        attempts:[] as AttemptSummary[], favoriteVideos:[] as FavoriteVideo[], favoriteQuizzes:[] as FavoriteQuiz[] };
     }
-
-    if (role === 'student') {
-      api.getMyAttempts()
-        .then((attempts: AttemptSummary[]) => {
-          setQuizzesTaken(attempts.length);
-
-          const graded = attempts.filter((a) => a.status === 'graded' && a.score != null);
-          if (graded.length > 0) {
-            const total = graded.reduce((sum, a) => sum + (a.score ?? 0), 0);
-            setAvgScore(Math.round(total / graded.length));
-          }
-        })
-        .catch((err) => console.error('Failed to load attempts:', err));
-
-      api.getFavorites()
-        .then((data: { videos: FavoriteVideo[]; quizzes: FavoriteQuiz[] }) => {
-          setFavoriteVideos(data.videos);
-          setFavoriteQuizzes(data.quizzes);
-        })
-        .catch((err) => console.error('Failed to load favorites:', err));
-    }
-  }, [role, program]);
+    const [attempts,favorites]: [AttemptSummary[],{videos:FavoriteVideo[];quizzes:FavoriteQuiz[]}] = await Promise.all([api.getMyAttempts(),api.getFavorites()]);
+    return { modelCount:null, videoCount:null, quizCount:null, attempts, favoriteVideos:favorites.videos, favoriteQuizzes:favorites.quizzes };
+  }, [role]);
+  const { data, loading, error:loadError, reload } = useResource(fetchDashboard, {
+    modelCount:null, videoCount:null, quizCount:null, attempts:[] as AttemptSummary[], favoriteVideos:[] as FavoriteVideo[], favoriteQuizzes:[] as FavoriteQuiz[],
+  }, program);
+  const {modelCount,videoCount,quizCount,favoriteVideos,favoriteQuizzes} = data;
+  const quizzesTaken = data.attempts.length;
+  const graded = data.attempts.filter((attempt) => attempt.status === 'graded' && attempt.score != null);
+  const avgScore = graded.length ? Math.round(graded.reduce((sum,attempt) => sum+(attempt.score ?? 0),0)/graded.length) : null;
 
   const teacherStats = [
     { label: 'Models Uploaded', value: modelCount === null ? '—' : String(modelCount), icon: Box, iconColor: 'text-blue-500 dark:text-blue-400' },
@@ -106,19 +77,20 @@ export default function Dashboard() {
         <p className="mt-1 text-slate-500 dark:text-slate-400 text-sm">{program} Program Overview</p>
       </div>
 
+      <RequestState loading={loading} error={loadError} onRetry={reload} label="dashboard" />
       <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
         {stats.map(({ label, value, icon: Icon, iconColor }) => (
           <div key={label} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5 flex items-center gap-4">
             <Icon className={`w-6 h-6 flex-shrink-0 ${iconColor}`} />
             <div>
               <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
-              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-display">{value}</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100 font-display">{loading || loadError ? '—' : value}</p>
             </div>
           </div>
         ))}
       </div>
 
-      {role === 'student' && (
+      {role === 'student' && !loading && !loadError && (
         <div className="mt-8">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
@@ -126,7 +98,7 @@ export default function Dashboard() {
             </h2>
             {favoriteVideos.length === 0 && favoriteQuizzes.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-6 text-center">
-                <p className="text-sm text-slate-400 dark:text-slate-500">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
                   No favourites yet. Tap the heart icon on a video or quiz to save it here.
                 </p>
               </div>
@@ -147,7 +119,7 @@ export default function Dashboard() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{video.title}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">Video</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Video</p>
                     </div>
                     <Heart className="w-4 h-4 fill-red-500 text-red-500 flex-shrink-0 ml-auto" />
                   </Link>
@@ -164,7 +136,7 @@ export default function Dashboard() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{quiz.title}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">Quiz{quiz.category ? ` · ${quiz.category}` : ''}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Quiz{quiz.category ? ` · ${quiz.category}` : ''}</p>
                     </div>
                     <Heart className="w-4 h-4 fill-red-500 text-red-500 flex-shrink-0 ml-auto" />
                   </Link>

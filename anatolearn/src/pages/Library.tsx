@@ -1,6 +1,8 @@
+import RequestState from '../components/RequestState';
+import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { FileText, ExternalLink, Upload, X, Search } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
@@ -29,7 +31,7 @@ export default function Library() {
   const { role, program } = useAppContext();
   const { toast } = useToast();
   const { confirm } = useConfirm();
-  const [resources, setResources] = useState<Resource[]>([]);
+
   const [resourceSearchTerm, setResourceSearchTerm] = useState('');
 
   const [showUpload, setShowUpload] = useState(false);
@@ -49,12 +51,8 @@ export default function Library() {
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const loadResources = useCallback(() => {
-    api.getResources(role === 'student')
-      .then(setResources)
-      .catch(() => toast('Could not load resources. Please try again.', 'error'));
-  }, [role, toast]);
-  useEffect(() => { loadResources(); }, [loadResources, program]);
+  const fetchResources = useCallback(() => api.getResources(role === 'student'), [role]);
+  const { data: resources, reload: loadResources, loading, error: loadError } = useResource<Resource[]>(fetchResources, [], program);
 
   const handleUpload = async () => {
     if (!uploadTitle.trim()) {
@@ -89,7 +87,7 @@ export default function Library() {
       toast('Resource uploaded successfully');
     } catch (err) {
       console.error('Failed to upload resource:', err);
-      setUploadError('Failed to upload resource. Please try again.');
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -147,7 +145,7 @@ export default function Library() {
       closeEditResource();
     } catch (err) {
       console.error('Failed to update resource:', err);
-      setEditError('Failed to save changes. Please try again.');
+      setEditError(err instanceof Error ? err.message : 'Failed to save changes. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -216,20 +214,21 @@ export default function Library() {
       </div>
 
       <div className="mt-4 relative">
-        <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+        <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           value={resourceSearchTerm}
           onChange={(e) => setResourceSearchTerm(e.target.value)}
           aria-label="Search resources"
             placeholder="Search resources by title or description..."
-          className="bg-white dark:bg-slate-900 w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 dark:focus:border-blue-300"
+          className="bg-white dark:bg-slate-900 w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 dark:focus:border-blue-300"
         />
       </div>
 
       <div className="mt-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-        {filteredResources.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400 dark:text-slate-500">
+        <RequestState loading={loading} error={loadError} onRetry={loadResources} label="resources" />
+      {!loading && !loadError && filteredResources.length === 0 ? (
+          <div className="py-12 text-center text-sm text-slate-600 dark:text-slate-400">
             {resourceSearchTerm ? 'No resources match your search.' : 'No resources uploaded yet.'}
           </div>
         ) : (
@@ -253,7 +252,7 @@ export default function Library() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                   {resource.description || 'No description provided.'}
                 </p>
               </div>
@@ -304,9 +303,9 @@ export default function Library() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
                 Upload Content
               </h2>
-              <button
+              <button aria-label="Close dialog"
                 onClick={closeUploadModal}
-                className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
+                className="p-1 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -314,13 +313,13 @@ export default function Library() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Content Type
-                </label>
+                </p>
                 <div className="mt-1 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setUploadMode('file')}
+                    aria-pressed={uploadMode === 'file'} onClick={() => setUploadMode('file')}
                     className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${uploadMode === 'file'
                         ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 text-blue-700 dark:text-blue-400'
                         : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -330,7 +329,7 @@ export default function Library() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setUploadMode('link')}
+                    aria-pressed={uploadMode === 'link'} onClick={() => setUploadMode('link')}
                     className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${uploadMode === 'link'
                         ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 text-blue-700 dark:text-blue-400'
                         : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -342,27 +341,27 @@ export default function Library() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="library-field-1" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="library-field-1"
                   type="text"
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="e.g. TeachMeAnatomy"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="library-field-2" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <textarea
+                <textarea id="library-field-2"
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
                   rows={2}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                   placeholder="Optional"
                 />
               </div>
@@ -370,13 +369,13 @@ export default function Library() {
               {uploadMode === 'file' ? (
                 <>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       File Type
-                    </label>
+                    </p>
                     <div className="mt-1 flex gap-2">
                       <button
                         type="button"
-                        onClick={() => setUploadFileType('pdf')}
+                        aria-pressed={uploadFileType === 'pdf'} onClick={() => setUploadFileType('pdf')}
                         className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${uploadFileType === 'pdf'
                             ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 text-blue-700 dark:text-blue-400'
                             : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -384,10 +383,10 @@ export default function Library() {
                       >
                         PDF
                       </button>
-                      <button type="button" onClick={() => setUploadFileType('image')} className={`flex-1 rounded-lg border p-2 text-sm ${uploadFileType==='image' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>Photo</button>
+                      <button type="button" aria-pressed={uploadFileType === 'image'} onClick={() => setUploadFileType('image')} className={`flex-1 rounded-lg border p-2 text-sm ${uploadFileType==='image' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>Photo</button>
                       <button
                         type="button"
-                        onClick={() => setUploadFileType('document')}
+                        aria-pressed={uploadFileType === 'document'} onClick={() => setUploadFileType('document')}
                         className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${uploadFileType === 'document'
                             ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 text-blue-700 dark:text-blue-400'
                             : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -399,17 +398,18 @@ export default function Library() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       File
-                    </label>
+                    </p>
                     <div className="mt-1 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                       <input
-                        type="file"
+                        aria-label="Resource file"
+                    type="file"
                         accept={uploadFileType === 'pdf' ? '.pdf' : uploadFileType === 'image' ? '.png,.jpg,.jpeg,.webp' : '.doc,.docx'}
                         onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                         className="bg-white dark:bg-slate-900 w-full text-sm text-slate-600 dark:text-slate-400"
                       />
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
                         Supported formats: PDF, DOC/DOCX, PNG, JPEG, WebP
                       </p>
                       {uploadFile && (
@@ -422,14 +422,14 @@ export default function Library() {
                 </>
               ) : (
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="library-field-3" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     URL
                   </label>
-                  <input
+                  <input id="library-field-3"
                     type="url"
                     value={uploadUrl}
                     onChange={(e) => setUploadUrl(e.target.value)}
-                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                     placeholder="https://example.com"
                   />
                 </div>
@@ -437,7 +437,7 @@ export default function Library() {
             </div>
 
             {uploadError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {uploadError}
               </p>
             )}
@@ -468,9 +468,9 @@ export default function Library() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
                 Edit Resource
               </h2>
-              <button
+              <button aria-label="Close dialog"
                 onClick={closeEditResource}
-                className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
+                className="p-1 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -478,10 +478,10 @@ export default function Library() {
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="library-field-4" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="library-field-4"
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
@@ -490,10 +490,10 @@ export default function Library() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="library-field-5" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <textarea
+                <textarea id="library-field-5"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
@@ -503,10 +503,10 @@ export default function Library() {
 
               {editingResource.resource_type === 'link' && (
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="library-field-6" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     URL
                   </label>
-                  <input
+                  <input id="library-field-6"
                     type="text"
                     value={editUrl}
                     onChange={(e) => setEditUrl(e.target.value)}
@@ -518,7 +518,7 @@ export default function Library() {
             </div>
 
             {editError && (
-              <p className="mt-3 text-xs text-red-600 dark:text-red-400">{editError}</p>
+              <p role="alert" className="mt-3 text-xs text-red-600 dark:text-red-400">{editError}</p>
             )}
 
             <div className="mt-6 flex items-center justify-between">

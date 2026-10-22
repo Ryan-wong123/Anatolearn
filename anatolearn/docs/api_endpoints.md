@@ -87,11 +87,20 @@ Returns videos. Optional query param `?published=true` filters to `is_published 
 ### `GET /api/videos/:id`
 Returns a single video. 404 if not found.
 
-### `POST /api/videos/upload` (added 15 Jul 2026)
-Multipart form upload (`multipart/form-data`, not JSON). Fields: `video` (file, required — `.mp4`/`.webm` only, 200MB limit), `title` (required), `description` (optional), `program_id` (optional). Saves the file to `PUBLIC_DIR/videos/` with a generated unique filename (`video-<uuid>.<ext>`), creates a `videos` row with `is_published: false`. Returns the created video record. 400 if no file, wrong format, or missing title.
+### `POST /api/videos/upload`
+Teacher-only multipart form upload. Fields: `video` (required, MP4/WebM, 200 MiB), optional `captions` (English WebVTT `.vtt`, UTF-8, starts with `WEBVTT`, maximum 2 MiB), `title` (required), optional `description` and `program_id`. Files receive generated UUID names under `PUBLIC_DIR/videos/` and `PUBLIC_DIR/captions/`; the new video is unpublished and returns `captions_path` (null if omitted). Validation/database failures remove newly uploaded files.
+
+### `POST /api/videos/:id/captions`
+Teacher-only multipart form with exactly one `captions` WebVTT file (UTF-8, `.vtt`, maximum 2 MiB). Replaces the existing track and returns the updated video record. Rejects malformed files with 400 and missing videos with 404. The replaced caption file is removed after the database update.
+
+### `DELETE /api/videos/:id/captions`
+Teacher-only. Removes the track from the video and returns the updated record (`captions_path: null`). A video without captions is a successful no-op. 404 if the video does not exist.
+
+### `GET /captions/:filename`
+Authenticated asset route, not public static hosting. Access follows the owning video’s visibility and programme policy, so students can load tracks only for accessible published videos; teachers can preview draft tracks. Serves private/no-store WebVTT with nosniff protections.
 
 ### `DELETE /api/videos/:id` (added 15 Jul 2026)
-Deletes a video's database row. 404 if not found. **Does not delete the underlying file from disk** — only removes the database record. Worth flagging as a known gap if disk space becomes a concern.
+Deletes a video's database row. 404 if not found. As with video/media assets, deleting the row does not currently garbage-collect the underlying files.
 
 ### `PATCH /api/videos/:id/publish` (added 15 Jul 2026)
 Body: `{ is_published: boolean }`. Toggles publish state, same pattern as the quiz equivalent. 404 if not found.
@@ -269,3 +278,10 @@ Model upload adds USDZ and validates GLB/glTF/OBJ/USDZ headers/content structure
 Login retains `{token,user}` and the media cookie, adding a UUID `sid` JWT claim backed by auth_sessions. Authenticated API and asset requests require an unrevoked, unexpired stored session; current role/programme are read from users. Tokens without sid require re-login. Logout revokes the presented bearer/cookie session and clears its cookie; repeating logout with an invalid/expired token still clears the cookie. Other sessions remain signed in.
 
 `POST /api/quizzes/:id/start` additionally returns `server_now` and `session_expires_at`. The UI uses server_now to correct clock offset. `expires_at` remains the optional assessment timer; the independent lease prevents abandoned untimed sessions from lasting indefinitely. Submission returns 409 after either the lease or timed deadline plus ten seconds. Question edits stay blocked during this transport grace. Maintenance closes expired sessions and later removes closed session records, without deleting historical attempts/answers.
+
+
+## Frontend error handling update — 22 October 2026
+
+Server routes and request/response schemas are unchanged. The browser API layer now throws `ApiError` with a client-side `status` field (0 for a connection failure). Non-empty 4xx JSON messages are preserved for validation/permissions; 5xx diagnostics, non-JSON errors and malformed successful JSON produce readable fallback messages. Login preserves the generic invalid-credentials message for 401 and separately reports service/network failures. JSON and binary requests share protected-401 identity cleanup and the session-expired event.
+
+Try again on a page/status panel repeats only its read operation. It does not replay uploads, submissions, grading or destructive actions. Teacher finalization/discard and bank refresh failures remain visible in the editor. Video metadata and media playback have separate retry controls.

@@ -111,6 +111,7 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 | Define label position on model | ✗ | ✓ |
 | Link label to video | ✗ | ✓ |
 | Upload animated videos | ✗ | ✓ |
+| Upload English captions for videos | ✗ | ✓ |
 | Create, edit, delete quiz questions | ✗ | ✓ |
 | Manage question bank | ✗ | ✓ |
 | Configure quiz timer | ✗ | ✓ |
@@ -175,6 +176,7 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 | FR-33 | The system shall validate uploaded 3D model files against supported file formats before storage. | 
 | FR-34 | The system shall allow teachers to preview uploaded 3D models before publishing them to students. | 
 | FR-35 | The system shall allow teachers to upload bite-sized animated videos. | 
+| FR-35a | The system shall allow teachers to provide optional English WebVTT captions for videos and allow learners to view those captions using native playback controls. |
 | FR-36 | The system shall allow teachers to create, edit, and delete body-part labels. | 
 | FR-37 | The system shall allow teachers to define and modify the position of labels on the 3D model. | 
 | FR-38 | The system shall store label positioning data associated with individual 3D models. | 
@@ -235,6 +237,8 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 | NFR-7 | The system shall load standard-sized 3D models within an acceptable response time under normal network conditions. | 
 | NFR-8 | The system shall support concurrent access by multiple student users during teaching sessions. | 
 | NFR-9 | The system shall provide responsive playback for animated educational videos. | 
+| NFR-9a | Video playback shall expose any teacher-supplied caption track through native player controls. |
+| NFR-29 | Text and interactive controls shall maintain readable contrast in light and dark themes, including on translucent viewer panels. |
 | NFR-10 | The system shall be designed to minimise 3D model loading latency through appropriate database structure and storage optimisation. | 
 
 ### 8.3 Security and Access Control

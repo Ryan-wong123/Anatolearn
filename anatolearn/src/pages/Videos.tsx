@@ -1,6 +1,8 @@
+import RequestState from '../components/RequestState';
+import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Search, Play, Upload, X, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContextState';
@@ -14,6 +16,7 @@ interface Video {
   title: string;
   description: string | null;
   video_path: string;
+  captions_path: string | null;
   thumbnail_path: string | null;
   is_published: boolean;
   annotation_id: number | null;
@@ -33,13 +36,14 @@ export default function Videos() {
   const { confirm } = useConfirm();
   const navigate = useNavigate();
 
-  const [videos, setVideos] = useState<Video[]>([]);
+
   const [search, setSearch] = useState('');
   const [showUpload, setShowUpload] = useState(false);
 
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadCaptions, setUploadCaptions] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -47,32 +51,28 @@ export default function Videos() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editAnnotationId, setEditAnnotationId] = useState<string>('');
+  const [editCaptions, setEditCaptions] = useState<File | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
   // Task 7.6 — populated once, teacher-only (the endpoint itself is
   // teacher-gated too, so this just avoids firing a request that would 403
   // for a student viewing this page).
-  const [annotationOptions, setAnnotationOptions] = useState<AnnotationOption[]>([]);
+
 
   // Students only — which video ids are currently favorited, so the heart
   // icon on each card can render filled/unfilled.
-  const [favoritedVideoIds, setFavoritedVideoIds] = useState<Set<number>>(new Set());
 
-  useEffect(() => {
-    if (role !== 'teacher') return;
-    api.getAllAnnotations()
-      .then(setAnnotationOptions)
-      .catch((err) => console.error('Failed to load annotations for linking:', err));
-  }, [role, program]);
 
-  useEffect(() => {
-    if (role !== 'student') return;
-    api.getFavorites()
-      .then((data: { videos: { id: number }[] }) => {
-        setFavoritedVideoIds(new Set(data.videos.map((v) => v.id)));
-      })
-      .catch((err) => console.error('Failed to load favorites:', err));
-  }, [role, program]);
+  const fetchAnnotations = useCallback(() => role === 'teacher' ? api.getAllAnnotations() : Promise.resolve([]), [role]);
+  const annotations = useResource<AnnotationOption[]>(fetchAnnotations, [], program);
+  const annotationOptions = annotations.data;
+  const fetchFavorites = useCallback(async () => {
+    if (role !== 'student') return new Set<number>();
+    const data:{videos:{id:number}[]} = await api.getFavorites();
+    return new Set(data.videos.map((video) => video.id));
+  }, [role]);
+  const favorites = useResource<Set<number>>(fetchFavorites, new Set(), program);
+  const {data:favoritedVideoIds,setData:setFavoritedVideoIds} = favorites;
 
   const toggleFavorite = async (video: Video, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -95,16 +95,8 @@ export default function Videos() {
     }
   };
 
-  const loadVideos = () => {
-    api.getVideos(role === 'student')
-      .then(setVideos)
-      .catch(() => toast('Could not load videos. Please try again.', 'error'));
-  };
-
-  useEffect(() => {
-    loadVideos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, program]);
+  const fetchVideos = useCallback(() => api.getVideos(role === 'student'), [role]);
+  const { data: videos, reload: loadVideos, loading, error: loadError } = useResource<Video[]>(fetchVideos, [], program);
 
   const filtered = videos.filter((v) =>
     v.title.toLowerCase().includes(search.toLowerCase())
@@ -127,13 +119,14 @@ export default function Videos() {
         title: uploadTitle,
         description: uploadDescription || undefined,
         file: uploadFile,
+        captions: uploadCaptions ?? undefined,
       });
       loadVideos();
       closeUploadModal();
       toast('Video uploaded successfully');
     } catch (err) {
       console.error('Failed to upload video:', err);
-      setUploadError('Failed to upload video. Please try again.');
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -144,6 +137,7 @@ export default function Videos() {
     setUploadTitle('');
     setUploadDescription('');
     setUploadFile(null);
+    setUploadCaptions(null);
     setUploadError(null);
   };
 
@@ -185,6 +179,7 @@ export default function Videos() {
     setEditTitle(video.title);
     setEditDescription(video.description || '');
     setEditAnnotationId(video.annotation_id ? String(video.annotation_id) : '');
+    setEditCaptions(null);
     setEditError(null);
   };
 
@@ -193,7 +188,23 @@ export default function Videos() {
     setEditTitle('');
     setEditDescription('');
     setEditAnnotationId('');
+    setEditCaptions(null);
     setEditError(null);
+  };
+
+  const handleSaveCaptions = async () => {
+    if (!editingVideo) return;
+    try {
+      const updated = editCaptions
+        ? await api.uploadVideoCaptions(editingVideo.id, editCaptions)
+        : await api.removeVideoCaptions(editingVideo.id);
+      setEditingVideo({ ...editingVideo, captions_path: updated.captions_path });
+      setEditCaptions(null);
+      loadVideos();
+      toast(editCaptions ? 'Captions updated' : 'Captions removed');
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Could not update captions.');
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -215,7 +226,7 @@ export default function Videos() {
       toast('Video updated');
     } catch (err) {
       console.error('Failed to update video:', err);
-      setEditError('Failed to save changes. Please try again.');
+      setEditError(err instanceof Error ? err.message : 'Failed to save changes. Please try again.');
     }
   };
 
@@ -244,7 +255,7 @@ export default function Videos() {
 
       <div className="mt-6 mb-6 flex gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             aria-label="Search videos"
@@ -256,6 +267,8 @@ export default function Videos() {
         </div>
       </div>
 
+      <RequestState loading={false} error={role === 'teacher' ? annotations.error : favorites.error} onRetry={role === 'teacher' ? annotations.reload : favorites.reload} label={role === 'teacher' ? 'annotation links' : 'video favourites'} />
+      <RequestState loading={loading} error={loadError} onRetry={loadVideos} label="videos" />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((video) => (
           <div
@@ -287,13 +300,14 @@ export default function Videos() {
                 <button
                   onClick={(e) => toggleFavorite(video, e)}
                   className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 dark:bg-slate-900/90 flex items-center justify-center hover:bg-white dark:hover:bg-slate-900 transition-colors"
-                  title={favoritedVideoIds.has(video.id) ? 'Remove from favourites' : 'Save to favourites'}
+                  disabled={favorites.loading || Boolean(favorites.error)}
+                    title={favoritedVideoIds.has(video.id) ? 'Remove from favourites' : 'Save to favourites'}
                 >
                   <Heart
                     className={`w-4 h-4 ${
                       favoritedVideoIds.has(video.id)
                         ? 'fill-red-500 text-red-500'
-                        : 'text-slate-400 dark:text-slate-500'
+                        : 'text-slate-600 dark:text-slate-400'
                     }`}
                   />
                 </button>
@@ -340,8 +354,8 @@ export default function Videos() {
           </div>
         ))}
 
-        {filtered.length === 0 && (
-          <div className="col-span-3 text-center py-12 text-slate-400 dark:text-slate-500 text-sm">
+        {!loading && !loadError && filtered.length === 0 && (
+          <div className="col-span-3 text-center py-12 text-slate-600 dark:text-slate-400 text-sm">
             No videos found.
           </div>
         )}
@@ -354,9 +368,9 @@ export default function Videos() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
                 Upload Video
               </h2>
-              <button
+              <button aria-label="Close dialog"
                 onClick={closeUploadModal}
-                className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
+                className="p-1 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -364,43 +378,44 @@ export default function Videos() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="videos-field-1" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="videos-field-1"
                   type="text"
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="e.g. Introduction to the Muscular System"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="videos-field-2" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <textarea
+                <textarea id="videos-field-2"
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
                   rows={3}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                   placeholder="Optional"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Video File
-                </label>
+                </p>
                 <div className="mt-1 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <input
+                    aria-label="Video file"
                     type="file"
                     accept=".mp4,.webm"
                     onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                     className="bg-white dark:bg-slate-900 w-full text-sm text-slate-600 dark:text-slate-400"
                   />
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
                     Supported formats: .mp4, .webm
                   </p>
                   {uploadFile && (
@@ -410,10 +425,15 @@ export default function Videos() {
                   )}
                 </div>
               </div>
+              <div>
+                <label htmlFor="videos-captions-upload" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">English captions (optional)</label>
+                <input id="videos-captions-upload" aria-describedby="videos-captions-help" type="file" accept=".vtt,text/vtt" onChange={(e) => setUploadCaptions(e.target.files?.[0] || null)} className="mt-1 w-full text-sm text-slate-600 dark:text-slate-400" />
+                <p id="videos-captions-help" className="mt-1 text-xs text-slate-600 dark:text-slate-400">WebVTT (.vtt), up to 2 MiB. Captions are recommended for every spoken video.</p>
+              </div>
             </div>
 
             {uploadError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {uploadError}
               </p>
             )}
@@ -446,34 +466,35 @@ export default function Videos() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="videos-field-3" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="videos-field-3"
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="videos-field-4" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <textarea
+                <textarea id="videos-field-4"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="videos-field-5" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Linked Annotation
                 </label>
-                <select
+                <select id="videos-field-5"
+                  disabled={annotations.loading || Boolean(annotations.error)}
                   value={editAnnotationId}
                   onChange={(e) => setEditAnnotationId(e.target.value)}
                   className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
@@ -485,14 +506,22 @@ export default function Videos() {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                   When linked, this video is available to play from that annotation in the 3D Viewer.
                 </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                <label htmlFor="videos-edit-captions" className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">English captions</label>
+                <input id="videos-edit-captions" aria-describedby="videos-edit-captions-help" type="file" accept=".vtt,text/vtt" onChange={(e) => setEditCaptions(e.target.files?.[0] || null)} className="mt-1 w-full text-sm text-slate-600 dark:text-slate-400" />
+                <p id="videos-edit-captions-help" className="mt-1 text-xs text-slate-600 dark:text-slate-400">{editingVideo.captions_path ? 'Captions are attached. Choose a file to replace them, or remove them below.' : 'No captions attached. Upload an English WebVTT file up to 2 MiB.'}</p>
+                <div className="mt-2 flex gap-3">
+                  <button type="button" disabled={!editCaptions && !editingVideo.captions_path} onClick={handleSaveCaptions} className="text-xs font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50">{editCaptions ? 'Save captions' : 'Remove captions'}</button>
+                </div>
               </div>
             </div>
 
             {editError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {editError}
               </p>
             )}

@@ -399,21 +399,4 @@ interface NavItem {
 }
 ```
 
----
 
-### Three.js Implementation Checklist
-
-Before marking the Viewer task done, verify:
-
-- [ ] Scene, camera, renderer, controls, and meshes stored in refs (not state)
-- [ ] All created inside a single `useEffect`
-- [ ] Resize handler added to `window` inside effect, removed in cleanup
-- [ ] Click handler added to `mountRef.current` inside effect, removed in cleanup
-- [ ] Renderer DOM element removed from `mountRef.current` in cleanup
-- [ ] All geometries disposed in cleanup
-- [ ] All materials disposed in cleanup
-- [ ] `renderer.dispose()` called in cleanup
-- [ ] `requestAnimationFrame` loop does not call `setState`
-- [ ] `OrbitControls` imported from `three/addons/controls/OrbitControls.js`
-
----

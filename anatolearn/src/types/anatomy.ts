@@ -153,6 +153,7 @@ export interface LinkedVideo {
   id: number;
   title: string;
   video_path: string;
+  captions_path?: string | null;
   annotation_id: number | null;
 }
 

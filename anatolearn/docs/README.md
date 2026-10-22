@@ -63,7 +63,7 @@ The PostgreSQL service creates the `anatolearn` database automatically and runs 
 
 - `001_schema.sql`
 - `002_seed.sql`
-- `003_add_users.sql` through `009_session_lifecycle.sql`
+- `003_add_users.sql` through `010_video_captions.sql`
 
 These scripts are mounted read-only into `/docker-entrypoint-initdb.d`, which the official PostgreSQL image runs only when the database volume is empty. If a local `postgres_data` volume already exists, Docker keeps the existing database and does not rerun the init scripts. For a clean development reset:
 
@@ -162,6 +162,8 @@ Login now sets an HttpOnly media cookie as well as returning the existing bearer
 
 Supported uploads: GLB, embedded glTF, OBJ geometry and USDZ models; MP4/WebM video; PDF/DOC/DOCX and PNG/JPEG/WebP materials. Convert multi-file glTF or Unreal UASSET to GLB before upload. Model parser coverage and limitations are documented in [3d_model_tools.md](3d_model_tools.md); storage policy is in [storage_structure.md](storage_structure.md).
 
+Teachers can attach an optional English WebVTT (`.vtt`, UTF-8, up to 2 MiB) caption file during video upload or add/replace/remove it from Edit Video. Learners get a native caption track on standalone playback and linked-video playback. Existing databases must apply migration 010 before the updated backend starts; no data-volume reset is needed.
+
 Teachers save a quiz question to the bank, search/edit its body-system category and import copies into new quizzes. Timed student attempts use server-created sessions; submission/grading are transactional. Existing attempts/active sessions protect quiz questions from modification; create a revised quiz instead. View Results includes graded and pending attempts, and students can review their own answers from history.
 
 ```powershell
@@ -182,6 +184,7 @@ Existing databases must apply `backend/sql/009_session_lifecycle.sql` after 008 
 
 ```powershell
 Get-Content backend/sql/009_session_lifecycle.sql | docker compose exec -T postgres psql -U anatolearn -d anatolearn -v ON_ERROR_STOP=1
+Get-Content backend/sql/010_video_captions.sql | docker compose exec -T postgres psql -U anatolearn -d anatolearn -v ON_ERROR_STOP=1
 docker compose exec -T backend npm run maintenance
 .\ops\Backup.ps1 -VerifyRestore
 ```
@@ -202,3 +205,34 @@ Run `docker compose exec -T frontend npm run test:viewer` for numeric framing, a
 For isolated browser checks, run `docker compose exec -T backend node tests/viewer-fixture.js`. It prints disposable teacher/student account identifiers (password `Testing123`) and model IDs. The glTF contains two transformed meshes with an embedded checker texture; the fixture includes a linked point/video and saved projected region. Use `docker compose exec -T backend node tests/viewer-fixture.js cleanup` afterward; cleanup removes only recorded fixture IDs/files and generated thumbnails. A pre-existing fixture manifest must be cleaned before another is created. No production seed or teaching record is changed by setup/cleanup.
 
 Viewer callbacks stay current through Effect Events; model metadata updates preserve the live canvas. Loading/error states and annotation form feedback are visible. Reset handles damping, default framing fits portrait views and the canvas tracks container resizing. Browser/GPU limits are recorded in testing_log.md.
+
+
+## Accessibility and recovery verification
+
+Docker Desktop can run the app with `docker compose up -d` from this directory. All three development services were running again at the end of this pass. Use `docker compose exec -T frontend npm run test:api` for client error handling and protected download/session regressions, alongside build/lint and existing viewer/model suites.
+
+Main pages now show separate loading, failure/retry and successful-empty states. Dashboard, list and supporting history/favourite reads ignore responses from superseded programme/filter requests. Login distinguishes server outages from invalid credentials; protected download 401s clear expired identity too. Registration waits for available programme choices before submitting; teacher self-registration and assigned-programme/shared student access remain unchanged.
+
+Keyboard users can skip navigation, use the compact menu with Escape, complete named authoring fields and stay within modal dialogs. Background interaction/scrolling is blocked while a modal is open. Read failures persist until retried; quiz draft finalize/discard failures remain visible instead of closing the editor. See testing_log.md for actual verification, including a controlled backend stop/start and keyboard-only quiz submission. The saved error/retry screenshot deliberately shows the simulated outage, not the current service state.
+
+
+Screen-reader and browser acceptance procedures, current environment limits and an explicit evidence matrix are maintained in [accessibility_compatibility.md](accessibility_compatibility.md). Titles, route status, auth landmarks and annotation selection/expansion semantics have additional Chromium accessibility-tree checks. An accessibility tree does not establish actual spoken output or Firefox/Safari compatibility.
+
+
+## Automated browser and accessibility checks
+
+The host-side Playwright suite runs against the local Docker app; Node 22+ and Docker CLI access are required. From `anatolearn/`, install with `npm ci`. In PowerShell install the additional engines into the ignored project directory:
+
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $PWD '.playwright-browsers'
+npx playwright install firefox webkit
+docker compose up -d
+npm run test:browser
+npm run test:browser:summary
+```
+
+Chrome and Edge projects use the installed stable browser channels. `npm run test:browser -- --project=firefox` selects one project; `npm run test:browser:report` opens the HTML report. Tests create disposable teacher/student accounts and published model/quiz/video fixtures through the local backend fixture script, then remove only the recorded fixture in global teardown. Runs use one worker to avoid sharing a student's live quiz session concurrently. A pre-existing backend fixture prevents setup. After an interrupted run, `node -e "import('./tests/browser/teardown.mjs').then(m=>m.default())"` performs ownership-checked cleanup using the ignored local manifest; retain it until cleanup succeeds.
+
+The suite checks auth semantics, five sections for both roles in both themes, modal focus/isolation, compact navigation, viewer annotation/video interaction, keyboard quiz submission/results and simulated read failure/retry. Axe reports use WCAG 2 A/AA and 2.1 A/AA tags. Reports include incomplete/manual-review findings as well as violations; passing automated checks is not complete accessibility certification. WebKit is an engine check, not an actual Safari/VoiceOver run. Test traces may contain temporary authentication data: generated binaries, manifests and reports are ignored by Git/Docker, excluded from lint and Vite polling, and denied by Vite. Do not publish raw traces.
+
+The summary command writes a sanitized, shareable outcome to `docs/verification/browser-accessibility-summary.json`, without raw page HTML, request headers or authentication traces. It retains explicit skipped/limited checks and axe manual-review rule IDs.

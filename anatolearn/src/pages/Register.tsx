@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import RequestState from '../components/RequestState';
+import { useResource } from '../hooks/useResource';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
@@ -15,28 +17,22 @@ type Program = {
 export default function Register() {
   const navigate = useNavigate();
 
-  const [programs, setPrograms] = useState<Program[]>([]);
+  const { data:programs, loading:programsLoading, error:programsError, reload:reloadPrograms } = useResource<Program[]>(api.getPrograms, []);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<Role>('student');
   const [programId, setProgramId] = useState<string>('');
+  const selectedProgramId = programId || (programs[0] ? String(programs[0].id) : '');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    api.getPrograms()
-      .then((data: Program[]) => {
-        setPrograms(data);
-        if (data.length > 0) setProgramId(String(data[0].id));
-      })
-      .catch((err) => console.error('Failed to load programs:', err));
-  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (programsLoading || programsError || !selectedProgramId) { setError('Choose an available programme before creating your account.'); return; }
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters');
@@ -61,7 +57,7 @@ export default function Register() {
         email,
         password,
         role,
-        program_id: programId ? Number(programId) : undefined,
+        program_id: selectedProgramId ? Number(selectedProgramId) : undefined,
       });
       navigate('/login');
     } catch (err) {
@@ -72,7 +68,7 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-800 flex items-center justify-center px-4">
+    <main aria-label="Create account" className="min-h-screen bg-slate-50 dark:bg-slate-800 flex items-center justify-center px-4">
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm w-full max-w-md p-8">
         <div className="flex flex-col items-center mb-6">
           <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mb-3">
@@ -86,18 +82,20 @@ export default function Register() {
           </p>
         </div>
 
+        <RequestState loading={programsLoading} error={programsError} onRetry={reloadPrograms} label="programmes" />
+        {!programsLoading && !programsError && programs.length === 0 && <p role="alert" className="mb-3 text-sm text-red-600">No programmes are available. Contact your teacher before registering.</p>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Full name
             </label>
             <input
-              id="name"
+              autoComplete="name" id="name"
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
               placeholder="Jane Tan"
             />
           </div>
@@ -107,12 +105,12 @@ export default function Register() {
               Email
             </label>
             <input
-              id="email"
+              autoComplete="email" id="email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
               placeholder="you@example.com"
             />
           </div>
@@ -122,17 +120,18 @@ export default function Register() {
               Password
             </label>
             <input
-              id="password"
+              autoComplete="new-password" id="password"
+              aria-describedby="password-requirements"
               type="password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
               placeholder="At least 8 characters"
             />
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-              Must contain at least one uppercase letter and one number
+            <p id="password-requirements" className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+              Use at least 8 characters, including one uppercase letter and one number.
             </p>
           </div>
 
@@ -141,12 +140,12 @@ export default function Register() {
               Confirm password
             </label>
             <input
-              id="confirmPassword"
+              autoComplete="new-password" id="confirmPassword"
               type="password"
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
               placeholder="Re-enter your password"
             />
           </div>
@@ -171,8 +170,9 @@ export default function Register() {
               Program
             </label>
             <select
+              disabled={programsLoading || Boolean(programsError)}
               id="program"
-              value={programId}
+              value={selectedProgramId}
               onChange={(e) => setProgramId(e.target.value)}
               className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
             >
@@ -185,14 +185,14 @@ export default function Register() {
           </div>
 
           {error && (
-            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
               {error}
             </p>
           )}
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || programsLoading || Boolean(programsError) || !selectedProgramId}
             className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {isSubmitting ? 'Creating account…' : 'Create account'}
@@ -206,6 +206,6 @@ export default function Register() {
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   );
 }

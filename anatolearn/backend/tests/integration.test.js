@@ -11,8 +11,9 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
   await new Promise((resolve)=>server.once('listening',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
   const stamp=`qa-${Date.now()}`;
-  const userIds=[],modelIds=[],quizIds=[],bankIds=[],resourceIds=[];
+  const userIds=[],modelIds=[],quizIds=[],bankIds=[],resourceIds=[],videoIds=[];
   let filePath;
+  const captionPaths=[];
   async function call(path,token,body,method=body?'POST':'GET',cookie){
     const response=await fetch(base+path,{method,headers:{...(token?{Authorization:`Bearer ${token}`}:{ }),...(cookie?{Cookie:cookie}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
     return response;
@@ -55,6 +56,23 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call(model.file_path,other.token)).status,404);
       assert.equal((await call(`/api/models/${model.id}`,other.token)).status,404);
       assert.equal((await call(`/api/models/${model.id}/thumbnail`,student.token,{thumbnailDataUrl:'bad'},'PATCH')).status,403);
+    });
+    const captionFile=`/captions/${stamp}.vtt`;
+    captionPaths.push(captionFile);
+    await fs.mkdir(require('path').dirname(storage.resolveAsset(captionFile)),{recursive:true});
+    await fs.writeFile(storage.resolveAsset(captionFile),'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nA spoken line.\n');
+    const video=(await pool.query('INSERT INTO videos(title,video_path,captions_path,is_published,program_id) VALUES($1,$2,$3,true,1) RETURNING id',[stamp,`/videos/${stamp}.mp4`,captionFile])).rows[0];videoIds.push(video.id);
+    await t.test('caption tracks stay authenticated and respect owning video programme access',async()=>{
+      assert.equal((await call(captionFile)).status,401);
+      assert.equal((await call(captionFile,student.token)).status,200);
+      assert.match(await(await call(captionFile,student.token)).text(),/WEBVTT/);
+      assert.equal((await call(captionFile,other.token)).status,404);
+      assert.equal((await call(`/api/videos/${video.id}/captions`,student.token,null,'DELETE')).status,403);
+      const form=new FormData();form.append('captions',new Blob(['WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nUpdated cue\n']),`${stamp}.vtt`);
+      const replaced=await fetch(base+`/api/videos/${video.id}/captions`,{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:form});
+      assert.equal(replaced.status,200);const updated=await replaced.json();assert.notEqual(updated.captions_path,captionFile);captionPaths.push(updated.captions_path);
+      assert.match(await(await call(updated.captions_path,student.token)).text(),/Updated cue/);
+      assert.equal((await call(`/api/videos/${video.id}/captions`,teacher.token,null,'DELETE')).status,200);
     });
     await t.test('publication is enforced without query filters and downloads require teacher permission',async()=>{
       assert.equal((await call(`/api/models/${model.id}/download`,student.token)).status,403);
@@ -165,8 +183,10 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
     await pool.query('DELETE FROM quizzes WHERE id=ANY($1::int[])',[quizIds]);
     await pool.query('DELETE FROM question_bank WHERE id=ANY($1::int[])',[bankIds]);
     await pool.query('DELETE FROM resources WHERE id=ANY($1::int[])',[resourceIds]);
+    await pool.query('DELETE FROM videos WHERE id=ANY($1::int[])',[videoIds]);
     await pool.query('DELETE FROM users WHERE id=ANY($1::int[])',[userIds]);
     if(filePath)await fs.unlink(filePath).catch(()=>{});
+    for(const asset of captionPaths)await fs.unlink(storage.resolveAsset(asset)).catch(()=>{});
     await new Promise((resolve)=>server.close(resolve));await pool.end();
   }
 });

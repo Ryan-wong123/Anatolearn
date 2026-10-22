@@ -43,4 +43,11 @@ async function validateResource(file,type) {
     : type==='image' && ((ext==='.png' && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'))) || (['.jpg','.jpeg'].includes(ext) && bytes.subarray(0,3).equals(Buffer.from('ffd8ff','hex'))) || (ext==='.webp' && bytes.subarray(0,4).toString()==='RIFF' && bytes.subarray(8,12).toString()==='WEBP'));
   if (!matches) throw Object.assign(new Error('The file contents do not match the selected PDF, document or photo format'),{status:400});
 }
-module.exports={ROOT,resolveAsset,readAsset,validateModel,referencesAsset,validateResource};
+async function validateCaptions(file) {
+  if (file.size > 2 * 1024 * 1024) throw Object.assign(new Error('Caption files must be 2 MiB or smaller'),{status:400});
+  const bytes=await fs.readFile(file.path);
+  const text=bytes.toString('utf8').replace(/^\uFEFF/, '');
+  if (text.includes('\u0000') || !/^WEBVTT(?:[ \t].*)?(?:\r?\n|$)(?:[\s\S]*)$/.test(text))
+    throw Object.assign(new Error('Caption file must be a UTF-8 WebVTT (.vtt) file starting with WEBVTT'),{status:400});
+}
+module.exports={ROOT,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateCaptions};

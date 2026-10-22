@@ -111,6 +111,7 @@ Full CRUD, publish toggle, search (`?q=`), and system/part filtering are all bui
 | is_published | boolean | not null, default false |
 | annotation_id | integer, nullable | references annotations.id, ON DELETE SET NULL — **added 20 Jul 2026** |
 | created_at | timestamp | default CURRENT_TIMESTAMP |
+| captions_path | text, nullable | English WebVTT track path; added by `010_video_captions.sql` |
 
 ---
 

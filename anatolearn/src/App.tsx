@@ -4,6 +4,7 @@ import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './context/ToastContext';
 import { ConfirmProvider } from './context/ConfirmContext';
 import Layout from './components/Layout';
+import RouteAnnouncement from './components/RouteAnnouncement';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -21,6 +22,7 @@ export default function App() {
       <ToastProvider>
       <ConfirmProvider>
       <BrowserRouter>
+        <RouteAnnouncement />
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />

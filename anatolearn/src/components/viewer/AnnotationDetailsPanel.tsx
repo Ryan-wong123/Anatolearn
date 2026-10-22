@@ -43,15 +43,15 @@ export default function AnnotationDetailsPanel({
       initialPosition={{ x: 9999, y: 390 }}
       className="w-80 max-w-[calc(100%-3rem)]"
     >
-      <div className="rounded-xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95">
+      <div role="region" aria-label={`Annotation details: ${annotation.label}`} className="rounded-xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95">
         <div className="mb-3 flex cursor-move items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
             <h2 className="font-display font-semibold text-slate-900 dark:text-slate-100">{annotation.label}</h2>
-            <p className="mt-1 text-xs uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
               {annotationTypeLabel(annotation)}
             </p>
           </div>
-          <span className="text-xs text-slate-400 dark:text-slate-500">Drag</span>
+          <span className="text-xs text-slate-600 dark:text-slate-400">Drag</span>
         </div>
 
         <p className="max-h-40 overflow-y-auto text-sm text-slate-600 dark:text-slate-400">

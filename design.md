@@ -136,7 +136,7 @@ Numbered canvas hotspots identify annotations. On selection/hover, the visual an
 
 The form contains label and description; projected region forms include a native fill color picker, and both projection forms include an opacity slider (5–100%, 5% steps). Save/Cancel disable during saving. Some viewer validation/persistence feedback uses native alert dialogs rather than themed toast/confirmation UI.
 
-Linked videos open in a centered max-w-2xl modal over an 80% slate backdrop, with native controls and autoplay. The header/body now use the app’s light/dark surface and text variants. Invalid IDs and model API failures have visible status/error messages; model asset-load failures display an error message. The viewer loads GLB/glTF, OBJ and USDZ; unsupported Unreal assets require export before upload.
+Linked videos open in a centered max-w-2xl modal over an 80% slate backdrop, with native controls and autoplay after the user activates the explicit Watch action. The header/body now use the app’s light/dark surface and text variants. Invalid IDs and model API failures have visible status/error messages; model asset-load failures display an error message. The viewer loads GLB/glTF, OBJ and USDZ; unsupported Unreal assets require export before upload.
 
 ## 10. Videos and playback
 
@@ -146,7 +146,9 @@ The thumbnail region is 176px tall. Missing artwork shows a white circular play 
 
 Upload accepts MP4/WebM in a dashed bordered file area within a modal. Editing includes a linked-annotation dropdown, formatted as model title — annotation label. There is no video category filter in the current page.
 
-`/videos/:videoId` uses a max-w-5xl layout with Back to Videos, a rounded bordered player card, black native video surface, autoplay, and p-6 title/description. Both direct playback and viewer-modal playback use native browser controls rather than a custom control bar.
+The teacher upload form has an optional English WebVTT caption file selector. Edit Video shows caption status and allows replacing or removing the track; caption fields use visible labels and helper text. Caption files are limited to 2 MiB and privately served through the owning video's authenticated access policy.
+
+`/videos/:videoId` uses a max-w-5xl layout with Back to Videos, a rounded bordered player card, black native video surface, and p-6 title/description. Playback does not start on page load; the learner chooses Play using native browser controls. When an English WebVTT track exists, a default native captions track is available in the browser player. The viewer-modal player has the same track and starts after the learner activates Watch. Both use an accessible video name; there is no custom control bar. Caption authoring/transcription accuracy is the teacher's responsibility; the system does not generate captions.
 
 ## 11. Quizzes
 
@@ -249,7 +251,7 @@ These controls read AppContext role; the development role preview does not grant
 
 Lucide provides most icons: GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun/Moon, Search, Upload/Download, FileJson/FileText, ExternalLink, Heart, Play, Trophy, Activity, Clock and X. Common sizes are 16px for actions/navigation, 20px for controls, 24px for metrics, and 32–40px for resource/model fallbacks. The viewer also contains an inline SVG play mark, SVG drawing preview and text +/- controls.
 
-Keyboard-activatable model/video cards, shared focus rings, mobile navigation and Dialog focus/Escape/return-focus behavior are implemented. Some legacy field labels and native alerts still need broader accessibility review; no certification or complete cross-browser/mobile matrix is claimed. SVG drawing previews and a few legacy inline icons remain. Full implementation/verification details are in Architecture.md and anatolearn/docs/testing_log.md.
+Keyboard-activatable model/video cards, shared focus rings, mobile navigation and Dialog focus/Escape/return-focus behavior are implemented. Core form labels and error feedback have been updated; broader accessibility verification remains incomplete; no certification or complete cross-browser/mobile matrix is claimed. SVG drawing previews and a few legacy inline icons remain. Full implementation/verification details are in Architecture.md and anatolearn/docs/testing_log.md.
 
 
 ## Responsive verification follow-up — 22 October 2026
@@ -260,3 +262,30 @@ Desktop navigation starts at xl (1280px); the compact menu remains available on 
 ## Viewer feedback follow-up — 22 October 2026
 
 The viewer displays loading status through geometry and annotation readiness; toolbar controls are disabled during loading and moves. Moving an annotation has a separate status message. Empty geometry, unavailable WebGL and failed asset/annotation reads show visible errors. Annotation label/description/colour/opacity controls have accessible names. Validation and save errors remain in the form; neutral-view/projection/delete feedback uses themed success/error toasts announced as status/alert. Near-collinear region gestures ask the teacher to draw an enclosed area. Canvas picking supports numbered hotspots and excludes orbit drags. Neutral reset immediately stops residual camera motion.
+
+
+## Accessibility and recovery follow-up — 22 October 2026
+
+RequestState uses a themed white/deep-slate rounded-xl bordered panel, p-4, text-sm. Pending reads announce Loading; failed reads retain an alert and blue Try again button until retried. Empty-result messages appear only after a successful read. Dashboard failures use em dashes for unavailable statistics. Video metadata failures retain a heading and back navigation; playback errors offer Retry playback.
+
+Authoring labels are associated with their controls; file pickers, quiz option text/radios and grading fields have explicit names. Button-group selections expose pressed state. Errors inside dialogs announce as alerts, and server validation text is retained. Modals make surrounding content inert and lock scrolling while preserving the focus trap/Escape/return-focus behavior.
+
+A focus-visible Skip to content link targets the main region. SPA navigation focuses main content, active links expose aria-current, and compact navigation supports Escape with focus returned to its toggle. Focus treatment covers input/textarea/custom tabindex controls; reduced-motion preferences suppress decorative transitions and toast animation. Tested cases are documented in testing_log.md; no full assistive-technology or WCAG certification is implied.
+
+
+## Screen-reader semantics follow-up — 22 October 2026
+
+Page titles use “Page name | AnatoLearn”. A visually hidden, persistent polite/atomic status region identifies the destination after SPA navigation. Auth pages expose named main landmarks. Registration password guidance is associated with its input and uses slate-600/slate-400 text. Annotation list buttons expose pressed selection and expanded/collapsed state; selected annotation details have a named region. These semantics preserve the current visual theme. Spoken output and other browser engines require the compatibility procedure in anatolearn/docs/accessibility_compatibility.md.
+
+
+## Automated accessibility findings — 22 October 2026
+
+Low-emphasis text in dashboard empty states, content descriptions, quiz details, upload guidance and annotation panels now uses text-slate-600/dark:text-slate-400 in place of text-slate-400/dark:text-slate-500. The linked-video Close action also has contrasting light/dark text. This keeps the slate/blue palette while making the audited small text readable. Skip to content has explicit tabindex=0 for WebKit keyboard reachability. Playwright/axe coverage and manual-review limits are documented in anatolearn/docs/accessibility_compatibility.md; a dark dashboard screenshot is saved at anatolearn/docs/verification/playwright-dashboard-dark.png.
+
+Placeholder text uses slate-500 in light mode and slate-400 in dark mode. Source-token contrast calculations give 4.76:1 and 6.96:1 respectively on the form surfaces. Representative viewer text on 90%-opaque panel surfaces has at least 5.11:1 in dark mode and 6.07:1 in light mode under the worst-case opposite-color background blend; white text on blue-600 actions is 5.17:1. These manual representative checks supplement axe scans and do not constitute a complete rendered-state audit or certification.
+
+Standalone `/videos/:videoId` playback does not autoplay. The learner presses Play through native controls, avoiding unexpected audio when opening a video page. The viewer modal still begins playback in direct response to the explicit Watch action. Caption tracks are optional; teachers must attach a valid file for each video that needs captions.
+
+## Video caption tracks — 22 October 2026
+
+Teachers can supply one optional English WebVTT file during upload and replace or remove it in Edit Video. Both standalone and linked-video players render the saved file through a default native `track[kind="captions"]`. Files are UTF-8 `.vtt` with a `WEBVTT` header, capped at 2 MiB, stored under `PUBLIC_DIR/captions/`, and delivered only to users authorized to access their owning video. Migration `backend/sql/010_video_captions.sql` adds nullable `videos.captions_path`; see README/API/storage docs for rollout details. The platform does not produce or certify caption content, and captions are currently English-only.
