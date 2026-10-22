@@ -1,5 +1,5 @@
 # Production stack:  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
-# Only the web container is published. Put TLS (Caddy, load balancer, Cloudflare...) in front of it.
+# Public entry point is Caddy (automatic HTTPS). Assets live in S3 via the EC2 instance role.
 services:
   postgres:
     image: postgres:16
@@ -25,14 +25,15 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
-      TRUST_PROXY: 2
+      TRUST_PROXY: 2   # caddy + nginx
       DATABASE_URL: postgres://${POSTGRES_USER:-anatolearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-anatolearn}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ random characters)}
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:?set FRONTEND_ORIGINS, e.g. https://anatolearn.example.com}
       TEACHER_INVITE_CODE: ${TEACHER_INVITE_CODE:?set TEACHER_INVITE_CODE}
-      PUBLIC_DIR: /data/public
-    volumes:
-      - uploads:/data/public
+      STORAGE_DRIVER: s3
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+      S3_PREFIX: ${S3_PREFIX:-}
+      AWS_REGION: ${AWS_REGION:?set AWS_REGION}
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,11 +43,23 @@ services:
       context: .
       dockerfile: Dockerfile.web.prod
     restart: unless-stopped
-    ports:
-      - "${WEB_PORT:-8080}:8080"
     depends_on:
       - backend
 
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN, e.g. anatolearn.example.com}
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
-  uploads:
+  caddy_data:

@@ -1,5 +1,4 @@
 const repository = require('./videos.repository');
-const fs = require('fs/promises');
 const storage = require('../../storage');
 const { visibleRows } = require('../catalog/catalog.service');
 async function listVideos(input) {
@@ -36,8 +35,8 @@ async function uploadVideo(input) {
         }
         if (captionFile)
             await storage.validateCaptions(captionFile);
-        const videoPath = `/videos/${videoFile.filename}`;
-        const captionsPath = captionFile ? `/captions/${captionFile.filename}` : null;
+        const videoPath = await storage.persist(videoFile, 'videos');
+        const captionsPath = captionFile ? await storage.persist(captionFile, 'captions') : null;
         const result = await repository.insertVideo([title, description || null, videoPath, captionsPath, program_id || null]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
@@ -55,10 +54,10 @@ async function replaceCaptions(input) {
     const existing = (await repository.findCaptions([input.params.id])).rows[0];
     if (!existing)
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: 'Video not found' } });
-    const nextPath = `/captions/${captionFile.filename}`;
+    const nextPath = await storage.persist(captionFile, 'captions');
     const result = await repository.updateCaptions([nextPath, input.params.id]);
     if (existing.captions_path && existing.captions_path !== nextPath)
-        await fs.unlink(storage.resolveAsset(existing.captions_path)).catch(() => { });
+        await storage.removeAsset(existing.captions_path);
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows[0] });
 }
 async function removeCaptions(input) {
@@ -68,7 +67,7 @@ async function removeCaptions(input) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: 'Video not found' } });
     const result = await repository.clearCaptions([input.params.id]);
     if (existing.captions_path)
-        await fs.unlink(storage.resolveAsset(existing.captions_path)).catch(() => { });
+        await storage.removeAsset(existing.captions_path);
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows[0] });
 }
 async function deleteVideo(input) {

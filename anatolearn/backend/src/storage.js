@@ -1,12 +1,86 @@
 const fs = require('fs/promises');
 const path = require('path');
+const os = require('os');
 const ROOT = path.resolve(process.env.PUBLIC_DIR || path.join(__dirname,'../../public'));
+// STORAGE_DRIVER=s3 keeps every teaching asset in S3 (instance role credentials). Uploads are staged
+// on local disk only long enough to be validated and copied across.
+const REMOTE = (process.env.STORAGE_DRIVER || 'local') === 's3';
+const UPLOAD_ROOT = REMOTE ? path.join(os.tmpdir(), 'anatolearn-uploads') : ROOT;
+const BUCKET = process.env.S3_BUCKET;
+const PREFIX = (process.env.S3_PREFIX || '').replace(/^\/+|\/+$/g, '');
+if (REMOTE && !BUCKET) throw new Error('S3_BUCKET must be set when STORAGE_DRIVER=s3');
+let client;
+function s3() {
+  if (!client) {
+    const { S3Client } = require('@aws-sdk/client-s3');
+    client = new S3Client({ region: process.env.AWS_REGION, ...(process.env.S3_ENDPOINT ? { endpoint: process.env.S3_ENDPOINT, forcePathStyle: true } : {}) });
+  }
+  return client;
+}
+const CONTENT_TYPES = { '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.obj': 'text/plain', '.usdz': 'model/vnd.usdz+zip',
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.vtt': 'text/vtt', '.pdf': 'application/pdf', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+function objectKey(assetPath) {
+  const normalized = path.posix.normalize('/' + String(assetPath));
+  if (normalized.includes('..') || normalized === '/') throw Object.assign(new Error('Invalid asset path'), { status: 400 });
+  return (PREFIX ? PREFIX + '/' : '') + normalized.slice(1);
+}
+// Copies a validated staged upload into its permanent home and returns the stored asset path.
+async function persist(file, folder) {
+  const assetPath = `/${folder}/${file.filename}`;
+  if (!REMOTE) return assetPath;
+  const { PutObjectCommand } = require('@aws-sdk/client-s3');
+  const { size } = await fs.stat(file.path);
+  await s3().send(new PutObjectCommand({ Bucket: BUCKET, Key: objectKey(assetPath), Body: require('fs').createReadStream(file.path),
+    ContentLength: size, ContentType: CONTENT_TYPES[path.extname(file.filename).toLowerCase()] || 'application/octet-stream' }));
+  await fs.unlink(file.path).catch(() => {});
+  return assetPath;
+}
+async function writeAsset(assetPath, bytes) {
+  if (!REMOTE) { const target = resolveAsset(assetPath); await fs.mkdir(path.dirname(target), { recursive: true }); return fs.writeFile(target, bytes); }
+  const { PutObjectCommand } = require('@aws-sdk/client-s3');
+  await s3().send(new PutObjectCommand({ Bucket: BUCKET, Key: objectKey(assetPath), Body: bytes,
+    ContentType: CONTENT_TYPES[path.extname(assetPath).toLowerCase()] || 'application/octet-stream' }));
+}
+async function removeAsset(assetPath) {
+  try {
+    if (!REMOTE) return await fs.unlink(resolveAsset(assetPath));
+    const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+    await s3().send(new DeleteObjectCommand({ Bucket: BUCKET, Key: objectKey(assetPath) }));
+  } catch { /* best effort: a missing file must not block the database change */ }
+}
+// Streams an S3 object to the response, honouring Range so video seeking keeps working.
+async function sendObject(res, assetPath, { range, filename } = {}) {
+  const { GetObjectCommand } = require('@aws-sdk/client-s3');
+  let object;
+  try { object = await s3().send(new GetObjectCommand({ Bucket: BUCKET, Key: objectKey(assetPath), ...(range ? { Range: range } : {}) })); }
+  catch (error) {
+    const status = error.$metadata?.httpStatusCode;
+    if (status === 404 || error.name === 'NoSuchKey') return res.status(404).json({ message: 'Asset not found' });
+    if (status === 416) return res.status(416).end();
+    throw error;
+  }
+  res.status(object.ContentRange ? 206 : 200);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Type', CONTENT_TYPES[path.extname(assetPath).toLowerCase()] || object.ContentType || 'application/octet-stream');
+  if (object.ContentLength != null) res.setHeader('Content-Length', object.ContentLength);
+  if (object.ContentRange) res.setHeader('Content-Range', object.ContentRange);
+  if (filename) res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/[^\w.-]/g, '_')}"`);
+  object.Body.on('error', () => res.destroy());
+  object.Body.pipe(res);
+}
 function resolveAsset(assetPath) {
   const absolute = path.resolve(ROOT,'.'+assetPath);
   if (!absolute.startsWith(ROOT+path.sep)) throw Object.assign(new Error('Invalid asset path'),{status:400});
   return absolute;
 }
-async function readAsset(assetPath) { return fs.readFile(resolveAsset(assetPath)); }
+async function readAsset(assetPath) {
+  if (!REMOTE) return fs.readFile(resolveAsset(assetPath));
+  const { GetObjectCommand } = require('@aws-sdk/client-s3');
+  const object = await s3().send(new GetObjectCommand({ Bucket: BUCKET, Key: objectKey(assetPath) }));
+  return Buffer.from(await object.Body.transformToByteArray());
+}
 async function validateModel(file) {
   const extension = path.extname(file.originalname).toLowerCase();
   const bytes = await fs.readFile(file.path);
@@ -50,4 +124,4 @@ async function validateCaptions(file) {
   if (text.includes('\u0000') || !/^WEBVTT(?:[ \t].*)?(?:\r?\n|$)(?:[\s\S]*)$/.test(text))
     throw Object.assign(new Error('Caption file must be a UTF-8 WebVTT (.vtt) file starting with WEBVTT'),{status:400});
 }
-module.exports={ROOT,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateCaptions};
+module.exports={ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateCaptions};
