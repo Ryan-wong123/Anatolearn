@@ -51,7 +51,7 @@ async function uploadModel(input) {
     }
     catch (err) {
         console.error("Failed to upload model:", err);
-        return ({ ...outcomeMeta, status: err.status || 500, kind: 'json', body: { message: err.message || "Failed to upload model" } });
+        return ({ ...outcomeMeta, status: err.status || 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload model" } });
     }
 }
 async function deleteModel(input) {
@@ -103,8 +103,7 @@ async function saveNeutralView(input) {
     catch (err) {
         console.error("Failed to save neutral view:", err);
         return ({ ...outcomeMeta, status: 500, kind: 'json', body: {
-                message: err.message ||
-                    "Failed to save neutral view",
+                message: "Failed to save neutral view",
             } });
     }
 }
@@ -148,7 +147,7 @@ async function downloadModel(input) {
     }
     catch (err) {
         console.error("Failed to process download:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.message || "Failed to download model" } });
+        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to download model" } });
     }
 }
 async function saveThumbnail(input) {
@@ -158,12 +157,17 @@ async function saveThumbnail(input) {
         if (!thumbnailDataUrl) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "Missing thumbnail data" } });
         }
+        if (typeof thumbnailDataUrl !== 'string' || !/^\d+$/.test(input.params.id))
+            return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "Invalid thumbnail request" } });
         const base64Data = thumbnailDataUrl.replace(/^data:image\/png;base64,/, "");
+        const png = Buffer.from(base64Data, "base64");
+        if (png.length > 2 * 1024 * 1024 || !png.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")))
+            return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "Thumbnail must be a PNG image of 2 MiB or smaller" } });
         const thumbnailsDir = path.join(storage.ROOT, "thumbnails");
         await fs.mkdir(thumbnailsDir, { recursive: true });
         const filename = `model-${input.params.id}.png`;
         const filePath = path.join(thumbnailsDir, filename);
-        await fs.writeFile(filePath, base64Data, "base64");
+        await fs.writeFile(filePath, png);
         const publicPath = `/thumbnails/${filename}`;
         const result = await repository.updateThumbnail([publicPath, input.params.id]);
         if (result.rows.length === 0) {

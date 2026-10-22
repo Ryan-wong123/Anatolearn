@@ -1,0 +1,52 @@
+# Production stack:  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# Only the web container is published. Put TLS (Caddy, load balancer, Cloudflare...) in front of it.
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anatolearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-anatolearn}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      TRUST_PROXY: 2
+      DATABASE_URL: postgres://${POSTGRES_USER:-anatolearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-anatolearn}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ random characters)}
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:?set FRONTEND_ORIGINS, e.g. https://anatolearn.example.com}
+      TEACHER_INVITE_CODE: ${TEACHER_INVITE_CODE:?set TEACHER_INVITE_CODE}
+      PUBLIC_DIR: /data/public
+    volumes:
+      - uploads:/data/public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web.prod
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  uploads:

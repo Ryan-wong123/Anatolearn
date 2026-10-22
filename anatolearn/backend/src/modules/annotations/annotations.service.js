@@ -26,7 +26,8 @@ async function exportAnnotations(input) {
                 : typeof value === "object"
                     ? JSON.stringify(value)
                     : String(value);
-            return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+            const safe = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+            return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
         };
         const header = "id,annotation_type,label,description,color,annotation_data,created_at";
         const rows = result.rows.map((r) => [r.id, r.annotation_type, r.label, r.description, r.color, r.annotation_data, r.created_at]
@@ -39,7 +40,7 @@ async function exportAnnotations(input) {
     }
     catch (err) {
         console.error("Failed to export annotations:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.message || "Failed to export annotations" } });
+        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to export annotations" } });
     }
 }
 async function createAnnotation(input) {

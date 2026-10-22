@@ -1,8 +1,19 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { authenticate } = require('./access');
 const app = express();
+// One reverse proxy (the web container) sits in front in production; needed for real client IPs and secure cookies.
+if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
+app.disable('x-powered-by');
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false }));
+const limiter = (windowMs, limit) => rateLimit({ windowMs, limit, standardHeaders: 'draft-7', legacyHeaders: false,
+  skip: () => process.env.DISABLE_RATE_LIMIT === 'true', message: { message: 'Too many requests. Please try again later.' } });
+app.use('/api/auth/login', limiter(15 * 60 * 1000, 10));
+app.use('/api/auth/register', limiter(60 * 60 * 1000, 10));
+app.use('/api', limiter(60 * 1000, 600));
 // Express 4 does not forward rejected async handlers by default.
 for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
   const register = app[method].bind(app);

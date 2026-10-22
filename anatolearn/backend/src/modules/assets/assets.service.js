@@ -23,6 +23,8 @@ async function getTeachingAsset(input) {
         return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: 'Invalid asset path' } });
     (outcomeMeta.headers['Cache-Control'] = 'private, no-store');
     (outcomeMeta.headers['X-Content-Type-Options'] = 'nosniff');
+    if (/\.(docx?|usdz)$/i.test(absolute))
+        outcomeMeta.headers['Content-Disposition'] = 'attachment';
     return ({ ...outcomeMeta, status: 200, kind: 'file', path: absolute });
 }
 module.exports = { getTeachingAsset };
