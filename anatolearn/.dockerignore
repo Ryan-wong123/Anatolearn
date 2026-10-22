@@ -5,3 +5,8 @@ dist
 .git
 .env
 .env.*
+
+.playwright-browsers
+.playwright
+test-results
+playwright-report

@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
-import { api } from '../api/api';
+import { ApiError, api } from '../api/api';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -23,17 +23,17 @@ export default function Login() {
       const { token, user } = await api.login(email, password);
       login(token, user);
       navigate('/dashboard');
-    } catch {
+    } catch (error) {
       // Deliberately generic — matches the backend's own generic message,
       // and doesn't reveal whether the email or the password was wrong.
-      setError('Invalid email or password');
+      setError(error instanceof ApiError && error.status === 401 ? 'Invalid email or password' : error instanceof Error ? error.message : 'Could not sign in. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-800 flex items-center justify-center px-4">
+    <main aria-label="Sign in" className="min-h-screen bg-slate-50 dark:bg-slate-800 flex items-center justify-center px-4">
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm w-full max-w-md p-8">
         <div className="flex flex-col items-center mb-6">
           <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mb-3">
@@ -53,12 +53,12 @@ export default function Login() {
               Email
             </label>
             <input
-              id="email"
+              autoComplete="username" id="email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
               placeholder="you@example.com"
             />
           </div>
@@ -68,18 +68,18 @@ export default function Login() {
               Password
             </label>
             <input
-              id="password"
+              autoComplete="current-password" id="password"
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
               {error}
             </p>
           )}
@@ -100,6 +100,6 @@ export default function Login() {
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   );
 }

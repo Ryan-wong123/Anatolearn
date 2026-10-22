@@ -1,6 +1,8 @@
+import RequestState from '../components/RequestState';
+import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Upload, X, Search, Download, FileJson, FileText } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
@@ -26,7 +28,7 @@ export default function ModelGallery() {
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const navigate = useNavigate();
-  const [models, setModels] = useState<ModelRecord[]>([]);
+
 
   // Search/filter — Tasks 4.1/4.3/4.4
   const [searchInput, setSearchInput] = useState('');
@@ -61,21 +63,10 @@ export default function ModelGallery() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const loadModels = () => {
-    api
-      .getModels(role === 'student', {
-        q: debouncedSearch || undefined,
-        system: systemFilter || undefined,
-        part: partFilter || undefined,
-      })
-      .then(setModels)
-      .catch(() => toast('Could not load models. Please try again.', 'error'));
-  };
-
-  useEffect(() => {
-    loadModels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, program, debouncedSearch, systemFilter, partFilter]);
+  const fetchModels = useCallback(() => api.getModels(role === 'student', {
+    q: debouncedSearch || undefined, system: systemFilter || undefined, part: partFilter || undefined,
+  }), [role, debouncedSearch, systemFilter, partFilter]);
+  const { data: models, reload: loadModels, loading, error: loadError } = useResource<ModelRecord[]>(fetchModels, [], program);
 
   // Task 4.4: system/part dropdowns are populated from unique values
   // actually present in the current model list, not a fixed hardcoded set.
@@ -115,7 +106,7 @@ export default function ModelGallery() {
       toast('Model uploaded successfully');
     } catch (err) {
       console.error('Failed to upload model:', err);
-      setUploadError('Failed to upload model. Please try again.');
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -202,7 +193,7 @@ export default function ModelGallery() {
       toast('Model updated');
     } catch (err) {
       console.error('Failed to update model:', err);
-      setEditError('Failed to save changes. Please try again.');
+      setEditError(err instanceof Error ? err.message : 'Failed to save changes. Please try again.');
     }
   };
 
@@ -213,7 +204,7 @@ export default function ModelGallery() {
       await api.downloadModel(model.id);
     } catch (err) {
       console.error('Failed to download model:', err);
-      alert('Failed to download this model. Please try again.');
+      toast(err instanceof Error ? err.message : 'Failed to download this model. Please try again.', 'error');
     } finally {
       setDownloadingId(null);
     }
@@ -227,7 +218,7 @@ export default function ModelGallery() {
       await api.exportAnnotations(model.id, format);
     } catch (err) {
       console.error('Failed to export annotations:', err);
-      alert('Failed to export annotations. Please try again.');
+      toast(err instanceof Error ? err.message : 'Failed to export annotations. Please try again.', 'error');
     } finally {
       setExportingId(null);
     }
@@ -258,7 +249,7 @@ export default function ModelGallery() {
 
       <div className="mb-6 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchInput}
@@ -270,7 +261,7 @@ export default function ModelGallery() {
         </div>
 
         <select
-          value={systemFilter}
+          aria-label="Body system" value={systemFilter}
           onChange={(e) => {
             const newSystem = e.target.value;
             setSystemFilter(newSystem);
@@ -290,7 +281,7 @@ export default function ModelGallery() {
         </select>
 
         <select
-          value={partFilter}
+          aria-label="Body part" value={partFilter}
           onChange={(e) => setPartFilter(e.target.value)}
           className="text-slate-900 dark:text-slate-100 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none"
         >
@@ -301,7 +292,8 @@ export default function ModelGallery() {
         </select>
       </div>
 
-      {models.length === 0 ? (
+      <RequestState loading={loading} error={loadError} onRetry={loadModels} label="models" />
+      {!loading && !loadError && models.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-8 text-center">
           <p className="text-sm text-slate-500 dark:text-slate-400">No models match your search.</p>
         </div>
@@ -339,7 +331,7 @@ export default function ModelGallery() {
               </h2>
 
               {(model.body_system || model.body_part) && (
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                   {[model.body_system, model.body_part].filter(Boolean).join(' · ')}
                 </p>
               )}
@@ -357,7 +349,7 @@ export default function ModelGallery() {
                   onClick={(e) => handleDownload(model, e)}
                   disabled={!model.is_downloadable || downloadingId === model.id}
                   title={model.is_downloadable ? "Download model file" : "Downloads disabled by teacher"}
-                  className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-40"
+                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-40"
                 >
                   <Download className="w-4 h-4" />
                 </button>
@@ -428,9 +420,9 @@ export default function ModelGallery() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
                 Upload Model
               </h2>
-              <button
+              <button aria-label="Close dialog"
                 onClick={closeUploadModal}
-                className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
+                className="p-1 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-400 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -438,70 +430,71 @@ export default function ModelGallery() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="modelgallery-field-1" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="modelgallery-field-1"
                   type="text"
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="e.g. Cardiovascular System"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="modelgallery-field-2" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <textarea
+                <textarea id="modelgallery-field-2"
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
                   rows={3}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                   placeholder="Optional"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="modelgallery-field-3" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body System
                   </label>
-                  <input
+                  <input id="modelgallery-field-3"
                     type="text"
                     value={uploadBodySystem}
                     onChange={(e) => setUploadBodySystem(e.target.value)}
-                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                     placeholder="e.g. Cardiovascular"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="modelgallery-field-4" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body Part
                   </label>
-                  <input
+                  <input id="modelgallery-field-4"
                     type="text"
                     value={uploadBodyPart}
                     onChange={(e) => setUploadBodyPart(e.target.value)}
-                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                     placeholder="e.g. Chest"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Model File
-                </label>
+                </p>
                 <div className="mt-1 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 text-center hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <input
+                    aria-label="Model file"
                     type="file"
                     accept=".glb,.gltf,.obj,.usdz"
                     onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
                     className="bg-white dark:bg-slate-900 w-full text-sm text-slate-600 dark:text-slate-400"
                   />
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
                     Supported: GLB, embedded glTF, OBJ, USDZ. Export Unreal assets to GLB before uploading.
                   </p>
                   {uploadFile && (
@@ -514,7 +507,7 @@ export default function ModelGallery() {
             </div>
 
             {uploadError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {uploadError}
               </p>
             )}
@@ -547,57 +540,57 @@ export default function ModelGallery() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="modelgallery-field-5" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="modelgallery-field-5"
                   type="text"
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="modelgallery-field-6" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <textarea
+                <textarea id="modelgallery-field-6"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   rows={3}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="modelgallery-field-7" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body System
                   </label>
-                  <input
+                  <input id="modelgallery-field-7"
                     type="text"
                     value={editBodySystem}
                     onChange={(e) => setEditBodySystem(e.target.value)}
-                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="modelgallery-field-8" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Body Part
                   </label>
-                  <input
+                  <input id="modelgallery-field-8"
                     type="text"
                     value={editBodyPart}
                     onChange={(e) => setEditBodyPart(e.target.value)}
-                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   />
                 </div>
               </div>
             </div>
 
             {editError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {editError}
               </p>
             )}

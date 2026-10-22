@@ -3,6 +3,10 @@ const assert = require('node:assert/strict');
 const { canRead, canDownload } = require('../src/access');
 const { validateAnswers } = require('../src/assessments');
 const { validQuestion } = require('../src/questionBank');
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const { validateCaptions } = require('../src/storage');
 test('student access requires publication and the account programme, with shared content allowed',()=>{
   const student={role:'student',program_id:2};
   assert.equal(canRead(student,{is_published:false,program_id:2}),false);
@@ -33,4 +37,17 @@ test('question bank validates MCQ keys and model answers',()=>{
   assert.ok(validQuestion({question:'Name a bone',format:'open_ended',model_answer:'Femur'}));
   assert.equal(Boolean(validQuestion({question:'Name a bone',format:'open_ended'})),false);
   assert.equal(Boolean(validQuestion({question:'Pick',format:'mcq',option_a:'A',option_b:'B',option_c:'C',option_d:'D',correct_option:'E'})),false);
+});
+test('WebVTT caption upload accepts valid UTF-8 and rejects malformed or oversized files',async()=>{
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'anatolearn-vtt-'));
+  const filePath=path.join(dir,'sample.vtt');
+  try {
+    const valid='WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nA spoken line.\n';
+    await fs.writeFile(filePath,valid);
+    await validateCaptions({path:filePath,size:Buffer.byteLength(valid)});
+    const invalid='not a caption file';
+    await fs.writeFile(filePath,invalid);
+    await assert.rejects(validateCaptions({path:filePath,size:Buffer.byteLength(invalid)}),/WebVTT/);
+    await assert.rejects(validateCaptions({path:filePath,size:2*1024*1024+1}),/2 MiB/);
+  } finally { await fs.rm(dir,{recursive:true,force:true}); }
 });

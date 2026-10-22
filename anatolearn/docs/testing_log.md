@@ -708,3 +708,97 @@ During development, the initial one-pixel fixture PNG failed decoding; it was re
 Saved proof: verification/viewer-textured-region.png. Fixture setup refuses to overwrite an existing manifest and cleanup removed the temporary users, two models, annotations, linked video, generated model files and thumbnails. Existing teaching records were preserved.
 
 Limits: only connected in-app Chromium; no Firefox/Safari/standalone Edge/Chrome certification, real-touch hardware, complete freehand polygon authoring, delayed-network CRUD stress, skinned/animated browser fixture or GPU-memory/concurrency benchmark. Resource disposal paths were reviewed, not measured with a GPU profiler. Cross-mesh drawing still uses a dominant source mesh, and the existing projected-surface fallback behavior remains unchanged. Broader accessibility, content organisation, portable exports and production deployment work remain separate follow-ups.
+
+
+## 22 October 2026 — accessibility and error/retry pass
+
+Started/confirmed the development stack with Docker Compose. Implemented page-local resource lifecycle and persistent status/retry UI, accessible field associations, background-inert/scroll-locked dialogs, navigation focus semantics, reduced motion and unified JSON/download error handling. Backend routes, schema and storage are unchanged.
+
+| Verification actually run | Result |
+|---|---|
+| Frontend production build | Passed: initial JS 373.98 kB, lazy viewer 754.14 kB; viewer chunk warning remains. |
+| ESLint | Passed with 0 errors/warnings. |
+| Client API regression | Passed: connection failure, malformed successful JSON, non-JSON gateway error, safe 5xx fallback, preserved 4xx validation, auth-401 isolation and protected JSON/download expiry. |
+| Viewer / format suites | 26 viewer + 2 OBJ/USDZ parser cases passed. |
+| Backend policy/integration | 4 policy tests + 14 real-DB scenarios passed (15 TAP tests including parent). Expected injected SQL/409 output is asserted by the existing suite. |
+| Teacher form names | Upload Model, Upload Video, Upload Content, Create Quiz and Edit Questions were inspected in the connected Chromium browser. Visible dialog inputs/selects/textareas had associated labels or explicit accessible names. Model system/part filters were also named. |
+| Dialog keyboard/isolation | Upload Model initially focused its close control; Shift+Tab wrapped to Upload, Tab wrapped back, Escape closed it and restored the upload trigger. Body overflow was hidden while open, 7 background branches inert, then overflow restored and inert count returned to 0. Nested stack cleanup is implemented but was not browser stress-tested. |
+| Skip navigation | Tab + Enter on Skip to content focused main-content. Subsequent SPA navigation focused the main region. |
+| Controlled outage | Stopped backend only. Videos showed separate persistent video/annotation-link failures; Dashboard showed an error and unavailable stats; Library showed a resource error with Try again. These views did not claim empty content. Restarted backend, clicked Library Try again and restored the resource list without reloading the page. |
+| Unavailable video | A valid numeric route for an absent video showed a heading, back navigation and retry. Repeated failed retry retained keyboard focus on Try again. The nonnumeric /videos/... path remains handled as a file route by the development proxy. |
+| Student keyboard quiz | Selected Femur using Space, used Tab/Tab/Enter to submit and received 100%. The named radio group/answers, history entry, modal cleanup and focus return were observed; no authoring controls appeared. |
+| Mobile navigation | Native browser viewport override 375x812: menu opened, Escape from a link closed it and restored Toggle navigation focus; document width remained 375px. Override was reset afterward. |
+
+Proof: verification/content-retry.png captures the deliberate materials outage and retry control. Backend was restarted and services were left running. Browser fixture accounts, model/video/quiz, generated attempt and file were cleaned using the existing disposable fixture script after verification.
+
+Deliberate outages/missing-content probes produced expected HTTP errors in browser logs; healthy navigation afterward produced no new error/warning in the inspected interval. This was in-app Chromium only. No complete NVDA/VoiceOver, contrast, captions/transcripts, reduced-motion visual audit, real touch hardware, four-programme browser matrix or WCAG certification is claimed. Resource stale-response guards were reviewed; slow-network race injection and nested-dialog stress remain unverified. Content taxonomy, portable exports, deployment/off-site backup scheduling and broad release performance testing remain separate work.
+
+
+## Screen-reader/compatibility follow-up — 22 October 2026
+
+Reason the previous items remained open: prior runs used the connected in-app Chromium browser, with no screen reader or independent browser-engine execution. This follow-up checked available surfaces rather than treating missing coverage as a passing result. Installed Chrome/Edge executable paths exist; neither appears in the connected browser inventory. Firefox/NVDA were absent at the standard paths checked. Only IAB and MCP Apps are exposed; native app automation is disabled. No screen-reader or four-browser pass is claimed.
+
+Implemented page-specific titles and a stable polite/atomic route status; named main landmarks on auth pages; associated registration password instructions; expanded/pressed annotation states and a named selected-details region.
+
+Executed checks:
+- Docker frontend lint: passed, no warnings/errors.
+- Docker frontend production build: passed; initial JS 374.65 kB, viewer 754.23 kB; existing chunk-size warning remains.
+- Chromium login/register navigation: page titles and named main landmarks visible in accessibility tree; route status changes with destination.
+- Disposable authenticated student dashboard and model viewer: corresponding title/status exposed.
+- Model fixture 40: Space selects QA point, pressed state changes false to true; named “Annotation details: QA point” region exposes description and linked video. Enter collapses the annotation list, aria-expanded becomes false and annotation button disappears. Evidence: verification/annotation-accessibility.png.
+- Manual spoken-output testing, Firefox, Safari and standalone Chrome/Edge execution: not run; environment prerequisites and release procedure in accessibility_compatibility.md.
+
+Fixture setup used backend/tests/browser-fixture.js with temporary accounts/model/quiz/video; cleanup recorded below. No content policy, schema or backend route changed.
+
+Cleanup completed successfully: temporary users 68/69, model 40, quiz 26, video 10 and generated fixture files removed. Docker services remain running.
+
+
+## Playwright/axe alternative completed — 22 October 2026
+
+The user explicitly selected terminal Playwright testing because no screen reader was available. Added @playwright/test 1.64.1 and @axe-core/playwright 4.14.0, four browser projects, owned disposable fixtures, HTML/JSON reports and a sanitized summary generator. Chrome/Edge used installed channels; Firefox/WebKit were downloaded into the ignored project directory.
+
+Final consolidated execution started at 08:20:51 UTC / 16:20:51 Singapore and completed in 200 seconds: **35 passed, 1 skipped, 0 failed**. Chrome 155.0.8059.85, Edge 155.0.4283.62 and Firefox 157.0 each passed all nine workflows. Windows WebKit 27.2 passed eight workflows; its separate MP4 playback check was explicitly skipped. All 116 axe scans returned zero violations for the configured WCAG 2 A/AA and 2.1 A/AA rules. See verification/browser-accessibility-summary.json for check names, limitations and incomplete/manual-review rule IDs.
+
+Verified real UI/authentication for both roles, light/dark five-section navigation, titles/current-page/main focus, upload dialog Tab/Shift+Tab/Escape/inert background, compact navigation/skip link, rendered OBJ/keyboard annotation details, linked-video modal, native MP4 playback on three browsers, keyboard MCQ submission with 100% result, and intercepted 503 read failure/retry recovery. Media HTTP range delivery returned 206. The final suite uses 1440×900 desktop and 375×812 compact navigation; it is not a complete programme-by-browser-by-viewport matrix.
+
+Findings fixed:
+- Low-contrast slate-400/dark-slate-500 secondary text and linked-video close text; updated to contrasting theme colours.
+- WebKit skipped the href-only skip link during Tab navigation. Explicit tabindex=0 makes it reachable; the final WebKit keyboard check passed.
+- The test now waits for the rendered dashboard, uses Enter to invoke a dialog/submit quiz, and checks inert DOM state directly. WebKit pointer-click focus behavior is not treated as proof of keyboard return focus.
+- Browser downloads/report directories were being polled by the Docker/Windows Vite watcher, causing severe QA-induced delays. Explicit ignored paths restored normal test runtimes; local reports/manifests/binaries are also excluded from lint/Docker/Git and denied by Vite file serving. One earlier Chrome viewer readiness timeout disappeared in subsequent runs. Viewer readiness has a bounded 45-second assertion, not a performance certification.
+
+Known platform/manual limits:
+- Windows Playwright WebKit returned NotSupportedError for the existing H.264 Main, yuv420p/AAC LC MP4 despite working authenticated delivery. The app showed its media error; actual Safari/macOS playback remains required. No Safari success is inferred.
+- Axe incomplete findings include complex-background contrast, annotation icon label matching, video captions and WebKit autoplay audio. The minus-icon name matches collapse intent; full manual contrast/caption/audio review and NVDA/VoiceOver speech were not performed.
+- Build and lint passed after the fixes (lint 0 errors/warnings). Initial JS 374.66 kB, viewer 754.28 kB; existing viewer chunk-size warning remains. Scoped diff whitespace check passed.
+- npm audit reported 16 existing dependency advisories (4 moderate, 12 high); the new Playwright/axe packages were not listed. The production-only audit reported 2 of these in react-router/react-router-dom (1 high, 1 moderate). A general dependency upgrade was outside this compatibility change; these remain a separate remediation item.
+
+All final disposable users/models/quizzes/videos/attempts and generated assets were cleaned by global teardown; the local fixture manifest is absent. All three Docker services remain running. No production schema, product policy or backend API route changed. Screenshot proof: verification/playwright-dashboard-dark.png.
+
+
+## Follow-up: autoplay and repeat verification — 22 October 2026
+
+Standalone `/videos/:videoId` no longer starts playback on page load; the learner starts playback with the native controls. The linked-video dialog keeps autoplay after the explicit Watch action. Added a Playwright assertion that standalone playback has no `autoplay` attribute.
+
+Checks run in this workspace:
+- `npm run lint`: pass, no errors or warnings.
+- `npm run build`: pass; existing Vite viewer-chunk size warning (754.28 kB) remains.
+- `npm run test:viewer`: 26/26 pass.
+- `npm run test:api`: 1/1 pass.
+- `npm run test:models`: 2/2 pass.
+- `git diff --check`: no whitespace errors; one pre-existing extra blank line warning in root `coding_guidelines.md`.
+
+Re-running `npm run test:browser` was blocked before fixture creation: the host sandbox denied localhost socket access to ports 5173/5000. Docker services had reported healthy, but subsequent Docker API access was denied through the Docker Desktop named pipe, so no host-side rerun or container-side retry was possible. The previously recorded 35 passed / 1 skipped browser matrix is historical and predates the autoplay assertion; it is not represented as a fresh run here. `npm audit` likewise could not reach `registry.npmjs.org` (`ENOTFOUND`), so dependencies were not changed without current advisory data. Earlier audit findings (16 total, 2 production React Router advisories) remain unresolved until the registry is reachable.
+
+Actual Safari/macOS video, NVDA/VoiceOver spoken output, exhaustive rendered-state contrast checks, and caption accuracy review remain open. The user selected Playwright/axe as the available screen-reader alternative; it does not establish spoken output.
+
+
+## Captions, dependency remediation and browser rerun — 22 October 2026
+
+This supersedes the earlier blocked rerun and dependency counts above. Optional English WebVTT caption delivery was implemented: teachers can provide/replace/remove a VTT file with a video, the backend validates its header and size and stores it under an opaque protected path, and playback exposes a native English caption track. Existing authentication, publication and programme access rules protect the track. Database migration `010_video_captions.sql` was applied to the running local database without resetting its volume. Caption text is teacher-supplied; the application does not generate or certify it.
+
+Dependency remediation completed with registry access. Frontend and backend `npm audit` each report **0 vulnerabilities**. The frontend moved to Tailwind CSS 4 with its Vite plugin; backend development now uses Node's watch mode instead of Nodemon, removing the vulnerable transitive dependency chain.
+
+Final `npm run test:browser -- --retries=1`: **39 passed, 1 skipped, 0 failed** across Chrome, Edge, Firefox and Playwright WebKit. Chrome, Edge and Firefox each passed 10/10 tests; WebKit passed 9 and skipped the unsupported Windows H.264/AAC playback case. All 116 axe scans reported zero detected violations for configured WCAG 2 A/AA and 2.1 A/AA rules. WebKit exercised protected VTT retrieval through the authenticated browser request context because it did not automatically request the track for the fixture media. This verifies the track response and markup there, not native caption rendering in Safari. See `verification/browser-accessibility-summary.json`.
+
+Other checks after the final code changes: frontend lint passed; production build passed with the existing large Viewer chunk warning; viewer tests 26/26, API tests 1/1, model tests 2/2, backend unit tests 5/5, and backend integration tests 16/16. `git diff --check` reports only the pre-existing extra blank line at EOF in root `coding_guidelines.md`; the added PRD trailing spaces were removed. Representative light/dark palette contrasts are documented in `accessibility_compatibility.md`; this is not a complete manual audit. Actual Safari/macOS video and caption rendering, screen-reader spoken output, and teacher-supplied caption accuracy remain unverified.

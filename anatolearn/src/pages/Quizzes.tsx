@@ -1,9 +1,12 @@
+import RequestState from '../components/RequestState';
+import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import QuestionBank from '../components/QuestionBank';
 import ContentSettings from '../components/ContentSettings';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Clock, BookOpen, Search, Heart } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
+import { useToast } from '../context/ToastContextState';
 import { api } from '../api/api';
 
 interface Quiz {
@@ -91,9 +94,10 @@ function deriveQuizType(questions: CreatedQuizQuestion[]): 'MCQ' | 'Practical' |
 }
 
 export default function Quizzes() {
+  const { toast } = useToast();
   const { role, program } = useAppContext();
 
-  const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+
   const [quizSearchTerm, setQuizSearchTerm] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [clockOffset, setClockOffset] = useState(0);
@@ -148,32 +152,24 @@ export default function Quizzes() {
 
   // Task 8.8 — real quiz attempt history, keyed to the logged-in student's
   // account rather than the old same-browser sessionStorage stopgap.
-  const [attemptHistory, setAttemptHistory] = useState<QuizAttemptSummary[]>([]);
+
 
   // Students only — which quiz ids are currently favorited.
-  const [favoritedQuizIds, setFavoritedQuizIds] = useState<Set<number>>(new Set());
 
-  useEffect(() => {
-    api.getQuizzes(role === 'student')
-      .then(setQuizzes)
-      .catch(() => setSubmitError('Could not load quizzes. Please try again.'));
-  }, [role, program]);
 
-  useEffect(() => {
-    if (role !== 'student') return;
-    api.getMyAttempts()
-      .then(setAttemptHistory)
-      .catch((err) => console.error('Failed to load attempt history:', err));
-  }, [role, program]);
+  const fetchQuizzes = useCallback(() => api.getQuizzes(role === 'student'), [role]);
+  const { data: quizzes, setData: setQuizzes, reload: loadQuizzes, loading, error: loadError } = useResource<Quiz[]>(fetchQuizzes, [], program);
 
-  useEffect(() => {
-    if (role !== 'student') return;
-    api.getFavorites()
-      .then((data: { quizzes: { id: number }[] }) => {
-        setFavoritedQuizIds(new Set(data.quizzes.map((q) => q.id)));
-      })
-      .catch((err) => console.error('Failed to load favorites:', err));
-  }, [role, program]);
+  const fetchHistory = useCallback(() => role === 'student' ? api.getMyAttempts() : Promise.resolve([]), [role]);
+  const history = useResource<QuizAttemptSummary[]>(fetchHistory, [], program);
+  const {data:attemptHistory} = history;
+  const fetchFavorites = useCallback(async () => {
+    if (role !== 'student') return new Set<number>();
+    const data: {quizzes:{id:number}[]} = await api.getFavorites();
+    return new Set(data.quizzes.map((quiz) => quiz.id));
+  }, [role]);
+  const favorites = useResource<Set<number>>(fetchFavorites, new Set(), program);
+  const {data:favoritedQuizIds,setData:setFavoritedQuizIds} = favorites;
 
   const toggleFavorite = async (quiz: Quiz) => {
     const isFavorited = favoritedQuizIds.has(quiz.id);
@@ -190,7 +186,7 @@ export default function Quizzes() {
         setFavoritedQuizIds((prev) => new Set(prev).add(quiz.id));
       }
     } catch (err) {
-      console.error('Failed to toggle favorite:', err);
+      toast(err instanceof Error ? err.message : 'Could not update favourite.', 'error');
     }
   };
 
@@ -254,7 +250,7 @@ export default function Quizzes() {
 
       // Task 8.8: refresh real history right away so the new attempt shows
       // up without needing a full page reload.
-      api.getMyAttempts().then(setAttemptHistory).catch(() => {});
+      history.reload();
 
       const openEnded = questions
         .filter((q) => q.format === 'open_ended')
@@ -267,7 +263,7 @@ export default function Quizzes() {
       setOpenEndedResults(openEnded);
     } catch (err) {
       console.error('Failed to submit quiz:', err);
-      setSubmitError('Failed to submit quiz. Please try again.');
+      setSubmitError(err instanceof Error ? err.message : 'Failed to submit quiz. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -331,7 +327,7 @@ export default function Quizzes() {
       setCreatedQuiz(quiz);
     } catch (err) {
       console.error('Failed to create quiz:', err);
-      setCreateQuizError('Failed to create quiz. Please try again.');
+      setCreateQuizError(err instanceof Error ? err.message : 'Failed to create quiz. Please try again.');
     }
   };
 
@@ -344,6 +340,8 @@ export default function Quizzes() {
         await api.deleteQuiz(createdQuiz.id);
       } catch (err) {
         console.error('Failed to delete abandoned quiz:', err);
+        setCreateQuizError(err instanceof Error ? err.message : 'Could not discard this draft. Please try again.');
+        return;
       }
     }
 
@@ -380,6 +378,8 @@ export default function Quizzes() {
         );
       } catch (err) {
         console.error('Failed to finalize quiz:', err);
+        setCreateQuizError(err instanceof Error ? err.message : 'Could not finish saving this quiz. Please try again.');
+        return;
       }
     }
 
@@ -413,7 +413,7 @@ export default function Quizzes() {
       }
     } catch (err) {
       console.error('Failed to delete question:', err);
-      setCreateQuizError('Failed to delete question. Please try again.');
+      setCreateQuizError(err instanceof Error ? err.message : 'Failed to delete question. Please try again.');
     }
   };
 
@@ -497,7 +497,7 @@ export default function Quizzes() {
       setNewQuestionFormat('mcq');
     } catch (err) {
       console.error('Failed to save question:', err);
-      setCreateQuizError('Failed to save question. Please try again.');
+      setCreateQuizError(err instanceof Error ? err.message : 'Failed to save question. Please try again.');
     }
   };
 
@@ -507,6 +507,7 @@ export default function Quizzes() {
       setQuizzes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
     } catch (err) {
       console.error('Failed to update quiz publish state:', err);
+      toast(err instanceof Error ? err.message : 'Could not change quiz publication.', 'error');
     }
   };
 
@@ -515,13 +516,14 @@ export default function Quizzes() {
     setSelectedAttemptId(null);
     setAttemptAnswers([]);
     setGradingError(null);
+    setPendingAttempts([]);
     setLoadingPending(true);
     try {
       const attempts = await api.getAllAttempts(quiz.id);
       setPendingAttempts(attempts);
     } catch (err) {
       console.error('Failed to load pending attempts:', err);
-      setGradingError('Failed to load pending attempts.');
+      setGradingError(err instanceof Error ? err.message : 'Failed to load pending attempts.');
     } finally {
       setLoadingPending(false);
     }
@@ -546,7 +548,7 @@ export default function Quizzes() {
       setCreateQuizError(null);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Could not start quiz');
-      setCreateQuizError('Failed to load questions for this quiz. Please try again.');
+      setCreateQuizError(err instanceof Error ? err.message : 'Failed to load questions for this quiz. Please try again.');
     }
   };
 
@@ -584,7 +586,7 @@ export default function Quizzes() {
       closeEditQuiz();
     } catch (err) {
       console.error('Failed to update quiz:', err);
-      setEditQuizError('Failed to save changes. Please try again.');
+      setEditQuizError(err instanceof Error ? err.message : 'Failed to save changes. Please try again.');
     }
   };
 
@@ -603,7 +605,7 @@ export default function Quizzes() {
       setGradeInputs(initialInputs);
     } catch (err) {
       console.error('Failed to load attempt answers:', err);
-      setGradingError('Failed to load this attempt\'s answers.');
+      setGradingError(err instanceof Error ? err.message : 'Failed to load this attempt\'s answers.');
     }
   };
 
@@ -634,7 +636,7 @@ export default function Quizzes() {
       }
     } catch (err) {
       console.error('Failed to grade answer:', err);
-      setGradingError('Failed to save grade. Please try again.');
+      setGradingError(err instanceof Error ? err.message : 'Failed to save grade. Please try again.');
     } finally {
       setGradingAnswerId(null);
     }
@@ -679,22 +681,24 @@ export default function Quizzes() {
         )}
       </div>
 
+      {role === 'student' && <RequestState loading={false} error={favorites.error} onRetry={favorites.reload} label="quiz favourites" />}
+      <RequestState loading={loading} error={loadError} onRetry={loadQuizzes} label="quizzes" />
       {submitError && !activeQuiz && <p role="alert" className="mt-4 text-red-600">{submitError}</p>}
       <div className="mt-4 relative">
-        <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+        <Search className="w-4 h-4 text-slate-600 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           value={quizSearchTerm}
           onChange={(e) => setQuizSearchTerm(e.target.value)}
           aria-label="Search quizzes"
           placeholder="Search quizzes by title, category, or description..."
-          className="bg-white dark:bg-slate-900 w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 dark:focus:border-blue-300"
+          className="bg-white dark:bg-slate-900 w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 dark:focus:border-blue-300"
         />
       </div>
 
       <div className="mt-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-        {filteredQuizzes.length === 0 && (
-          <p className="px-5 py-8 text-sm text-slate-400 dark:text-slate-500 text-center">
+        {!loading && !loadError && filteredQuizzes.length === 0 && (
+          <p className="px-5 py-8 text-sm text-slate-600 dark:text-slate-400 text-center">
             {quizSearchTerm ? 'No quizzes match your search.' : 'No quizzes available yet.'}
           </p>
         )}
@@ -706,7 +710,7 @@ export default function Quizzes() {
             <BookOpen className="w-5 h-5 flex-shrink-0 text-blue-400 dark:text-blue-300" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">{quiz.title}</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                 {quiz.description || 'No description provided.'}
               </p>
             </div>
@@ -720,14 +724,15 @@ export default function Quizzes() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleFavorite(quiz)}
-                    title={favoritedQuizIds.has(quiz.id) ? 'Remove from favourites' : 'Save to favourites'}
+                    disabled={favorites.loading || Boolean(favorites.error)}
+                      title={favoritedQuizIds.has(quiz.id) ? 'Remove from favourites' : 'Save to favourites'}
                     className="p-1"
                   >
                     <Heart
                       className={`w-4 h-4 ${
                         favoritedQuizIds.has(quiz.id)
                           ? 'fill-red-500 text-red-500'
-                          : 'text-slate-400 dark:text-slate-500'
+                          : 'text-slate-600 dark:text-slate-400'
                       }`}
                     />
                   </button>
@@ -773,11 +778,6 @@ export default function Quizzes() {
           </div>
         ))}
 
-        {quizzes.length === 0 && (
-          <div className="py-12 text-center text-sm text-slate-400 dark:text-slate-500">
-            No quizzes found.
-          </div>
-        )}
       </div>
 
       {role === 'student' && (
@@ -786,8 +786,9 @@ export default function Quizzes() {
             My Quiz History
           </h2>
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-            {attemptHistory.length === 0 ? (
-              <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
+            <RequestState loading={history.loading} error={history.error} onRetry={history.reload} label="quiz history" />
+            {!history.loading && !history.error && attemptHistory.length === 0 ? (
+              <div className="py-8 text-center text-sm text-slate-600 dark:text-slate-400">
                 No quiz attempts yet.
               </div>
             ) : (
@@ -798,7 +799,7 @@ export default function Quizzes() {
                 >
                   <div>
                     <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{attempt.quiz_title}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                       {new Date(attempt.attempted_at).toLocaleDateString(undefined, {
                         year: 'numeric',
                         month: 'short',
@@ -837,7 +838,7 @@ export default function Quizzes() {
             </div>
 
             {current.format === 'mcq' ? (
-              <div className="space-y-3 mb-8">
+              <div role="radiogroup" aria-label={current.question} className="space-y-3 mb-8">
                 {optionLetters.map((letter) => {
                   const optionText = current[`option_${letter.toLowerCase()}` as keyof QuizQuestion] as string;
 
@@ -867,17 +868,18 @@ export default function Quizzes() {
                   value={selectedAnswers[current.id] || ''}
                   onChange={(e) => handleSelectAnswer(current.id, e.target.value)}
                   rows={5}
-                  className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  aria-label="Your answer"
                   placeholder="Type your answer here..."
                 />
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
                   This is an open-ended question. Your answer will be manually reviewed by your teacher.
                 </p>
               </div>
             )}
 
             {submitError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mb-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mb-4">
                 {submitError}
               </p>
             )}
@@ -1035,51 +1037,51 @@ export default function Quizzes() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="quizzes-field-1" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="quizzes-field-1"
                   type="text"
                   value={newQuizTitle}
                   onChange={(e) => setNewQuizTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="e.g. Muscular System Basics"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="quizzes-field-2" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <input
+                <input id="quizzes-field-2"
                   type="text"
                   value={newQuizDescription}
                   onChange={(e) => setNewQuizDescription(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="Optional"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="quizzes-field-3" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Category
                 </label>
-                <input
+                <input id="quizzes-field-3"
                   type="text"
                   value={newQuizCategory}
                   onChange={(e) => setNewQuizCategory(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="e.g. Muscular, Cardiovascular, Respiratory"
                 />
               </div>
 
-              <p className="text-xs text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 Quiz type (MCQ / Practical / Mixed) is set automatically based on the question formats you add next.
               </p>
             </div>
 
             {createQuizError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {createQuizError}
               </p>
             )}
@@ -1111,9 +1113,9 @@ export default function Quizzes() {
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">
               Quiz: <span className="font-medium text-slate-700 dark:text-slate-300">{createdQuiz.title}</span>
             </p>
-            <QuestionBank quizId={createdQuiz.id} onImported={() => { void api.getQuizQuestions(createdQuiz.id).then(setCreatedQuestions); }} />
+            <QuestionBank quizId={createdQuiz.id} onImported={() => { void api.getQuizQuestions(createdQuiz.id).then(setCreatedQuestions).catch(()=>setCreateQuizError('The bank action was saved, but the questions could not reload. Close and reopen this editor.')); }} />
             {createdQuestions.length > 0 && (
-              <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mb-4">
                 Current type (auto-detected):{' '}
                 <span className={`px-2 py-0.5 rounded-full font-medium ${quizTypeBadgeClasses[derivedTypePreview]}`}>
                   {derivedTypePreview}
@@ -1162,12 +1164,13 @@ export default function Quizzes() {
 
             <div className="space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Question Format
-                </label>
+                </p>
                 <div className="mt-1 flex gap-2">
                   <button
                     type="button"
+                    aria-pressed={newQuestionFormat === 'mcq'}
                     onClick={() => setNewQuestionFormat('mcq')}
                     className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${newQuestionFormat === 'mcq'
                       ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 text-blue-700 dark:text-blue-400'
@@ -1178,6 +1181,7 @@ export default function Quizzes() {
                   </button>
                   <button
                     type="button"
+                    aria-pressed={newQuestionFormat === 'open_ended'}
                     onClick={() => setNewQuestionFormat('open_ended')}
                     className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${newQuestionFormat === 'open_ended'
                       ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-500 text-blue-700 dark:text-blue-400'
@@ -1190,14 +1194,14 @@ export default function Quizzes() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="quizzes-field-4" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Question
                 </label>
-                <input
+                <input id="quizzes-field-4"
                   type="text"
                   value={newQuestionText}
                   onChange={(e) => setNewQuestionText(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                   placeholder="e.g. Which muscle flexes the elbow?"
                 />
               </div>
@@ -1212,6 +1216,7 @@ export default function Quizzes() {
                   ] as const).map(([letter, value, setter]) => (
                     <div key={letter} className="flex items-center gap-2">
                       <input
+                        aria-label={`Correct option ${letter}`}
                         type="radio"
                         name="new-correct-option"
                         checked={newCorrectOption === letter}
@@ -1219,38 +1224,39 @@ export default function Quizzes() {
                         className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 accent-blue-600 flex-shrink-0"
                       />
                       <input
+                        aria-label={`Option ${letter} text`}
                         type="text"
                         value={value}
                         onChange={(e) => setter(e.target.value)}
-                        className="text-slate-900 dark:text-slate-100 flex-1 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                        className="text-slate-900 dark:text-slate-100 flex-1 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                         placeholder={`Option ${letter}`}
                       />
                     </div>
                   ))}
-                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
                     Select the radio button next to the correct answer.
                   </p>
                 </>
               ) : (
                 <div>
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <label htmlFor="quizzes-field-5" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Model Answer
                   </label>
-                  <textarea
+                  <textarea id="quizzes-field-5"
                     value={newModelAnswer}
                     onChange={(e) => setNewModelAnswer(e.target.value)}
                     rows={3}
-                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                    className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                     placeholder="Reference answer used to guide manual grading — students won't see this before submitting."
                   />
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
                     Open-ended answers require manual review before a score is shown to the student.
                   </p>
                 </div>
               )}
 
               {createQuizError && (
-                <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
+                <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
                   {createQuizError}
                 </p>
               )}
@@ -1293,12 +1299,10 @@ export default function Quizzes() {
                   Quiz: <span className="font-medium text-slate-700 dark:text-slate-300">{showResultsQuiz.title}</span>
                 </p>
 
-                {loadingPending && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">Loading...</p>
-                )}
+                <RequestState loading={loadingPending} error={gradingError} onRetry={()=>void handleOpenResults(showResultsQuiz)} label="quiz results" />
 
-                {!loadingPending && pendingAttempts.length === 0 && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 py-6 text-center">
+                {!loadingPending && !gradingError && pendingAttempts.length === 0 && (
+                  <p className="text-sm text-slate-600 dark:text-slate-400 py-6 text-center">
                     No students have submitted this quiz yet.
                   </p>
                 )}
@@ -1314,7 +1318,7 @@ export default function Quizzes() {
                         <span className="text-sm text-slate-700 dark:text-slate-300">
                           {attempt.student_name || `Student ${attempt.student_id}`} — {attempt.score == null ? attempt.status : `${attempt.score}%`} — Attempt #{attempt.id}
                         </span>
-                        <span className="text-xs text-slate-400 dark:text-slate-500">
+                        <span className="text-xs text-slate-600 dark:text-slate-400">
                           {new Date(attempt.attempted_at).toLocaleString()}
                         </span>
                       </button>
@@ -1322,11 +1326,7 @@ export default function Quizzes() {
                   </div>
                 )}
 
-                {gradingError && (
-                  <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
-                    {gradingError}
-                  </p>
-                )}
+
 
                 <div className="mt-6 flex justify-end">
                   <button
@@ -1401,6 +1401,7 @@ export default function Quizzes() {
                                   setGradeInputs((prev) => ({ ...prev, [answer.id]: e.target.value }))
                                 }
                                 className="text-slate-900 dark:text-slate-100 w-24 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                                aria-label={`Score for ${answer.question}`}
                                 placeholder="0-100"
                               />
                               <button
@@ -1419,7 +1420,7 @@ export default function Quizzes() {
                 </div>
 
                 {gradingError && (
-                  <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+                  <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                     {gradingError}
                   </p>
                 )}
@@ -1446,44 +1447,44 @@ export default function Quizzes() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="quizzes-field-6" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Title
                 </label>
-                <input
+                <input id="quizzes-field-6"
                   type="text"
                   value={editQuizTitle}
                   onChange={(e) => setEditQuizTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="quizzes-field-7" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <textarea
+                <textarea id="quizzes-field-7"
                   value={editQuizDescription}
                   onChange={(e) => setEditQuizDescription(e.target.value)}
                   rows={3}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                <label htmlFor="quizzes-field-8" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Category
                 </label>
-                <input
+                <input id="quizzes-field-8"
                   type="text"
                   value={editQuizCategory}
                   onChange={(e) => setEditQuizCategory(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
                 />
               </div>
             </div>
 
             {editQuizError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {editQuizError}
               </p>
             )}

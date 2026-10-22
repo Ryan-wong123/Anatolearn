@@ -34,3 +34,9 @@ backend/.env
 
 # Private database and teaching-asset snapshots
 backups/
+
+# Local browser binaries, disposable QA identities and Playwright artifacts
+.playwright-browsers/
+.playwright/
+test-results/
+playwright-report/

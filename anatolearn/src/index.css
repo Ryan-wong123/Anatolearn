@@ -1,8 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -11,4 +10,8 @@
   animation: slide-up 0.2s ease-out;
 }
 
-@layer base { button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible { @apply outline-none ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900; } }
+@layer base { button:focus-visible, a:focus-visible, select:focus-visible, summary:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { @apply outline-none ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

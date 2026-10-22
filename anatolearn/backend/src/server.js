@@ -19,40 +19,29 @@ for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
 }
 
 function cleanupFailedUpload(req,res,next) {
-  res.once('finish',()=>{ if (res.statusCode>=400 && req.file) void fs.unlink(req.file.path).catch(()=>{}); });
+  res.once('finish',()=>{ if (res.statusCode>=400) for (const file of Object.values(req.files || {}).flat()) void fs.unlink(file.path).catch(()=>{}); if (res.statusCode>=400 && req.file) void fs.unlink(req.file.path).catch(()=>{}); });
   next();
 }
 
-const videoStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const videosDir = path.join(
-      storage.ROOT,
-      "videos"
-    );
-    fs.mkdir(videosDir, { recursive: true })
-      .then(() => cb(null, videosDir))
-      .catch((err) => cb(err, videosDir));
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const safeName = `video-${randomUUID()}${ext}`;
-    cb(null, safeName);
-  },
-});
-
-const uploadVideo = multer({
-  storage: videoStorage,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+const uploadVideoAndCaptions = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const folder = path.extname(file.originalname).toLowerCase() === '.vtt' ? 'captions' : 'videos';
+      const target = path.join(storage.ROOT, folder);
+      fs.mkdir(target, { recursive: true }).then(() => cb(null, target)).catch((err) => cb(err, target));
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, `${ext === '.vtt' ? 'captions' : 'video'}-${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 200 * 1024 * 1024, files: 2, fieldSize: 2 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = [".mp4", ".webm"];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only .mp4 and .webm files are allowed"));
-    }
+    const accepted = file.fieldname === 'video' ? ['.mp4','.webm'].includes(ext) : file.fieldname === 'captions' && ext === '.vtt';
+    cb(accepted ? null : new Error(file.fieldname === 'video' ? 'Only .mp4 and .webm files are allowed' : 'Only .vtt WebVTT caption files are allowed'), accepted);
   },
-});
+}).fields([{ name: 'video', maxCount: 1 }, { name: 'captions', maxCount: 1 }]);
 
 const modelStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -287,10 +276,10 @@ app.use('/api', authenticate, (req, res, next) => {
 });
 
 // No public static fallback: every teaching file must belong to an accessible record.
-app.get(['/models/*', '/videos/*', '/resources/*', '/thumbnails/*'], authenticate, async (req, res) => {
+app.get(['/models/*', '/videos/*', '/resources/*', '/thumbnails/*', '/captions/*'], authenticate, async (req, res) => {
   const assetPath = decodeURIComponent(req.path);
   const candidates = await pool.query(`SELECT program_id, is_published FROM models WHERE file_path = $1 OR thumbnail_path = $1
-    UNION ALL SELECT program_id, is_published FROM videos WHERE video_path = $1 OR thumbnail_path = $1
+    UNION ALL SELECT program_id, is_published FROM videos WHERE video_path = $1 OR thumbnail_path = $1 OR captions_path = $1
     UNION ALL SELECT program_id, is_published FROM resources WHERE file_path = $1`, [assetPath]);
   let allowed = candidates.rows.some((row) => canRead(req.user,row));
   if (!allowed && assetPath.startsWith('/models/')) {
@@ -759,9 +748,11 @@ app.get("/api/videos/:id", authenticate, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideo.single("video"), cleanupFailedUpload, async (req, res) => {
+app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideoAndCaptions, cleanupFailedUpload, async (req, res) => {
   try {
-    if (!req.file) {
+    const videoFile = req.files?.video?.[0];
+    const captionFile = req.files?.captions?.[0];
+    if (!videoFile) {
       return res.status(400).json({ message: "No video file uploaded" });
     }
 
@@ -771,13 +762,15 @@ app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideo.single(
       return res.status(400).json({ message: "title is required" });
     }
 
-    const videoPath = `/videos/${req.file.filename}`;
+    if (captionFile) await storage.validateCaptions(captionFile);
+    const videoPath = `/videos/${videoFile.filename}`;
+    const captionsPath = captionFile ? `/captions/${captionFile.filename}` : null;
 
     const result = await pool.query(
-      `INSERT INTO videos (title, description, video_path, program_id, is_published)
-       VALUES ($1, $2, $3, $4, false)
+      `INSERT INTO videos (title, description, video_path, captions_path, program_id, is_published)
+       VALUES ($1, $2, $3, $4, $5, false)
        RETURNING *`,
-      [title, description || null, videoPath, program_id || null]
+      [title, description || null, videoPath, captionsPath, program_id || null]
     );
 
     res.status(201).json(result.rows[0]);
@@ -785,6 +778,26 @@ app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideo.single(
     console.error("Failed to upload video:", err);
     res.status(500).json({ message: err.message || "Failed to upload video" });
   }
+});
+
+app.post('/api/videos/:id/captions', authenticate, requireTeacher, uploadVideoAndCaptions, cleanupFailedUpload, async (req, res) => {
+  const captionFile = req.files?.captions?.[0];
+  if (!captionFile || req.files?.video?.length) return res.status(400).json({ message: 'Upload exactly one .vtt caption file' });
+  await storage.validateCaptions(captionFile);
+  const existing = (await pool.query('SELECT captions_path FROM videos WHERE id=$1', [req.params.id])).rows[0];
+  if (!existing) return res.status(404).json({ message: 'Video not found' });
+  const nextPath = `/captions/${captionFile.filename}`;
+  const result = await pool.query('UPDATE videos SET captions_path=$1 WHERE id=$2 RETURNING *', [nextPath, req.params.id]);
+  if (existing.captions_path && existing.captions_path !== nextPath) await fs.unlink(storage.resolveAsset(existing.captions_path)).catch(() => {});
+  res.json(result.rows[0]);
+});
+
+app.delete('/api/videos/:id/captions', authenticate, requireTeacher, async (req, res) => {
+  const existing = (await pool.query('SELECT captions_path FROM videos WHERE id=$1', [req.params.id])).rows[0];
+  if (!existing) return res.status(404).json({ message: 'Video not found' });
+  const result = await pool.query('UPDATE videos SET captions_path=NULL WHERE id=$1 RETURNING *', [req.params.id]);
+  if (existing.captions_path) await fs.unlink(storage.resolveAsset(existing.captions_path)).catch(() => {});
+  res.json(result.rows[0]);
 });
 
 app.delete("/api/videos/:id", authenticate, requireTeacher, async (req, res) => {

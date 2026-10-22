@@ -1,0 +1,264 @@
+{
+  "startedAt": "2026-10-22T09:29:09.622Z",
+  "durationSeconds": 234,
+  "scope": "Local Docker app; WCAG 2 A/AA and 2.1 A/AA tagged automated checks. No spoken screen-reader or actual Safari certification.",
+  "projects": {
+    "chrome": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "audits": 29,
+      "violations": 0,
+      "manualReviewRuleIds": [
+        "color-contrast",
+        "label-content-name-mismatch"
+      ],
+      "checks": [
+        {
+          "title": "auth titles, landmarks, descriptions and accessibility",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher dialog isolation, keyboard trap and return focus",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "compact navigation and skip link work by keyboard",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "viewer geometry, annotation keyboard selection and linked-video feedback",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "authenticated MP4 playback",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "video page exposes its authenticated WebVTT caption track without autoplay",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student quiz keyboard submission and accessible result",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "failed read keeps an accessible retry and recovers focus",
+          "status": "passed",
+          "notes": []
+        }
+      ]
+    },
+    "edge": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "audits": 29,
+      "violations": 0,
+      "manualReviewRuleIds": [
+        "color-contrast",
+        "label-content-name-mismatch"
+      ],
+      "checks": [
+        {
+          "title": "auth titles, landmarks, descriptions and accessibility",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher dialog isolation, keyboard trap and return focus",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "compact navigation and skip link work by keyboard",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "viewer geometry, annotation keyboard selection and linked-video feedback",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "authenticated MP4 playback",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "video page exposes its authenticated WebVTT caption track without autoplay",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student quiz keyboard submission and accessible result",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "failed read keeps an accessible retry and recovers focus",
+          "status": "passed",
+          "notes": []
+        }
+      ]
+    },
+    "firefox": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "audits": 29,
+      "violations": 0,
+      "manualReviewRuleIds": [
+        "color-contrast",
+        "label-content-name-mismatch"
+      ],
+      "checks": [
+        {
+          "title": "auth titles, landmarks, descriptions and accessibility",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher dialog isolation, keyboard trap and return focus",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "compact navigation and skip link work by keyboard",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "viewer geometry, annotation keyboard selection and linked-video feedback",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "authenticated MP4 playback",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "video page exposes its authenticated WebVTT caption track without autoplay",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student quiz keyboard submission and accessible result",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "failed read keeps an accessible retry and recovers focus",
+          "status": "passed",
+          "notes": []
+        }
+      ]
+    },
+    "webkit": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 1,
+      "audits": 29,
+      "violations": 0,
+      "manualReviewRuleIds": [
+        "color-contrast",
+        "label-content-name-mismatch",
+        "no-autoplay-audio"
+      ],
+      "checks": [
+        {
+          "title": "auth titles, landmarks, descriptions and accessibility",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher: main sections in light and dark themes",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "teacher dialog isolation, keyboard trap and return focus",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "compact navigation and skip link work by keyboard",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "viewer geometry, annotation keyboard selection and linked-video feedback",
+          "status": "passed",
+          "notes": [
+            "Windows WebKit cannot decode this H.264/AAC MP4; playback requires Safari/macOS verification."
+          ]
+        },
+        {
+          "title": "authenticated MP4 playback",
+          "status": "skipped",
+          "notes": [
+            "Windows WebKit reports NotSupportedError for the fixture H.264/AAC MP4. Test actual Safari on macOS."
+          ]
+        },
+        {
+          "title": "video page exposes its authenticated WebVTT caption track without autoplay",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "student quiz keyboard submission and accessible result",
+          "status": "passed",
+          "notes": []
+        },
+        {
+          "title": "failed read keeps an accessible retry and recovers focus",
+          "status": "passed",
+          "notes": []
+        }
+      ]
+    }
+  }
+}

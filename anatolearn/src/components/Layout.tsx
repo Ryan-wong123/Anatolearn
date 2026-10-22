@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import RequestState from './RequestState';
+import { useResource } from '../hooks/useResource';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
   GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun, Moon, Menu, X,
@@ -25,15 +27,20 @@ export default function Layout() {
   const navigate = useNavigate();
   const { role, setRole, program, setProgram, user, logout, isDevMode, theme, toggleTheme } = useAppContext();
 
+  const navigationToggle = useRef<HTMLButtonElement>(null);
+  const main = useRef<HTMLElement>(null);
+  const lastPath = useRef(location.pathname);
+  useEffect(()=>{
+    const changed=lastPath.current!==location.pathname;lastPath.current=location.pathname;
+    if (!changed) return;
+    const frame=requestAnimationFrame(()=>main.current?.focus());
+    return ()=>cancelAnimationFrame(frame);
+  },[location.pathname]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutError, setLogoutError] = useState('');
-  const [programs, setPrograms] = useState<Program[]>([]);
+  const {data:programs, loading:programsLoading, error:programsError, reload:reloadPrograms} = useResource<Program[]>(api.getPrograms, []);
 
-  useEffect(() => {
-    api.getPrograms()
-      .then(setPrograms)
-      .catch((err) => console.error('Failed to load programs:', err));
-  }, []);
+
 
   // Once we know both the logged-in user's program_id and the full programs
   // list, sync the nav dropdown to match their actual account — it starts on
@@ -50,10 +57,11 @@ export default function Layout() {
 
   return (
     <div className="bg-slate-50 dark:bg-slate-800 min-h-screen flex flex-col">
-      <nav className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
+      <a href="#main-content" tabIndex={0} className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-[100] focus:rounded-lg focus:bg-white focus:p-3 focus:text-blue-700">Skip to content</a>
+      <nav aria-label="Main navigation" className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-6">
-            <button aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} className="xl:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
+            <button ref={navigationToggle} aria-controls="mobile-navigation" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} className="xl:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
               {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
             <Link to="/dashboard" aria-label="AnatoLearn dashboard" className="flex items-center gap-2">
@@ -71,6 +79,7 @@ export default function Layout() {
                 return (
                   <Link
                     key={path}
+                    aria-current={isActive ? 'page' : undefined}
                     to={path}
                     className={`px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors ${
                       isActive
@@ -92,11 +101,13 @@ export default function Layout() {
             </span>
 
             <select
+              disabled={programsLoading || Boolean(programsError)}
               aria-label="Selected programme"
               value={program}
               onChange={(e) => setProgram(e.target.value)}
               className="text-slate-900 dark:text-slate-100 max-w-[120px] lg:max-w-none pl-2 pr-2 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 focus:outline-none"
             >
+              {programsLoading && <option>Loading programmes…</option>}
               {programs.map((p) => (
                 <option key={p.id} value={p.name}>
                   {p.name}
@@ -113,7 +124,7 @@ export default function Layout() {
                 <button
                   onClick={() => setRole('student')}
                   className={`text-sm transition-colors ${
-                    role === 'student' ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'
+                    role === 'student' ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400'
                   }`}
                   title="Dev mode only — real role comes from your account"
                 >
@@ -123,7 +134,7 @@ export default function Layout() {
                 <button
                   onClick={() => setRole('teacher')}
                   className={`text-sm transition-colors ${
-                    role === 'teacher' ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'
+                    role === 'teacher' ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400'
                   }`}
                   title="Dev mode only — real role comes from your account"
                 >
@@ -134,7 +145,7 @@ export default function Layout() {
 
             <button
               onClick={toggleTheme}
-              className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 dark:text-slate-500 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:bg-slate-800 transition-colors"
+              className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:bg-slate-800 transition-colors"
               title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -147,11 +158,11 @@ export default function Layout() {
                 </span>
               )}
               <span className="hidden sm:inline p-1" aria-hidden="true">
-                <UserCircle2 className="w-8 h-8 text-slate-400 dark:text-slate-500" />
+                <UserCircle2 className="w-8 h-8 text-slate-600 dark:text-slate-400" />
               </span>
               <button
                 onClick={handleLogout}
-                className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 title="Log out"
               >
                 <LogOut className="w-5 h-5" />
@@ -159,13 +170,14 @@ export default function Layout() {
             </div>
           </div>
         </div>
-        {menuOpen && <div className="absolute top-16 inset-x-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-3 xl:hidden shadow-lg">
-          {navItems.map(({path,label,icon:Icon}) => <Link key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
-        </div>}
+        <div hidden={!menuOpen} onKeyDown={(event)=>{if(event.key==='Escape'){setMenuOpen(false);navigationToggle.current?.focus();}}} id="mobile-navigation" className="absolute top-16 inset-x-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-3 xl:hidden shadow-lg">
+          {navItems.map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
+        </div>
       </nav>
       {logoutError && <p role="alert" className="p-3 text-red-600">{logoutError}</p>}
 
-      <main className="flex-1">
+      <RequestState loading={false} error={programsError} onRetry={reloadPrograms} label="programmes" />
+      <main ref={main} id="main-content" tabIndex={-1} className="flex-1">
         <Outlet />
       </main>
     </div>

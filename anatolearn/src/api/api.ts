@@ -11,44 +11,53 @@ function getAuthHeaders(): Record<string, string> {
     return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-// Every request (GET, upload, mutation) goes through this, so the
-// Authorization header only needs to be handled in one place.
-async function apiFetch(endpoint: string, options: RequestInit = {}) {
-    const isFormData = options.body instanceof FormData;
+export class ApiError extends Error {
+    status: number;
+    constructor(message: string, status = 0) { super(message); this.name = 'ApiError'; this.status = status; }
+}
 
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-        ...options,
-        credentials: "include",
-        headers: {
-            // FormData sets its own multipart Content-Type + boundary —
-            // setting it manually here would break file uploads.
-            ...(isFormData ? {} : { "Content-Type": "application/json" }),
-            ...getAuthHeaders(),
-            ...(sessionStorage.getItem("anatolearn_program") ? { "X-Program-Name": encodeURIComponent(sessionStorage.getItem("anatolearn_program")!) } : {}),
-            ...(options.headers || {}),
-        },
-    });
-
+async function fetchResponse(endpoint: string, options: RequestInit = {}) {
+    let res: Response;
+    try {
+        res = await fetch(`${API_BASE}${endpoint}`, {
+            ...options, credentials: 'include',
+            headers: {
+                ...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}),
+                ...getAuthHeaders(),
+                ...(sessionStorage.getItem('anatolearn_program') ? {'X-Program-Name':encodeURIComponent(sessionStorage.getItem('anatolearn_program')!)} : {}),
+                ...(options.headers || {}),
+            },
+        });
+    } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw error;
+        throw new ApiError('Could not connect to the server. Check your connection and try again.');
+    }
     if (res.status === 401 && !endpoint.startsWith('/auth/')) {
         sessionStorage.removeItem(TOKEN_STORAGE_KEY);
         sessionStorage.removeItem('anatolearn_user');
         window.dispatchEvent(new Event('anatolearn-session-expired'));
     }
     if (!res.ok) {
-        // Surface the backend's own error message (e.g. "Invalid email or
-        // password") instead of a generic "API error: 401" where possible —
-        // needed for the login page to show a real error.
-        let message = `API error: ${res.status}`;
+        let message = res.status === 401 ? 'Your session has expired. Please sign in again.'
+            : res.status === 403 ? 'You do not have permission to perform this action.'
+            : res.status === 404 ? 'This content is unavailable.'
+            : 'The server could not complete the request. Please try again.';
         try {
-            const body = await res.json();
-            if (body?.message) message = body.message;
-        } catch {
-            // response body wasn't JSON — keep the generic message
-        }
-        throw new Error(message);
+            const body: unknown = await res.json();
+            if (typeof body === 'object' && body !== null && 'message' in body && typeof body.message === 'string' && body.message.trim() && res.status < 500) message = body.message;
+        } catch { /* Non-JSON proxy/server errors use the readable fallback. */ }
+        throw new ApiError(message, res.status);
     }
+    return res;
+}
 
-    return res.json();
+async function apiFetch(endpoint: string, options: RequestInit = {}) {
+    const response = await fetchResponse(endpoint, options);
+    try { return await response.json(); }
+    catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') throw error;
+        throw new ApiError('The server returned an unreadable response. Please try again.', response.status);
+    }
 }
 
 function request(endpoint: string) {
@@ -60,21 +69,7 @@ function request(endpoint: string) {
 // header, so this fetches as a blob with the header attached, then
 // triggers a normal browser save using the filename the server provided.
 async function downloadFile(endpoint: string) {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-        credentials: "include",
-        headers: { ...getAuthHeaders() },
-    });
-
-    if (!res.ok) {
-        let message = `API error: ${res.status}`;
-        try {
-            const body = await res.json();
-            if (body?.message) message = body.message;
-        } catch {
-            // response body wasn't JSON — keep the generic message
-        }
-        throw new Error(message);
-    }
+    const res = await fetchResponse(endpoint);
 
     const disposition = res.headers.get('Content-Disposition') || '';
     const match = disposition.match(/filename="([^"]+)"/);
@@ -187,18 +182,27 @@ export const api = {
 
     getVideo: (id: number) => request(`/videos/${id}`),
 
-    uploadVideo: (data: { title: string; description?: string; program_id?: number; file: File }) => {
+    uploadVideo: (data: { title: string; description?: string; program_id?: number; file: File; captions?: File }) => {
         const formData = new FormData();
         formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
         if (data.program_id) formData.append('program_id', String(data.program_id));
         formData.append('video', data.file);
+        if (data.captions) formData.append('captions', data.captions);
 
         return apiFetch(`/videos/upload`, {
             method: 'POST',
             body: formData,
         });
     },
+
+    uploadVideoCaptions: (id: number, captions: File) => {
+        const formData = new FormData();
+        formData.append('captions', captions);
+        return apiFetch(`/videos/${id}/captions`, { method: 'POST', body: formData });
+    },
+
+    removeVideoCaptions: (id: number) => apiFetch(`/videos/${id}/captions`, { method: 'DELETE' }),
 
     deleteVideo: (id: number) =>
         apiFetch(`/videos/${id}`, { method: 'DELETE' }),
