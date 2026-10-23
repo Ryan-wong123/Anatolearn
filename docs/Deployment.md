@@ -30,7 +30,7 @@ backup container --> nightly pg_dump --> S3 backups/        CloudWatch: logs, al
 - [ ] 8. Install Docker on the instance
 - [ ] 9. Clone the repo and create `.env.production`
 - [ ] 10. Start the stack
-- [ ] 11. Create the first teacher account
+- [ ] 11. Create the first administrator account
 - [ ] 12. Verify content, uploads and the virus scanner
 - [ ] 13. Check backups and run a restore test
 - [ ] 14. Set up CloudWatch logs and alarms
@@ -212,15 +212,15 @@ On first start:
 - ClamAV downloads its virus signatures, which takes 2-5 minutes; the API waits for it to report healthy.
 - Visit `https://$DOMAIN`. The first load may take a minute while Caddy obtains the certificate.
 
-## 11. Create the first teacher account
+## 11. Create the first administrator account
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production exec \
-  -e TEACHER_PASSWORD='A-strong-password-1' backend \
-  node scripts/create-teacher.js "Admin Name" admin@example.com 1
+  -e ADMIN_PASSWORD='A-strong-password-1' backend \
+  node scripts/create-admin.js "Admin Name" admin@example.com
 ```
 
-The last argument is the programme id (1 = Physiotherapy, 2 = Occupational Therapy, 3 = Radiography, 4 = Nursing). Other teachers register themselves with the invite code, or a teacher creates them under **Users**. From then on teachers manage accounts (disable, unlock, reset passwords, change roles) in the app.
+The password needs 8-72 characters with an uppercase letter and a number. Running the script for an existing email promotes that account to administrator (and signs it out everywhere); leave `ADMIN_PASSWORD` unset to keep its current password. Administrators have no learning pages: they only manage accounts and read the audit log. Teachers register themselves with the invite code, or an administrator creates them under **Users**. From then on administrators manage accounts (disable, unlock, reset passwords, change roles) in the app; teachers cannot.
 
 ## 12. Content and verification
 
@@ -236,7 +236,7 @@ done
 
 Smoke test:
 1. `curl -s https://$DOMAIN/api/health` returns `{"status":"ok"}`.
-2. Sign in as the teacher. Open **Users -> Audit log** and confirm your sign-in is listed.
+2. Sign in as the administrator. Open **Users -> Audit log** and confirm your sign-in is listed.
 3. Upload a model, a video (with a `.vtt` caption) and a resource. Watch the upload progress bar and confirm the objects appear: `aws s3 ls s3://$BUCKET/PREFIX/ --recursive`.
 4. Test the scanner end to end with the harmless EICAR test string. Save this single line as `eicar.pdf` and try to upload it as a library resource; it must be rejected as flagged by the virus scanner:
    `X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`
@@ -301,7 +301,7 @@ The in-app audit trail (Users -> Audit log) covers who did what; the log group c
 ## 15. Before launch
 
 - Complete the **Privacy notice** and **Terms of use** pages (`anatolearn/src/pages/Privacy.tsx`, `Terms.tsx`) with your institution's contact details and policies, and have them reviewed. Registration requires consent to both.
-- Decide who the administrators are, remove unused teacher accounts, and agree how often the audit log is reviewed.
+- Decide who the administrators are (keep at least two), remove unused teacher accounts, and agree how often the audit log is reviewed.
 
 ---
 
@@ -353,7 +353,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 | Login works but you are logged out immediately / 403 "Untrusted request origin" | `FRONTEND_ORIGINS` does not exactly match the browser origin (scheme, host, no trailing slash) |
 | Writes return 403 "Invalid or missing CSRF token" | A script uses the session cookie without the `X-CSRF-Token` header; use a Bearer token, or reload the page in the browser |
 | A user cannot sign in after a few attempts | Locked for 15 minutes; a teacher can unlock them under Users |
-| Registration says "limited to @school.edu" | `ALLOWED_EMAIL_DOMAINS` is set; use an allowed address, or a teacher can create the account under Users |
+| Registration says "limited to @school.edu" | `ALLOWED_EMAIL_DOMAINS` is set; use an allowed address, or an administrator can create the account under Users |
 | 429 Too many requests | Rate limits (10 logins / 15 min per IP). If every user is limited together, `TRUST_PROXY` does not match the proxy chain (default 2: Caddy + nginx) |
 | Large upload fails | nginx allows 210 MB; check backend logs and that ClamAV `StreamMaxLength` (250 MB) is unchanged |
 | Backup container unhealthy | `docker compose logs backup`; usually missing `s3:PutObject` permission, wrong region or the hop limit |

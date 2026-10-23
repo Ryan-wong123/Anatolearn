@@ -20,7 +20,8 @@ const navItems = [
   { label: 'Library', icon: Library, path: '/library' },
 ];
 
-const teacherNavItems = [{ label: 'Users', icon: Users, path: '/admin/users' }];
+// Administrators manage accounts only; they have none of the learning pages.
+const adminNavItems = [{ label: 'Users', icon: Users, path: '/admin/users' }];
 
 type Program = {
   id: number;
@@ -47,9 +48,11 @@ export default function Layout() {
   const {data:programs, loading:programsLoading, error:programsError, reload:reloadPrograms} = useResource<Program[]>(api.getPrograms, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
-  const items = role === 'teacher' ? [...navItems, ...teacherNavItems] : navItems;
+  const isAdmin = user?.role === 'admin';
+  const items = isAdmin ? adminNavItems : navItems;
 
   useEffect(() => {
+    if (isAdmin) return;
     let active = true;
     const refresh = () => api.getAnnouncements().then((list) => {
       if (!active) return;
@@ -61,7 +64,7 @@ export default function Layout() {
     const timer = window.setInterval(refresh, 5 * 60 * 1000);
     window.addEventListener(ANNOUNCEMENTS_SEEN_EVENT, refresh);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener(ANNOUNCEMENTS_SEEN_EVENT, refresh); };
-  }, []);
+  }, [isAdmin]);
 
   function handleSearch(event: FormEvent) {
     event.preventDefault();
@@ -125,6 +128,7 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {!isAdmin && <>
             <form role="search" onSubmit={handleSearch} className="relative hidden min-[1800px]:block">
               <label htmlFor="global-search" className="sr-only">Search models, videos, quizzes and library</label>
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
@@ -152,12 +156,13 @@ export default function Layout() {
                 </option>
               ))}
             </select>
+            </>}
 
             {/* Dev-only: lets you preview both role views without logging in
                 and out. Gated on Vite's built-in DEV flag, so this cannot
                 render (or do anything) in a production build — role there
                 comes only from the logged-in account. */}
-            {isDevMode && (
+            {isDevMode && !isAdmin && (
               <div className="hidden min-[2000px]:flex items-center gap-2">
                 <button
                   onClick={() => setRole('student')}
@@ -181,11 +186,11 @@ export default function Layout() {
               </div>
             )}
 
-            <Link to="/announcements" aria-label={unreadAnnouncements ? `Announcements, ${unreadAnnouncements} new` : 'Announcements'} title="Announcements"
+            {!isAdmin && <Link to="/announcements" aria-label={unreadAnnouncements ? `Announcements, ${unreadAnnouncements} new` : 'Announcements'} title="Announcements"
               className="relative hidden rounded-lg p-1.5 sm:block text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700">
               <Bell className="h-5 w-5" />
               {unreadAnnouncements > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{unreadAnnouncements > 9 ? '9+' : unreadAnnouncements}</span>}
-            </Link>
+            </Link>}
 
             <button
               onClick={toggleTheme}
@@ -215,13 +220,13 @@ export default function Layout() {
           </div>
         </div>
         <div hidden={!menuOpen} onKeyDown={(event)=>{if(event.key==='Escape'){setMenuOpen(false);navigationToggle.current?.focus();}}} id="mobile-navigation" className="absolute top-16 inset-x-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-3 xl:hidden shadow-lg">
-          <form role="search" onSubmit={handleSearch} className="mb-2 flex gap-2 p-1">
+          {!isAdmin && <form role="search" onSubmit={handleSearch} className="mb-2 flex gap-2 p-1">
             <label htmlFor="mobile-search" className="sr-only">Search</label>
             <input id="mobile-search" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search models, videos, quizzes…"
               className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
             <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Search</button>
-          </form>
-          {[...items, { path: '/announcements', label: unreadAnnouncements ? `Announcements (${unreadAnnouncements} new)` : 'Announcements', icon: Bell }, { path: '/profile', label: 'My profile', icon: UserCircle2 }].map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
+          </form>}
+          {[...items, ...(isAdmin ? [] : [{ path: '/announcements', label: unreadAnnouncements ? `Announcements (${unreadAnnouncements} new)` : 'Announcements', icon: Bell }]), { path: '/profile', label: 'My profile', icon: UserCircle2 }].map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
         </div>
       </nav>
       {logoutError && <p role="alert" className="p-3 text-red-600">{logoutError}</p>}

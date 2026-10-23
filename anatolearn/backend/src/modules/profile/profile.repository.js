@@ -16,6 +16,9 @@ async function revokeAllSessions(parameters) { return pool.query('UPDATE auth_se
 async function countOtherActiveTeachers(parameters) {
     return pool.query("SELECT count(*)::int AS n FROM users WHERE role = 'teacher' AND is_active AND id <> $1", parameters);
 }
+async function countOtherActiveAdmins(parameters) {
+    return pool.query("SELECT count(*)::int AS n FROM users WHERE role = 'admin' AND is_active AND id <> $1", parameters);
+}
 async function deleteUser(parameters) { return pool.query('DELETE FROM users WHERE id = $1', parameters); }
 async function exportData(userId) {
     const [attempts, answers, favorites, activity, downloads] = await Promise.all([
@@ -28,4 +31,4 @@ async function exportData(userId) {
     ]);
     return { quiz_attempts: attempts.rows, quiz_answers: answers.rows, favorites: favorites.rows, activity: activity.rows, model_downloads: downloads.rows };
 }
-module.exports = { findProfile, findPasswordHash, updateProfile, findProgram, setPassword, revokeOtherSessions, revokeAllSessions, countOtherActiveTeachers, deleteUser, exportData };
+module.exports = { findProfile, findPasswordHash, updateProfile, findProgram, setPassword, revokeOtherSessions, revokeAllSessions, countOtherActiveTeachers, countOtherActiveAdmins, deleteUser, exportData };

@@ -191,7 +191,6 @@ function TeacherView({ data }: { data: TeacherDashboard }) {
     { label: 'Upload a model', path: '/3dviewer', icon: Box },
     { label: 'Add a video', path: '/videos', icon: Video },
     { label: 'Create a quiz', path: '/quizzes', icon: BookOpen },
-    { label: 'Manage users', path: '/admin/users', icon: Users },
     { label: 'Post an announcement', path: '/announcements', icon: Megaphone },
   ];
   return (
@@ -201,7 +200,7 @@ function TeacherView({ data }: { data: TeacherDashboard }) {
         <StatCard label="Videos" value={String(totals.videos)} icon={<Video className="h-6 w-6 text-purple-600 dark:text-purple-400" />} to="/videos" />
         <StatCard label="Quizzes" value={String(totals.quizzes)} icon={<Activity className="h-6 w-6 text-green-600 dark:text-green-400" />} to="/quizzes" />
         <StatCard label="Library items" value={String(totals.resources)} icon={<Library className="h-6 w-6 text-slate-600 dark:text-slate-300" />} to="/library" />
-        <StatCard label="Students" value={String(totals.students)} icon={<Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />} to="/admin/users" hint={`${totals.teachers} teacher${totals.teachers === 1 ? '' : 's'}`} />
+        <StatCard label="Students" value={String(totals.students)} icon={<Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />} hint={`${totals.teachers} teacher${totals.teachers === 1 ? '' : 's'}`} />
         <StatCard label="Attempts this week" value={String(totals.attempts_this_week)} icon={<Eye className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />} />
         <StatCard label="Awaiting grading" value={String(pending_review)} icon={<ClipboardCheck className="h-6 w-6 text-amber-600" />} to="/quizzes" hint={pending_review ? 'Open Quizzes → View Results' : 'All caught up'} />
         <StatCard label="Unpublished items" value={String(totals.unpublished)} icon={<EyeOff className="h-6 w-6 text-slate-600 dark:text-slate-300" />} hint={totals.unpublished ? 'Hidden from students' : undefined} />
@@ -211,7 +210,7 @@ function TeacherView({ data }: { data: TeacherDashboard }) {
 
       <section aria-labelledby="dash-actions" className="mt-8">
         <h2 id="dash-actions" className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Quick actions</h2>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {quickActions.map(({ label, path, icon: Icon }) => (
             <Link key={label} to={path} className={tileLink}><Icon className="mr-2 h-4 w-4 flex-shrink-0" aria-hidden="true" />{label}</Link>
           ))}

@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const pool = require('../src/db');
 const app = require('../src/server');
 const storage = require('../src/storage');
+// The suite signs in more often than the production login limit (10 per 15 minutes) allows.
+process.env.DISABLE_RATE_LIMIT = 'true';
 
 test('authenticated assets, permissions, programmes, assessment sessions and question bank',async(t)=>{
   const server=app.listen(0,'127.0.0.1');

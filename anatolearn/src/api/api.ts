@@ -162,9 +162,9 @@ export const api = {
     // Teacher user management and audit log
     getUsers: (opts: { page: number; pageSize: number; q?: string; role?: string; status?: string }) =>
         requestPaged<UserSummary>(`/users${query({ q: opts.q, role: opts.role, status: opts.status, page: opts.page, page_size: opts.pageSize })}`),
-    createUser: (data: { name: string; email: string; role: 'student' | 'teacher'; program_id?: number | null; password?: string }): Promise<{ user: UserSummary; temporary_password?: string }> =>
+    createUser: (data: { name: string; email: string; role: 'student' | 'teacher' | 'admin'; program_id?: number | null; password?: string }): Promise<{ user: UserSummary; temporary_password?: string }> =>
         apiFetch('/users', { method: 'POST', body: JSON.stringify(data) }),
-    updateUser: (id: number, data: { name?: string; role?: 'student' | 'teacher'; program_id?: number | null; is_active?: boolean; unlock?: boolean }): Promise<UserSummary> =>
+    updateUser: (id: number, data: { name?: string; role?: 'student' | 'teacher' | 'admin'; program_id?: number | null; is_active?: boolean; unlock?: boolean }): Promise<UserSummary> =>
         apiFetch(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     resetUserPassword: (id: number, password?: string): Promise<{ temporary_password?: string; message?: string }> =>
         apiFetch(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify(password ? { password } : {}) }),

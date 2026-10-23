@@ -292,11 +292,13 @@ List endpoints for models, videos, quizzes and resources accept optional `page` 
 - `GET /api/profile/export` downloads the user's own data as JSON (account, quiz attempts and answers, favourites, activity, downloads).
 - `DELETE /api/profile` `{ password }` deletes the account. The only active teacher cannot delete themselves.
 
-## Users and audit log (teacher only)
+## Users and audit log (administrator only)
+
+These routes require the `admin` role (`403 Administrator access required` for everyone else, including teachers). `GET /api/dashboard` returns `{ "role": "admin" }` for administrators, who have no dashboard figures.
 
 - `GET /api/users?q=&role=&status=active|disabled|locked&page=&page_size=`
 - `POST /api/users` `{ name, email, role, program_id?, password? }`. Without a password a temporary one is generated and returned once as `temporary_password`.
-- `PATCH /api/users/:id` `{ name?, role?, program_id?, is_active?, unlock? }`. Disabling or changing role revokes the user's sessions. Teachers cannot demote or disable themselves, and at least one active teacher must remain.
+- `PATCH /api/users/:id` `{ name?, role?, program_id?, is_active?, unlock? }`. Disabling or changing role revokes the user's sessions. `role` may be `student`, `teacher` or `admin`. Administrators cannot demote or disable themselves, and at least one active administrator must remain. Public registration still accepts only `student` and `teacher`.
 - `POST /api/users/:id/reset-password` `{ password? }` generates or sets a password and signs the user out everywhere.
 - `DELETE /api/users/:id`
 - `GET /api/audit-log?action=<prefix>&actor=<id>&page=&page_size=` lists authentication events, user management and every successful state-changing API call (who, what, record id, IP; no request bodies).

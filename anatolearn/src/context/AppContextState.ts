@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-type Role = 'student' | 'teacher';
+type Role = 'student' | 'teacher' | 'admin';
 type Program = string;
 type Theme = 'light' | 'dark';
 

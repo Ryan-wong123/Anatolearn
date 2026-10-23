@@ -13,6 +13,7 @@ async function getMyStats(input) {
     return { ...meta(), status: 200, kind: 'json', body: await studentStats(input.user.id) };
 }
 async function getDashboard(input) {
+    if (input.user.role === 'admin') return { ...meta(), status: 200, kind: 'json', body: { role: 'admin' } };
     if (input.user.role === 'teacher') {
         return { ...meta(), status: 200, kind: 'json', body: { role: 'teacher', ...(await repository.teacherOverview()),
             announcements: (await announcements.listAll()).rows.slice(0, 5) } };

@@ -28,6 +28,9 @@ async function deleteUser(parameters) { return pool.query('DELETE FROM users WHE
 async function countOtherActiveTeachers(parameters) {
     return pool.query("SELECT count(*)::int AS n FROM users WHERE role = 'teacher' AND is_active AND id <> $1", parameters);
 }
+async function countOtherActiveAdmins(parameters) {
+    return pool.query("SELECT count(*)::int AS n FROM users WHERE role = 'admin' AND is_active AND id <> $1", parameters);
+}
 async function findProgram(parameters) { return pool.query('SELECT id FROM programs WHERE id = $1', parameters); }
 async function listAuditLog({ actor, action }) {
     const conditions = [], parameters = [];
@@ -36,4 +39,4 @@ async function listAuditLog({ actor, action }) {
     return pool.query(`SELECT id, actor_id, actor_name, action, target_type, target_id, detail, ip, created_at FROM audit_log
       ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''} ORDER BY id DESC LIMIT 1000`, parameters);
 }
-module.exports = { listUsers, findUser, findByEmail, insertUser, updateUser, setPassword, revokeSessions, deleteUser, countOtherActiveTeachers, findProgram, listAuditLog };
+module.exports = { listUsers, findUser, findByEmail, insertUser, updateUser, setPassword, revokeSessions, deleteUser, countOtherActiveTeachers, countOtherActiveAdmins, findProgram, listAuditLog };

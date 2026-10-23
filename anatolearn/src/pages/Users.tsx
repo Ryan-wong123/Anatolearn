@@ -49,7 +49,7 @@ function StatusBadge({ user }: { user: UserSummary }) {
 function CreateDialog({ programmes, onClose, onCreated }: { programmes: Programme[]; onClose: () => void; onCreated: (user: UserSummary, temporaryPassword?: string) => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'student' | 'teacher'>('student');
+  const [role, setRole] = useState<'student' | 'teacher' | 'admin'>('student');
   const [programId, setProgramId] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -81,9 +81,10 @@ function CreateDialog({ programmes, onClose, onCreated }: { programmes: Programm
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="new-user-role" className={labelClass}>Role</label>
-            <select id="new-user-role" value={role} onChange={(e) => setRole(e.target.value as 'student' | 'teacher')} className={inputClass}>
+            <select id="new-user-role" value={role} onChange={(e) => setRole(e.target.value as 'student' | 'teacher' | 'admin')} className={inputClass}>
               <option value="student">Student</option>
               <option value="teacher">Teacher</option>
+              <option value="admin">Administrator</option>
             </select>
           </div>
           <div>
@@ -136,9 +137,10 @@ function EditDialog({ user, programmes, isSelf, onClose, onSaved }: { user: User
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="edit-user-role" className={labelClass}>Role</label>
-            <select id="edit-user-role" value={role} disabled={isSelf} aria-describedby={isSelf ? 'edit-user-self' : undefined} onChange={(e) => setRole(e.target.value as 'student' | 'teacher')} className={inputClass}>
+            <select id="edit-user-role" value={role} disabled={isSelf} aria-describedby={isSelf ? 'edit-user-self' : undefined} onChange={(e) => setRole(e.target.value as 'student' | 'teacher' | 'admin')} className={inputClass}>
               <option value="student">Student</option>
               <option value="teacher">Teacher</option>
+              <option value="admin">Administrator</option>
             </select>
             {isSelf && <p id="edit-user-self" className="mt-1 text-xs text-slate-600 dark:text-slate-400">You cannot change your own role.</p>}
           </div>
@@ -222,6 +224,7 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
             <option value="">All roles</option>
             <option value="student">Students</option>
             <option value="teacher">Teachers</option>
+            <option value="admin">Administrators</option>
           </select>
         </div>
         <div>
@@ -264,7 +267,7 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
                       {user.name}{isSelf && <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-900 dark:bg-blue-900/40 dark:text-blue-200">You</span>}
                       <span className="block text-xs font-normal text-slate-600 dark:text-slate-400">{user.email}</span>
                     </th>
-                    <td className="px-4 py-3 capitalize">{user.role}</td>
+                    <td className="px-4 py-3">{user.role === 'admin' ? 'Administrator' : user.role === 'teacher' ? 'Teacher' : 'Student'}</td>
                     <td className="px-4 py-3">{programmeName(user.program_id)}</td>
                     <td className="px-4 py-3"><StatusBadge user={user} /></td>
                     <td className="px-4 py-3" title={formatDateTime(user.last_login_at)}>{user.last_login_at ? relativeTime(user.last_login_at) : 'Never'}</td>

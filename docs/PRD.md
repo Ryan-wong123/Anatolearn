@@ -245,7 +245,7 @@ Unauthenticated users are redirected to `/login` when accessing any auth-require
 
 | ID | Requirement | 
 |---|---|
-| NFR-11 | The system shall implement role-based access control for teacher and student accounts. | 
+| NFR-11 | The system shall implement role-based access control for administrator, teacher and student accounts. | 
 | NFR-12 | The system shall prevent students from creating, editing, deleting, or publishing teacher-managed content. | 
 | NFR-13 | The system shall restrict all teaching content, 3D models, and associated materials to authenticated platform users only. Content shall not be shareable or accessible outside the platform. | 
 | NFR-14 | The system shall validate uploaded files to ensure only supported file formats are accepted. | 
@@ -411,3 +411,7 @@ This section consolidates product and QA obligations formerly listed in Agents.m
 ## Confirmed account policies — 22 October 2026
 
 The user confirmed that teachers continue to self-register. An invitation or approval gate is not required. Students may access published content assigned to their account programme and published shared content; changing a display filter never grants access to another programme. Teachers retain content management and draft preview access.
+
+## Administrator role — 23 October 2026
+
+At the user's direction, account management (the Users page, account creation, role changes, unlocking, password resets and the audit log) is restricted to a new administrator role instead of teachers. Administrators have no learning content pages. Teachers still self-register with the invite code, and public registration cannot create administrators.
