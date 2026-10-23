@@ -120,6 +120,22 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       const result=await(await call(`/api/attempts/${attempt.id}`,student.token)).json();assert.equal(result.score,90);assert.equal(result.status,'graded');
       const all=await(await call(`/api/quizzes/${quiz.id}/attempts`,teacher.token)).json();assert.ok(all.some(a=>a.id===attempt.id&&a.status==='graded'));
     });
+    await t.test('access checks cannot be bypassed by path case, percent-encoded ids or HEAD requests',async()=>{
+      const encode=(id)=>String(id).replace(/\d/g,(digit)=>'%3'+digit);
+      const guarded=(await pool.query('INSERT INTO models(title,file_path,is_published,program_id) VALUES($1,$2,true,1) RETURNING id',[stamp+'-guarded','/models/guarded.obj'])).rows[0];modelIds.push(guarded.id);
+      const paths=[`/api/attempts/${attempt.id}`,`/api/attempts/${attempt.id}/answers`,`/api/quizzes/${quiz.id}/questions`,`/api/models/${guarded.id}`,`/api/models/${guarded.id}/annotations`];
+      for(const original of paths){
+        const [,, kind, id, ...rest]=original.split('/');
+        const variants=[original,`/api/${kind[0].toUpperCase()+kind.slice(1)}/${id}`+(rest.length?'/'+rest.join('/'):''),`/api/${kind}/${encode(id)}`+(rest.length?'/'+rest.join('/'):''),original.replace('/api/','/api//')];
+        for(const variant of variants){
+          assert.notEqual((await call(variant,other.token)).status,200,`${variant} must not be readable by a student from another programme`);
+          assert.notEqual((await call(variant,other.token,null,'HEAD')).status,200,`HEAD ${variant}`);
+        }
+      }
+      assert.equal((await call(`/api/attempts/${encode(attempt.id)}`,student.token)).status,200);
+      assert.equal((await call('/api/attempts/not-a-number',student.token)).status,404);
+      assert.equal((await call('/api/models/%E0%A4%A',student.token)).status,400);
+    });
     await t.test('expired sessions reject late answers',async()=>{
       const expired=await(await call(`/api/quizzes/${quiz.id}/start`,student.token,{})).json();
       await pool.query("UPDATE quiz_sessions SET expires_at=NOW()-INTERVAL '1 minute' WHERE id=$1",[expired.session_id]);
