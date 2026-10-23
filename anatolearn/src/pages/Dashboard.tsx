@@ -107,10 +107,10 @@ function StudentView({ data, favoriteVideos, favoriteQuizzes }: { data: StudentD
       <section aria-labelledby="dash-explore" className="mt-8">
         <h2 id="dash-explore" className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Available for you</h2>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Link to="/3dviewer" className={tileLink}><Box className="mr-2 h-4 w-4" aria-hidden="true" />{counts.models} 3D models</Link>
-          <Link to="/videos" className={tileLink}><Video className="mr-2 h-4 w-4" aria-hidden="true" />{counts.videos} videos</Link>
-          <Link to="/quizzes" className={tileLink}><BookOpen className="mr-2 h-4 w-4" aria-hidden="true" />{counts.quizzes} quizzes</Link>
-          <Link to="/library" className={tileLink}><Library className="mr-2 h-4 w-4" aria-hidden="true" />{counts.resources} library items</Link>
+          <Link to="/3dviewer" className={tileLink}><Box className="mr-2 h-4 w-4" aria-hidden="true" />{counts.models} 3D {counts.models === 1 ? 'model' : 'models'}</Link>
+          <Link to="/videos" className={tileLink}><Video className="mr-2 h-4 w-4" aria-hidden="true" />{counts.videos} {counts.videos === 1 ? 'video' : 'videos'}</Link>
+          <Link to="/quizzes" className={tileLink}><BookOpen className="mr-2 h-4 w-4" aria-hidden="true" />{counts.quizzes} {counts.quizzes === 1 ? 'quiz' : 'quizzes'}</Link>
+          <Link to="/library" className={tileLink}><Library className="mr-2 h-4 w-4" aria-hidden="true" />{counts.resources} library {counts.resources === 1 ? 'item' : 'items'}</Link>
         </div>
       </section>
 

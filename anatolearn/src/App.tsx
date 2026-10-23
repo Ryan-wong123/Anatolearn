@@ -58,7 +58,7 @@ export default function App() {
               <Route path="*" element={<NotFound />} />
             </Route>
           </Route>
-          <Route path="*" element={<NotFound />} />
+          <Route path="*" element={<NotFound standalone />} />
         </Routes>
       </BrowserRouter>
       </ConfirmProvider>

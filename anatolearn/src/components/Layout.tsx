@@ -228,7 +228,7 @@ export default function Layout() {
 
       <RequestState loading={false} error={programsError} onRetry={reloadPrograms} label="programmes" />
       <main ref={main} id="main-content" tabIndex={-1} className="flex-1">
-        <ErrorBoundary key={location.pathname}>
+        <ErrorBoundary nested key={location.pathname}>
           <Suspense fallback={<p role="status" className="p-6 text-slate-600 dark:text-slate-300">Loading…</p>}>
             <Outlet />
           </Suspense>
