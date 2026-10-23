@@ -1,14 +1,31 @@
 import type { AnnotationPayload, AnnotationRecord, ModelRecord } from '../types/anatomy';
+import type { Announcement, AuditEntry, Paged, Profile, SearchResults, StudentDashboard, StudentStats, TeacherDashboard, TeacherOverview, UserSummary } from '../types/portal';
 
 const API_BASE = "/api";
 
-// Single source of truth for where the JWT lives in sessionStorage.
-// AppContext.tsx imports this too, so both stay in sync automatically.
-export const TOKEN_STORAGE_KEY = "anatolearn_token";
+// The session lives in an httpOnly cookie the page cannot read. State-changing requests echo the readable
+// CSRF cookie back in a header so other sites cannot forge them.
+function csrfHeaders(method = 'GET'): Record<string, string> {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()) || typeof document === 'undefined') return {};
+    const match = document.cookie.split('; ').find((part) => part.startsWith('anatolearn_csrf='));
+    return match ? { 'X-CSRF-Token': decodeURIComponent(match.slice('anatolearn_csrf='.length)) } : {};
+}
 
-function getAuthHeaders(): Record<string, string> {
-    const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
-    return token ? { Authorization: `Bearer ${token}` } : {};
+function messageFor(status: number, body: unknown): string {
+    let message = status === 401 ? 'Your session has expired. Please sign in again.'
+        : status === 403 ? 'You do not have permission to perform this action.'
+        : status === 404 ? 'This content is unavailable.'
+        : status === 429 ? 'Too many requests. Please wait a moment and try again.'
+        : status === 503 ? 'The service is restarting. Please try again in a moment.'
+        : 'The server could not complete the request. Please try again.';
+    if (typeof body === 'object' && body !== null && 'message' in body && typeof body.message === 'string' && body.message.trim()
+        && (status < 500 || status === 503)) message = body.message;
+    return message;
+}
+
+function sessionExpired() {
+    sessionStorage.removeItem('anatolearn_user');
+    window.dispatchEvent(new Event('anatolearn-session-expired'));
 }
 
 export class ApiError extends Error {
@@ -23,7 +40,7 @@ async function fetchResponse(endpoint: string, options: RequestInit = {}) {
             ...options, credentials: 'include',
             headers: {
                 ...(options.body instanceof FormData ? {} : {'Content-Type':'application/json'}),
-                ...getAuthHeaders(),
+                ...csrfHeaders(options.method),
                 ...(sessionStorage.getItem('anatolearn_program') ? {'X-Program-Name':encodeURIComponent(sessionStorage.getItem('anatolearn_program')!)} : {}),
                 ...(options.headers || {}),
             },
@@ -32,21 +49,11 @@ async function fetchResponse(endpoint: string, options: RequestInit = {}) {
         if (error instanceof Error && error.name === 'AbortError') throw error;
         throw new ApiError('Could not connect to the server. Check your connection and try again.');
     }
-    if (res.status === 401 && !endpoint.startsWith('/auth/')) {
-        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-        sessionStorage.removeItem('anatolearn_user');
-        window.dispatchEvent(new Event('anatolearn-session-expired'));
-    }
+    if (res.status === 401 && !endpoint.startsWith('/auth/')) sessionExpired();
     if (!res.ok) {
-        let message = res.status === 401 ? 'Your session has expired. Please sign in again.'
-            : res.status === 403 ? 'You do not have permission to perform this action.'
-            : res.status === 404 ? 'This content is unavailable.'
-            : 'The server could not complete the request. Please try again.';
-        try {
-            const body: unknown = await res.json();
-            if (typeof body === 'object' && body !== null && 'message' in body && typeof body.message === 'string' && body.message.trim() && res.status < 500) message = body.message;
-        } catch { /* Non-JSON proxy/server errors use the readable fallback. */ }
-        throw new ApiError(message, res.status);
+        let body: unknown;
+        try { body = await res.json(); } catch { /* Non-JSON proxy/server errors use the readable fallback. */ }
+        throw new ApiError(messageFor(res.status, body), res.status);
     }
     return res;
 }
@@ -62,6 +69,53 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
 function request(endpoint: string) {
     return apiFetch(endpoint);
+}
+
+// List endpoints accept ?page&page_size and report the full count in X-Total-Count.
+async function requestPaged<T>(endpoint: string): Promise<Paged<T>> {
+    const response = await fetchResponse(endpoint);
+    let items: T[];
+    try { items = await response.json() as T[]; }
+    catch { throw new ApiError('The server returned an unreadable response. Please try again.', response.status); }
+    const total = Number(response.headers.get('X-Total-Count'));
+    return { items, total: Number.isFinite(total) && total >= items.length ? total : items.length };
+}
+
+function query(params: Record<string, string | number | boolean | undefined | null>) {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    const text = search.toString();
+    return text ? `?${text}` : '';
+}
+
+export interface UploadOptions { onProgress?: (fraction: number) => void; signal?: AbortSignal }
+
+// fetch() cannot report upload progress, so file uploads use XMLHttpRequest. Aborting rejects with an AbortError.
+export function apiUpload<T = unknown>(endpoint: string, formData: FormData, { onProgress, signal }: UploadOptions = {}): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        if (signal?.aborted) return reject(new DOMException('Upload cancelled', 'AbortError'));
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_BASE}${endpoint}`);
+        xhr.withCredentials = true;
+        for (const [name, value] of Object.entries(csrfHeaders('POST'))) xhr.setRequestHeader(name, value);
+        const program = sessionStorage.getItem('anatolearn_program');
+        if (program) xhr.setRequestHeader('X-Program-Name', encodeURIComponent(program));
+        const abort = () => xhr.abort();
+        signal?.addEventListener('abort', abort);
+        const done = () => signal?.removeEventListener('abort', abort);
+        xhr.upload.onprogress = (event) => { if (event.lengthComputable) onProgress?.(event.loaded / event.total); };
+        xhr.onload = () => {
+            done();
+            let body: unknown;
+            try { body = JSON.parse(xhr.responseText); } catch { /* handled below */ }
+            if (xhr.status === 401) sessionExpired();
+            if (xhr.status >= 200 && xhr.status < 300 && body !== undefined) { onProgress?.(1); resolve(body as T); }
+            else reject(new ApiError(xhr.status >= 200 && xhr.status < 300 ? 'The server returned an unreadable response. Please try again.' : messageFor(xhr.status, body), xhr.status));
+        };
+        xhr.onerror = () => { done(); reject(new ApiError('Could not connect to the server. Check your connection and try again.')); };
+        xhr.onabort = () => { done(); reject(new DOMException('Upload cancelled', 'AbortError')); };
+        xhr.send(formData);
+    });
 }
 
 // For endpoints that return a file rather than JSON (model downloads,
@@ -87,6 +141,49 @@ async function downloadFile(endpoint: string) {
 }
 
 export const api = {
+    // Paged list helpers (page is 1-based). Filters match the unpaged endpoints.
+    getModelsPage: (opts: { page: number; pageSize: number; publishedOnly?: boolean; system?: string; part?: string; q?: string }) =>
+        requestPaged<ModelRecord>(`/models${query({ published: opts.publishedOnly ? 'true' : undefined, system: opts.system, part: opts.part, q: opts.q, page: opts.page, page_size: opts.pageSize })}`),
+    getVideosPage: (opts: { page: number; pageSize: number; publishedOnly?: boolean }) =>
+        requestPaged<Record<string, unknown>>(`/videos${query({ published: opts.publishedOnly ? 'true' : undefined, page: opts.page, page_size: opts.pageSize })}`),
+    getQuizzesPage: (opts: { page: number; pageSize: number; publishedOnly?: boolean }) =>
+        requestPaged<Record<string, unknown>>(`/quizzes${query({ published: opts.publishedOnly ? 'true' : undefined, page: opts.page, page_size: opts.pageSize })}`),
+    getResourcesPage: (opts: { page: number; pageSize: number; publishedOnly?: boolean }) =>
+        requestPaged<Record<string, unknown>>(`/resources${query({ published: opts.publishedOnly ? 'true' : undefined, page: opts.page, page_size: opts.pageSize })}`),
+
+    // Account, profile and privacy
+    getProfile: (): Promise<Profile> => request('/profile'),
+    updateProfile: (data: { name: string; program_id?: number | null }): Promise<Profile> => apiFetch('/profile', { method: 'PUT', body: JSON.stringify(data) }),
+    changePassword: (current_password: string, new_password: string): Promise<{ message: string }> =>
+        apiFetch('/profile/password', { method: 'PUT', body: JSON.stringify({ current_password, new_password }) }),
+    exportMyData: () => downloadFile('/profile/export'),
+    deleteMyAccount: (password: string) => apiFetch('/profile', { method: 'DELETE', body: JSON.stringify({ password }) }),
+
+    // Teacher user management and audit log
+    getUsers: (opts: { page: number; pageSize: number; q?: string; role?: string; status?: string }) =>
+        requestPaged<UserSummary>(`/users${query({ q: opts.q, role: opts.role, status: opts.status, page: opts.page, page_size: opts.pageSize })}`),
+    createUser: (data: { name: string; email: string; role: 'student' | 'teacher'; program_id?: number | null; password?: string }): Promise<{ user: UserSummary; temporary_password?: string }> =>
+        apiFetch('/users', { method: 'POST', body: JSON.stringify(data) }),
+    updateUser: (id: number, data: { name?: string; role?: 'student' | 'teacher'; program_id?: number | null; is_active?: boolean; unlock?: boolean }): Promise<UserSummary> =>
+        apiFetch(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    resetUserPassword: (id: number, password?: string): Promise<{ temporary_password?: string; message?: string }> =>
+        apiFetch(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify(password ? { password } : {}) }),
+    deleteUser: (id: number) => apiFetch(`/users/${id}`, { method: 'DELETE' }),
+    getAuditLog: (opts: { page: number; pageSize: number; action?: string; actor?: number }) =>
+        requestPaged<AuditEntry>(`/audit-log${query({ action: opts.action, actor: opts.actor, page: opts.page, page_size: opts.pageSize })}`),
+
+    // Announcements, search and dashboards
+    getAnnouncements: (): Promise<Announcement[]> => request('/announcements'),
+    createAnnouncement: (data: { title: string; body: string; program_id?: number | null; expires_at?: string | null }): Promise<Announcement> =>
+        apiFetch('/announcements', { method: 'POST', body: JSON.stringify(data) }),
+    updateAnnouncement: (id: number, data: { title: string; body: string; program_id?: number | null; expires_at?: string | null }): Promise<Announcement> =>
+        apiFetch(`/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteAnnouncement: (id: number) => apiFetch(`/announcements/${id}`, { method: 'DELETE' }),
+    search: (q: string): Promise<SearchResults> => request(`/search${query({ q })}`),
+    getDashboard: (): Promise<StudentDashboard | TeacherDashboard> => request('/dashboard'),
+    getMyStats: (): Promise<StudentStats> => request('/students/me/stats'),
+    getTeacherOverview: (): Promise<TeacherOverview> => request('/teacher/overview'),
+
     logout: () => apiFetch('/auth/logout', { method: 'POST' }),
     setProgram: (kind: string, id: number, program_id: number | null) => apiFetch(`/${kind}/${id}/program`, { method: 'PATCH', body: JSON.stringify({ program_id }) }),
     setDownloadPermission: (id: number, is_downloadable: boolean) => apiFetch(`/models/${id}/download-permission`, { method: 'PATCH', body: JSON.stringify({ is_downloadable }) }),
@@ -145,7 +242,7 @@ export const api = {
         body_system?: string;
         body_part?: string;
         file: File;
-    }) => {
+    }, upload?: UploadOptions) => {
         const formData = new FormData();
         formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
@@ -154,10 +251,7 @@ export const api = {
         if (data.body_part) formData.append('body_part', data.body_part);
         formData.append('model', data.file);
 
-        return apiFetch(`/models/upload`, {
-            method: 'POST',
-            body: formData,
-        });
+        return apiUpload(`/models/upload`, formData, upload);
     },
 
     deleteModel: (id: number) =>
@@ -183,7 +277,7 @@ export const api = {
 
     getVideo: (id: number) => request(`/videos/${id}`),
 
-    uploadVideo: (data: { title: string; description?: string; program_id?: number; file: File; captions?: File }) => {
+    uploadVideo: (data: { title: string; description?: string; program_id?: number; file: File; captions?: File }, upload?: UploadOptions) => {
         const formData = new FormData();
         formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
@@ -191,10 +285,7 @@ export const api = {
         formData.append('video', data.file);
         if (data.captions) formData.append('captions', data.captions);
 
-        return apiFetch(`/videos/upload`, {
-            method: 'POST',
-            body: formData,
-        });
+        return apiUpload(`/videos/upload`, formData, upload);
     },
 
     uploadVideoCaptions: (id: number, captions: File) => {
@@ -253,7 +344,7 @@ export const api = {
         url?: string;
         file?: File;
         program_id?: number;
-    }) => {
+    }, upload?: UploadOptions) => {
         const formData = new FormData();
         formData.append('title', data.title);
         if (data.description) formData.append('description', data.description);
@@ -262,10 +353,7 @@ export const api = {
         if (data.file) formData.append('file', data.file);
         if (data.program_id) formData.append('program_id', String(data.program_id));
 
-        return apiFetch(`/resources/upload`, {
-            method: 'POST',
-            body: formData,
-        });
+        return apiUpload(`/resources/upload`, formData, upload);
     },
 
     deleteResource: (id: number) =>

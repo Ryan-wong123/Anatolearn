@@ -7,7 +7,9 @@
     "maintenance": "node src/maintenance.js",
     "start": "node src/server.js",
     "test": "node --test tests/access.test.js tests/layers.test.js",
-    "test:integration": "node --test tests/integration.test.js"
+    "test:integration": "node --test tests/integration.test.js tests/features.test.js",
+    "migrate": "node src/migrate.js",
+    "seed:demo": "node scripts/seed-demo.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1156.0",

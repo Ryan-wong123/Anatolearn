@@ -1,16 +1,16 @@
 const repository = require('./resources.repository');
 const fs = require('fs/promises');
 const storage = require('../../storage');
-const { visibleRows } = require('../catalog/catalog.service');
+const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listResources(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     const { published } = input.query;
     if (published === "true" || input.user.role === "student") {
         const result = await repository.listPublished();
-        return ({ ...outcomeMeta, status: 200, kind: 'json', body: await visibleRows(input, result.rows) });
+        return ({ ...outcomeMeta, status: 200, kind: 'json', ...paged(input, await visibleRows(input, result.rows)) });
     }
     const result = await repository.listAll();
-    return ({ ...outcomeMeta, status: 200, kind: 'json', body: await visibleRows(input, result.rows) });
+    return ({ ...outcomeMeta, status: 200, kind: 'json', ...paged(input, await visibleRows(input, result.rows)) });
 }
 async function uploadResource(input) {
     const outcomeMeta = { headers: {}, cookies: [] };

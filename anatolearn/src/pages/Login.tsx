@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
 import { ApiError, api } from '../api/api';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAppContext();
+  const [sessionExpired] = useState(() => sessionStorage.getItem('anatolearn_session_expired') === '1');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,9 +22,10 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      const { token, user } = await api.login(email, password);
-      login(token, user);
-      navigate('/dashboard');
+      const { user } = await api.login(email, password);
+      login(user);
+      const from = (location.state as { from?: string } | null)?.from;
+      navigate(from && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true });
     } catch (error) {
       // Deliberately generic — matches the backend's own generic message,
       // and doesn't reveal whether the email or the password was wrong.
@@ -46,6 +49,12 @@ export default function Login() {
             Sign in to continue
           </p>
         </div>
+
+        {sessionExpired && !error && (
+          <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            Your session has ended. Please sign in again to continue.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
