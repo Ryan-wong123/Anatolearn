@@ -16,11 +16,11 @@
     "test:browser:summary": "node tests/browser/report-summary.mjs"
   },
   "dependencies": {
-    "lucide-react": "^1.18.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "lucide-react": "^1.60.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-router-dom": "^7.17.0",
-    "three": "^0.184.0"
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
@@ -28,17 +28,17 @@
     "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.12.3",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.184.1",
-    "@vitejs/plugin-react": "^6.0.1",
-    "eslint": "^10.3.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.13.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.6.0",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.13.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
-    "typescript-eslint": "^8.59.2",
+    "typescript-eslint": "^8.72.0",
     "vite": "^8.0.12"
   }
 }
