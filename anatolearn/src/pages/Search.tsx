@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BookOpen, Box, FileText, Search as SearchIcon, Tag, Video } from 'lucide-react';
@@ -79,7 +79,9 @@ export default function Search() {
   }
 
   const ready = urlTerm.length >= MIN_LENGTH;
-  const { data, loading, error, reload } = useResource<SearchResults>(() => (ready ? api.search(urlTerm) : Promise.resolve(EMPTY)), EMPTY, urlTerm);
+  // useResource reloads whenever the loader identity changes, so it must be stable between renders.
+  const loadResults = useCallback(() => (ready ? api.search(urlTerm) : Promise.resolve(EMPTY)), [ready, urlTerm]);
+  const { data, loading, error, reload } = useResource<SearchResults>(loadResults, EMPTY, urlTerm);
   const total = data.models.length + data.videos.length + data.quizzes.length + data.resources.length + data.annotations.length;
 
   return (
