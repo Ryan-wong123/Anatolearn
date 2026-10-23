@@ -18,7 +18,7 @@ Controls implemented in AnatoLearn and where to find them. See `Deployment.md` f
 - Users can export their data and delete their account from the Profile page.
 
 ## Accountability
-- `audit_log` records sign-ins, failures, lockouts, user management and every successful state-changing API call (actor, action, record, IP). Teachers can review it under Users -> Audit log. Rotate or archive old rows as policy requires.
+- `audit_log` records sign-ins, failures, lockouts, user management and every successful state-changing API call (actor, action, record, IP). Administrators (not teachers) can review it under Users -> Audit log. Rotate or archive old rows as policy requires.
 
 ## Infrastructure
 - The API connects as a least-privilege Postgres role (`anatolearn_app`, DML only); migrations and backups use the owner role.

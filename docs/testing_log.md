@@ -820,3 +820,19 @@ Checks actually run in this pass:
 The browser commands first ran the configured full suite because npm argument forwarding did not retain the requested filter in this PowerShell environment. The focused rerun invoked the Playwright CLI directly: `node node_modules/@playwright/test/cli.js test --project=chrome --grep 'main sections|quiz keyboard'`. Raw reports are ignored local artifacts; the existing shareable browser summary belongs to the previous documented run and was not regenerated for this refactor.
 
 Limits: services use plain HTTP-shaped result records rather than a fully transport-independent domain model, and still coordinate local filesystem effects. No cloud-storage adapter was added. Actual Safari/macOS media/caption rendering and spoken screen-reader output were not verified. Product requirements and prior acceptance gaps remain unchanged.
+
+## Docker backend recovery and host dependency fix — 23 October 2026
+
+The backend container crash-looped with `Cannot find module 'helmet'`. Its anonymous `/app/node_modules` volume predated the dependency, and the `./backend` bind mount does not replace it. `docker compose up -d --build --renew-anon-volumes` recreated the anonymous volume while keeping `postgres_data`; the backend then applied migrations and listened on port 5000. The host `backend/node_modules` also lacked `helmet`, so `npm ci` was run in `backend/` from the lockfile (135 packages, 0 vulnerabilities).
+
+Checks actually run in this pass: `docker compose ps` shows the postgres, backend and frontend containers running; `http://localhost:5000/api/health` returned 200 and `http://localhost:5173/` returned 200; backend `npm test` 8/8 passed; `require('./src/app.js')` loads on the host; frontend `npm run lint` and `npm run build` passed. Docker setup notes in `README.md` were updated with the renew-volume command and the host `npm ci` step.
+
+Limits: the compose stack still uses development credentials and secrets. Browser flows and authenticated API behaviour were not re-tested in this pass.
+
+## Administrator role for user management — 23 October 2026
+
+Users page, `/api/users` routes and `/api/audit-log` are now administrator-only; teachers get 403 and are redirected away from `/admin/users`. Added migration `015_admin_role.sql` (applied automatically on backend restart), `scripts/create-admin.js`, admin-aware layout/breadcrumbs/profile, and admin guards (cannot demote/disable/delete self, last active administrator protected).
+
+Checks actually run in this pass: backend `npm test` 8/8; backend `npm run test:integration` 31/31, including new assertions that teachers cannot list, create or unlock accounts or read the audit log, and that administrators can; frontend `tsc -b` and `npm run lint` clean. In the browser a temporary teacher had no Users link, no "Manage users" quick action and was redirected from `/admin/users`; a temporary administrator landed on Users, saw only the Users nav, and was redirected from `/3dviewer`. Both temporary accounts were deleted afterwards. The integration suites previously failed with 429 from the login limiter (10 per 15 minutes); they now set `DISABLE_RATE_LIMIT=true` in-process.
+
+Limits: production build and the Playwright suite were not re-run.

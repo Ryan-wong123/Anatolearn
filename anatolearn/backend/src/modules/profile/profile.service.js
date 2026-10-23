@@ -41,6 +41,8 @@ async function deleteAccount(input) {
     if (typeof input.body.password !== 'string' || !stored || !(await bcrypt.compare(input.body.password, stored.password_hash))) return fail(403, 'Password is incorrect');
     if (input.user.role === 'teacher' && !(await repository.countOtherActiveTeachers([input.user.id])).rows[0].n)
         return fail(400, 'You are the only active teacher. Promote another teacher before deleting your account.');
+    if (input.user.role === 'admin' && !(await repository.countOtherActiveAdmins([input.user.id])).rows[0].n)
+        return fail(400, 'You are the only active administrator. Promote another administrator before deleting your account.');
     await record({ actor: input.user, action: 'profile.delete_account', targetType: 'user', targetId: input.user.id, ip: input.ip });
     await repository.revokeAllSessions([input.user.id]);
     await repository.deleteUser([input.user.id]);

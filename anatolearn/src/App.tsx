@@ -42,17 +42,19 @@ export default function App() {
           <Route path="/terms" element={<Terms />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/3dviewer" element={<ModelGallery />} />
-              <Route path="/3dviewer/:modelId" element={<Viewer />} />
-              <Route path="/videos" element={<Videos />} />
-              <Route path="/videos/:videoId" element={<VideoPlayer />} />
-              <Route path="/quizzes" element={<Quizzes />} />
-              <Route path="/library" element={<Library />} />
+              <Route element={<ProtectedRoute role={['student', 'teacher']} />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/3dviewer" element={<ModelGallery />} />
+                <Route path="/3dviewer/:modelId" element={<Viewer />} />
+                <Route path="/videos" element={<Videos />} />
+                <Route path="/videos/:videoId" element={<VideoPlayer />} />
+                <Route path="/quizzes" element={<Quizzes />} />
+                <Route path="/library" element={<Library />} />
+                <Route path="/search" element={<Search />} />
+                <Route path="/announcements" element={<Announcements />} />
+              </Route>
               <Route path="/profile" element={<Profile />} />
-              <Route path="/search" element={<Search />} />
-              <Route path="/announcements" element={<Announcements />} />
-              <Route element={<ProtectedRoute role="teacher" />}>
+              <Route element={<ProtectedRoute role="admin" />}>
                 <Route path="/admin/users" element={<Users />} />
               </Route>
               <Route path="*" element={<NotFound />} />

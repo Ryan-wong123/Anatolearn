@@ -53,13 +53,13 @@ function DetailsCard({ profile, programmes, onSaved }: { profile: ProfileRecord;
         <div>
           <label htmlFor="profile-email" className={labelClass}>Email</label>
           <input id="profile-email" readOnly value={profile.email} aria-describedby="email-note" className={`${inputClass} bg-slate-50 dark:bg-slate-800`} />
-          <p id="email-note" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Your email is your sign-in name and cannot be changed here. Ask a teacher if it needs correcting.</p>
+          <p id="email-note" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Your email is your sign-in name and cannot be changed here. Ask an administrator if it needs correcting.</p>
         </div>
         <div>
           <label htmlFor="profile-role" className={labelClass}>Role</label>
-          <input id="profile-role" readOnly value={isTeacher ? 'Teacher' : 'Student'} className={`${inputClass} bg-slate-50 dark:bg-slate-800`} />
+          <input id="profile-role" readOnly value={profile.role === 'admin' ? 'Administrator' : isTeacher ? 'Teacher' : 'Student'} className={`${inputClass} bg-slate-50 dark:bg-slate-800`} />
         </div>
-        <div>
+        {profile.role !== 'admin' && <div>
           <label htmlFor="profile-programme" className={labelClass}>Programme</label>
           {isTeacher ? (
             <select id="profile-programme" value={programId} onChange={(e) => { setProgramId(e.target.value); setSaved(false); }} className={inputClass}>
@@ -69,10 +69,10 @@ function DetailsCard({ profile, programmes, onSaved }: { profile: ProfileRecord;
           ) : (
             <>
               <input id="profile-programme" readOnly value={profile.program_name ?? 'Not assigned'} aria-describedby="programme-note" className={`${inputClass} bg-slate-50 dark:bg-slate-800`} />
-              <p id="programme-note" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Your programme decides which learning content you can see. A teacher can change it.</p>
+              <p id="programme-note" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Your programme decides which learning content you can see. An administrator can change it.</p>
             </>
           )}
-        </div>
+        </div>}
         <dl className="grid grid-cols-1 gap-2 text-sm text-slate-700 dark:text-slate-300 sm:grid-cols-2">
           <div><dt className="font-medium">Last sign-in</dt><dd>{formatDateTime(profile.last_login_at)}</dd></div>
           <div><dt className="font-medium">Member since</dt><dd>{formatDate(profile.created_at)}</dd></div>

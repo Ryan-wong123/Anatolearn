@@ -29,7 +29,7 @@ Differs from the original Task 1.2 proposal in one way: `program` is `program_id
 | name | VARCHAR(255) | NOT NULL |
 | email | VARCHAR(255) | NOT NULL, UNIQUE. Stored lowercased/trimmed |
 | password_hash | TEXT | NOT NULL. bcrypt via `bcryptjs`, 10 rounds |
-| role | user_role (enum) | `'student'` \| `'teacher'`, NOT NULL, default `'student'` |
+| role | user_role (enum) | `'student'` \| `'teacher'` \| `'admin'`, NOT NULL, default `'student'` (`'admin'` added by `015_admin_role.sql`) |
 | created_at | TIMESTAMP | default `CURRENT_TIMESTAMP` |
 
 Tested end-to-end against a real Postgres instance: valid registration (201, password_hash correctly excluded from response, confirmed 60-char bcrypt hash in db), duplicate email (409), missing required fields (400), invalid `role` value (400), password under 8 characters (400). See `testing_log.md`.

@@ -10,4 +10,10 @@ function requireStudent(req, res, next) {
     }
     next();
 }
-module.exports = { requireTeacher, requireStudent };
+function requireAdmin(req, res, next) {
+    if (!req.user || req.user.role !== "admin") {
+        return res.status(403).json({ message: "Administrator access required" });
+    }
+    next();
+}
+module.exports = { requireTeacher, requireStudent, requireAdmin };

@@ -72,7 +72,29 @@ docker compose down -v
 docker compose up --build
 ```
 
-Only use the volume reset command when local database contents can be deleted.
+Only use the volume reset command when local database contents can be deleted. It also removes any administrator account, so create it again afterwards (see below).
+
+If the backend crash-loops with `Cannot find module '<package>'` after a dependency change, the container's anonymous `/app/node_modules` volume is stale (it is created once and kept, and the bind mount does not replace it). Recreate it without touching the database volume:
+
+```bash
+docker compose up -d --build --renew-anon-volumes
+```
+
+To run the backend directly on the host, install its dependencies from the lockfile first: `cd backend && npm ci`.
+
+### Create an administrator account
+
+Only administrators can open the **Users** page, manage accounts and read the audit log; teachers cannot. Public registration only creates students and teachers, so the first administrator is created from the command line. Run this from the `anatolearn/` folder while the Docker stack is up:
+
+```bash
+docker compose exec -e ADMIN_PASSWORD='Choose-A-Password-1' backend node scripts/create-admin.js "Your Name" you@example.com
+```
+
+- Replace the password, name and email. The password must be 8-72 characters with an uppercase letter and a number. It is read from `ADMIN_PASSWORD` so it does not appear in shell history or the process list.
+- If an account with that email already exists, it is promoted to administrator and signed out everywhere. Leave `ADMIN_PASSWORD` unset to keep its current password.
+- Sign in at `http://localhost:5173/login`. Administrators land on **Users**, where they can create more administrators, teachers and students, unlock accounts, reset passwords and read the audit log. They have no learning pages.
+- Teachers register themselves with `TEACHER_INVITE_CODE` (default `dev-teacher-code` in local Docker).
+- For local development, `admin@example.com` is a convenient email. Never reuse a development password on a deployed system; use a strong, unique password there (see `Deployment.md`).
 
 ### Other useful commands
 

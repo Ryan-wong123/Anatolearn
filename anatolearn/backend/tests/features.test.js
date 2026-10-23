@@ -7,6 +7,8 @@ const path = require('node:path');
 const bcrypt = require('bcryptjs');
 const pool = require('../src/db');
 const app = require('../src/server');
+// The suite signs in more often than the production login limit (10 per 15 minutes) allows.
+process.env.DISABLE_RATE_LIMIT = 'true';
 
 test('accounts, CSRF, lockout, profile, announcements, search, dashboard, pagination, audit and scanning', async (t) => {
   const server = app.listen(0, '127.0.0.1');
@@ -37,8 +39,8 @@ test('accounts, CSRF, lockout, profile, announcements, search, dashboard, pagina
       cookie: `${session.split(';')[0]}; ${csrfCookie.split(';')[0]}`, csrf: csrfCookie.split(';')[0].split('=')[1], body: await response.json() };
   }
   try {
-    const teacherAccount = await createUser('teacher', 1), studentAccount = await createUser('student', 1), otherAccount = await createUser('student', 2);
-    const teacher = await login(teacherAccount.email), student = await login(studentAccount.email), other = await login(otherAccount.email);
+    const adminAccount = await createUser('admin', null), teacherAccount = await createUser('teacher', 1), studentAccount = await createUser('student', 1), otherAccount = await createUser('student', 2);
+    const admin = await login(adminAccount.email), teacher = await login(teacherAccount.email), student = await login(studentAccount.email), other = await login(otherAccount.email);
 
     await t.test('login no longer returns the token in the body and sets a readable CSRF cookie', () => {
       assert.equal(teacher.body.token, undefined);
@@ -66,35 +68,40 @@ test('accounts, CSRF, lockout, profile, announcements, search, dashboard, pagina
       delete process.env.ALLOWED_EMAIL_DOMAINS;
     });
 
-    await t.test('five wrong passwords lock the account until a teacher unlocks it', async () => {
+    await t.test('five wrong passwords lock the account until an administrator unlocks it', async () => {
       const victim = await createUser('student', 1, 'victim');
       for (let i = 0; i < 5; i += 1) assert.equal((await login(victim.email, 'Wrong-pass1')).status, 401);
       assert.equal((await login(victim.email)).status, 401, 'correct password is refused while locked');
       assert.equal((await call(`/api/users/${victim.id}`, { token: student.token, method: 'PATCH', body: { unlock: true } })).status, 403);
-      assert.equal((await call(`/api/users/${victim.id}`, { token: teacher.token, method: 'PATCH', body: { unlock: true } })).status, 200);
+      assert.equal((await call(`/api/users/${victim.id}`, { token: teacher.token, method: 'PATCH', body: { unlock: true } })).status, 403, 'teachers cannot unlock');
+      assert.equal((await call(`/api/users/${victim.id}`, { token: admin.token, method: 'PATCH', body: { unlock: true } })).status, 200);
       assert.equal((await login(victim.email)).status, 200);
     });
 
-    await t.test('teacher account management: create, disable, reset password, guard rails and delete', async () => {
+    await t.test('administrator account management: create, disable, reset password, guard rails and delete', async () => {
       assert.equal((await call('/api/users', { token: student.token })).status, 403);
-      const created = await call('/api/users', { token: teacher.token, body: { name: 'Managed', email: `${stamp}-managed@example.test`, role: 'student', program_id: 1 } });
+      assert.equal((await call('/api/users', { token: teacher.token })).status, 403, 'teachers cannot list accounts');
+      assert.equal((await call('/api/users', { token: teacher.token, body: { name: 'X', email: `${stamp}-x@example.test`, role: 'student' } })).status, 403, 'teachers cannot create accounts');
+      const created = await call('/api/users', { token: admin.token, body: { name: 'Managed', email: `${stamp}-managed@example.test`, role: 'student', program_id: 1 } });
       assert.equal(created.status, 201);
       const { user, temporary_password } = await created.json(); userIds.push(user.id);
       assert.ok(temporary_password);
       const session = await login(user.email, temporary_password); assert.equal(session.status, 200);
-      assert.equal((await call('/api/users', { token: teacher.token, body: { name: 'Dup', email: user.email, role: 'student' } })).status, 409);
-      const list = await (await call(`/api/users?q=${stamp}-managed`, { token: teacher.token })).json();
+      assert.equal((await call('/api/users', { token: admin.token, body: { name: 'Dup', email: user.email, role: 'student' } })).status, 409);
+      const list = await (await call(`/api/users?q=${stamp}-managed`, { token: admin.token })).json();
       assert.equal(list.length, 1);
-      assert.equal((await call(`/api/users/${user.id}`, { token: teacher.token, method: 'PATCH', body: { is_active: false } })).status, 200);
+      assert.equal((await call(`/api/users/${user.id}`, { token: admin.token, method: 'PATCH', body: { is_active: false } })).status, 200);
       assert.equal((await call('/api/models', { token: session.token })).status, 401, 'disabling revokes existing sessions');
       assert.equal((await login(user.email, temporary_password)).status, 401);
-      await call(`/api/users/${user.id}`, { token: teacher.token, method: 'PATCH', body: { is_active: true } });
-      const reset = await (await call(`/api/users/${user.id}/reset-password`, { token: teacher.token, method: 'POST', body: {} })).json();
+      await call(`/api/users/${user.id}`, { token: admin.token, method: 'PATCH', body: { is_active: true } });
+      const reset = await (await call(`/api/users/${user.id}/reset-password`, { token: admin.token, method: 'POST', body: {} })).json();
       assert.equal((await login(user.email, temporary_password)).status, 401);
       assert.equal((await login(user.email, reset.temporary_password)).status, 200);
-      assert.equal((await call(`/api/users/${teacherAccount.id}`, { token: teacher.token, method: 'PATCH', body: { role: 'student' } })).status, 400, 'cannot demote self');
-      assert.equal((await call(`/api/users/${teacherAccount.id}`, { token: teacher.token, method: 'DELETE' })).status, 400, 'cannot delete self');
-      assert.equal((await call(`/api/users/${user.id}`, { token: teacher.token, method: 'DELETE' })).status, 200);
+      assert.equal((await call(`/api/users/${adminAccount.id}`, { token: admin.token, method: 'PATCH', body: { role: 'student' } })).status, 400, 'cannot demote self');
+      assert.equal((await call(`/api/users/${adminAccount.id}`, { token: admin.token, method: 'DELETE' })).status, 400, 'cannot delete self');
+      const promoted = await call(`/api/users/${user.id}`, { token: admin.token, method: 'PATCH', body: { role: 'admin' } });
+      assert.equal(promoted.status, 200); assert.equal((await promoted.json()).role, 'admin');
+      assert.equal((await call(`/api/users/${user.id}`, { token: admin.token, method: 'DELETE' })).status, 200);
     });
 
     await t.test('profile: students keep their programme, password change signs out other sessions, export and delete', async () => {
@@ -167,14 +174,15 @@ test('accounts, CSRF, lockout, profile, announcements, search, dashboard, pagina
       assert.equal(overview.role, 'teacher'); assert.ok(overview.totals.students >= 1);
     });
 
-    await t.test('state-changing teacher calls are audited and the log is teacher-only', async () => {
+    await t.test('state-changing teacher calls are audited and the log is administrator-only', async () => {
       const model = modelIds[0];
       assert.equal((await call(`/api/models/${model}/publish`, { token: teacher.token, method: 'PATCH', body: { is_published: false } })).status, 200);
       await new Promise((resolve) => setTimeout(resolve, 150));
-      const log = await (await call('/api/audit-log?action=PATCH', { token: teacher.token })).json();
+      const log = await (await call('/api/audit-log?action=PATCH', { token: admin.token })).json();
       assert.ok(log.some((row) => row.actor_id === teacherAccount.id && row.action === 'PATCH /models/:id/publish' && row.target_id === String(model)));
-      assert.ok((await (await call('/api/audit-log?action=auth.', { token: teacher.token })).json()).some((row) => row.action === 'auth.account_locked'));
+      assert.ok((await (await call('/api/audit-log?action=auth.', { token: admin.token })).json()).some((row) => row.action === 'auth.account_locked'));
       assert.equal((await call('/api/audit-log', { token: student.token })).status, 403);
+      assert.equal((await call('/api/audit-log', { token: teacher.token })).status, 403);
     });
 
     await t.test('migrations are idempotent', async () => {
