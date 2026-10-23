@@ -131,7 +131,7 @@ export default function Layout() {
               <input id="global-search" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search…"
                 className="w-40 rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-sm text-slate-900 placeholder-slate-500 focus:w-56 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 transition-[width]" />
             </form>
-            <Link to="/search" aria-label="Search" className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700 lg:hidden">
+            <Link to="/search" aria-label="Search" className="hidden rounded-lg p-1.5 sm:block text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700 lg:hidden">
               <Search className="h-5 w-5" />
             </Link>
             <span className="hidden lg:inline text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -182,7 +182,7 @@ export default function Layout() {
             )}
 
             <Link to="/announcements" aria-label={unreadAnnouncements ? `Announcements, ${unreadAnnouncements} new` : 'Announcements'} title="Announcements"
-              className="relative rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700">
+              className="relative hidden rounded-lg p-1.5 sm:block text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700">
               <Bell className="h-5 w-5" />
               {unreadAnnouncements > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{unreadAnnouncements > 9 ? '9+' : unreadAnnouncements}</span>}
             </Link>
@@ -196,7 +196,7 @@ export default function Layout() {
             </button>
 
             <div className="flex items-center gap-2">
-              <Link to="/profile" aria-label="My profile" title="My profile" className="flex items-center gap-2 rounded-lg p-1 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700">
+              <Link to="/profile" aria-label="My profile" title="My profile" className="hidden items-center gap-2 rounded-lg p-1 sm:flex hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700">
                 {user && (
                   <span className="hidden sm:block text-sm text-slate-600 dark:text-slate-400 max-w-[140px] truncate">
                     {user.name}
@@ -221,7 +221,7 @@ export default function Layout() {
               className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
             <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Search</button>
           </form>
-          {items.map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
+          {[...items, { path: '/announcements', label: unreadAnnouncements ? `Announcements (${unreadAnnouncements} new)` : 'Announcements', icon: Bell }, { path: '/profile', label: 'My profile', icon: UserCircle2 }].map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
         </div>
       </nav>
       {logoutError && <p role="alert" className="p-3 text-red-600">{logoutError}</p>}

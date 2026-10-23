@@ -307,3 +307,18 @@ Submission transactions lock the session, insert attempt/answers and consume the
 `quiz_sessions.session_expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW()+INTERVAL '24 hours')` adds an absolute lease. Existing rows receive the later of start+24h and timer+10s. Partial indexes support open-session expiry and closed-session retention.
 
 `auth_sessions`: `id UUID PRIMARY KEY` (JWT sid), `user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE`, `expires_at TIMESTAMPTZ NOT NULL`, nullable `revoked_at TIMESTAMPTZ`, `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`. An expiry index supports cleanup. Login creates a row; logout records revocation; authentication joins the current user. Session maintenance is transactional and uses an advisory lock. Closed records are removed after configurable retention; quiz_attempts and quiz_attempt_answers are preserved.
+
+---
+
+## Migrations and later additions (011 and newer)
+
+Schema changes are numbered files in `anatolearn/backend/sql`, applied once each by `src/migrate.js` when the API starts (tracked in `schema_migrations`). `001_schema.sql` and `002_seed.sql` are only for empty databases and are baselined on existing ones. Demo content lives in `backend/seed/demo.sql` (development only).
+
+| Table / columns | Purpose |
+|---|---|
+| `users.is_active`, `failed_login_count`, `locked_until`, `last_login_at`, `password_changed_at` | Account disabling, per-account lockout, sign-in history |
+| `audit_log` (actor, action, target, detail JSON, ip, created_at) | Who did what: authentication events, user management, every successful state-changing API call |
+| `announcements` (title, body, program_id, expires_at, created_by) | Teacher notices shown to a programme or everyone |
+| `user_activity` (user_id, item_type, item_id, view_count, last_viewed_at) | Powers "continue where you left off" on the student dashboard |
+
+The API connects at runtime as `anatolearn_app` (SELECT/INSERT/UPDATE/DELETE only); migrations and backups use the owner role.

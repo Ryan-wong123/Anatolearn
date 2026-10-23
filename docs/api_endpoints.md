@@ -2,7 +2,7 @@
 
 Browser base: `/api` through the same-origin proxy. Direct local backend base: `http://localhost:5000/api`.
 
-Authentication accepts a Bearer JWT or the HttpOnly `anatolearn_session` cookie set at login. Public endpoints are health, programmes, registration, login and logout (logout clears the cookie). Other APIs and teaching-file requests require authentication. Student reads enforce publication plus the account programme or shared programme-null content, even without a published query parameter. Teachers can read drafts. `X-Program-Name` additionally filters list responses; it never expands account access.
+Authentication accepts a Bearer JWT or the HttpOnly `anatolearn_session` cookie set at login. Login no longer returns the token in the response body; browsers use the cookie only. Cookie-authenticated unsafe requests (POST/PUT/PATCH/DELETE) must echo the readable `anatolearn_csrf` cookie in an `X-CSRF-Token` header or receive 403 (login, register and logout are exempt; Bearer-token clients are exempt). After 5 failed logins an account is locked for 15 minutes (`MAX_FAILED_LOGINS`, `LOCKOUT_MINUTES`); locked and disabled accounts receive the same generic 401 as a wrong password. Public endpoints are health, programmes, registration, login and logout (logout clears the cookie). Other APIs and teaching-file requests require authentication. Student reads enforce publication plus the account programme or shared programme-null content, even without a published query parameter. Teachers can read drafts. `X-Program-Name` additionally filters list responses; it never expands account access.
 
 CORS allows credentialed configured FRONTEND_ORIGINS and exposes Content-Disposition. Unsafe requests with an untrusted Origin return 403. JSON 401 responses cause the frontend to clear its identity. Unavailable content/other students' attempts return 404; role-restricted actions return 403.
 
@@ -13,7 +13,7 @@ Teaching files are served through authenticated ownership checks, not express.st
 ## Health
 
 ### `GET /api/health`
-Returns `{ status: "ok", db_time: <timestamp> }` if the database connection is alive.
+Returns `{ status: "ok" }` if the database connection is alive, otherwise 500 `{ status: "error" }`.
 
 ---
 
@@ -277,3 +277,42 @@ Login retains `{token,user}` and the media cookie, adding a UUID `sid` JWT claim
 Server routes and request/response schemas are unchanged. The browser API layer now throws `ApiError` with a client-side `status` field (0 for a connection failure). Non-empty 4xx JSON messages are preserved for validation/permissions; 5xx diagnostics, non-JSON errors and malformed successful JSON produce readable fallback messages. Login preserves the generic invalid-credentials message for 401 and separately reports service/network failures. JSON and binary requests share protected-401 identity cleanup and the session-expired event.
 
 Try again on a page/status panel repeats only its read operation. It does not replay uploads, submissions, grading or destructive actions. Teacher finalization/discard and bank refresh failures remain visible in the editor. Video metadata and media playback have separate retry controls.
+
+---
+
+## Paging
+
+List endpoints for models, videos, quizzes and resources accept optional `page` (1-based) and `page_size` (max 100). Without `page_size` every visible row is returned, as before. The full count of visible rows is returned in the `X-Total-Count` header. `/api/users` and `/api/audit-log` always page (defaults 25 and 50).
+
+## Profile (any signed-in user)
+
+- `GET /api/profile` returns name, email, role, programme and last sign-in.
+- `PUT /api/profile` `{ name, program_id? }`. Students keep their registered programme (it controls content access); teachers may change theirs.
+- `PUT /api/profile/password` `{ current_password, new_password }` (8-72 bytes, uppercase letter and number). Signs out all other sessions.
+- `GET /api/profile/export` downloads the user's own data as JSON (account, quiz attempts and answers, favourites, activity, downloads).
+- `DELETE /api/profile` `{ password }` deletes the account. The only active teacher cannot delete themselves.
+
+## Users and audit log (teacher only)
+
+- `GET /api/users?q=&role=&status=active|disabled|locked&page=&page_size=`
+- `POST /api/users` `{ name, email, role, program_id?, password? }`. Without a password a temporary one is generated and returned once as `temporary_password`.
+- `PATCH /api/users/:id` `{ name?, role?, program_id?, is_active?, unlock? }`. Disabling or changing role revokes the user's sessions. Teachers cannot demote or disable themselves, and at least one active teacher must remain.
+- `POST /api/users/:id/reset-password` `{ password? }` generates or sets a password and signs the user out everywhere.
+- `DELETE /api/users/:id`
+- `GET /api/audit-log?action=<prefix>&actor=<id>&page=&page_size=` lists authentication events, user management and every successful state-changing API call (who, what, record id, IP; no request bodies).
+
+## Announcements
+
+- `GET /api/announcements` students see unexpired announcements for their programme or everyone; teachers see all.
+- `POST /api/announcements`, `PUT /api/announcements/:id`, `DELETE /api/announcements/:id` (teacher) with `{ title, body, program_id?, expires_at? }`.
+
+## Search and dashboards
+
+- `GET /api/search?q=` (min 2 chars) searches models, videos, quizzes, library items and annotation labels the user may see (max 8 per group).
+- `GET /api/dashboard` students: recent activity, content counts, announcements, quiz progress and category accuracy; teachers: totals, pending reviews, recent attempts, quiz performance.
+- `GET /api/students/me/stats` (student) quiz summary, per-quiz progress and per-category accuracy for "where to focus".
+- `GET /api/teacher/overview` (teacher) the teacher dashboard figures.
+
+## Uploads
+
+Uploaded files are scanned with ClamAV when `CLAMAV_HOST` is set. Infected files return 400; with `CLAMAV_REQUIRED=true` uploads return 503 while the scanner is unavailable.
