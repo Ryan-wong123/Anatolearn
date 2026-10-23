@@ -245,13 +245,26 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call(`/api/resources/${resource.id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
       assert.equal((await call('/api/resources',student.token)).status,200);
       assert.equal((await call(`/api/resources/${resource.id}`,teacher.token,null,'DELETE')).status,200);
-      const videoForm=new FormData();videoForm.append('title',stamp);videoForm.append('video',new Blob(['fixture video']),'fixture.mp4');
+      const videoForm=new FormData();videoForm.append('title',stamp);videoForm.append('video',new Blob([Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from('ftypisom'),Buffer.alloc(16)])]),'fixture.mp4');
       const uploadedVideo=await fetch(base+'/api/videos/upload',{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:videoForm});
       assert.equal(uploadedVideo.status,201);const video=await uploadedVideo.json();videoIds.push(video.id);refactorPaths.push(video.video_path);
       assert.equal((await call(`/api/videos/${video.id}`,teacher.token,{title:stamp+'-updated'},'PUT')).status,200);
       assert.equal((await call(`/api/videos/${video.id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
       assert.equal((await call(`/api/videos/${video.id}`,student.token)).status,200);
       assert.equal((await call(`/api/videos/${video.id}`,teacher.token,null,'DELETE')).status,200);
+    });
+    await t.test('uploads are validated by content, not just extension, and report client errors as 4xx',async()=>{
+      const send=(path,field,bytes,name,extra={})=>{const form=new FormData();form.append('title',stamp);for(const [key,value] of Object.entries(extra))form.append(key,value);form.append(field,new Blob([bytes]),name);
+        return fetch(base+path,{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:form});};
+      const script=Buffer.from('#!/bin/sh\necho pwned\n');
+      assert.equal((await send('/api/videos/upload','video',script,'evil.mp4')).status,400);
+      assert.equal((await send('/api/videos/upload','video',Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from('ftypisom')]),'renamed.webm')).status,400);
+      assert.equal((await send('/api/resources/upload','file',script,'evil.pdf',{resource_type:'pdf'})).status,400);
+      assert.equal((await send('/api/resources/upload','file',Buffer.from('PK\u0003\u0004 not really a docx'),'fake.docx',{resource_type:'document'})).status,400);
+      assert.equal((await send('/api/resources/upload','file',Buffer.from('<svg onload=alert(1)>'),'x.svg',{resource_type:'image'})).status,400);
+      const legacy=await send('/api/resources/upload','file',Buffer.concat([Buffer.from('d0cf11e0a1b11ae1','hex'),Buffer.alloc(32)]),'legacy.DOC',{resource_type:'document'});
+      assert.equal(legacy.status,201);const created=await legacy.json();resourceIds.push(created.id);
+      assert.match(created.file_path,/\.doc$/);refactorPaths.push(created.file_path);
     });
     await t.test('photo materials upload, authenticated delivery and logout cookie clearing',async()=>{
       const form=new FormData();form.append('title',stamp);form.append('resource_type','image');form.append('file',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9x8AAAAASUVORK5CYII=','base64')]),'photo.png');

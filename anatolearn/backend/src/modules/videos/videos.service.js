@@ -48,6 +48,7 @@ async function uploadVideo(input) {
         if (!title) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "title is required" } });
         }
+        await storage.validateVideo(videoFile);
         if (captionFile)
             await storage.validateCaptions(captionFile);
         const videoPath = await storage.persist(videoFile, 'videos');
@@ -57,7 +58,7 @@ async function uploadVideo(input) {
     }
     catch (err) {
         console.error("Failed to upload video:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload video" } });
+        return ({ ...outcomeMeta, status: err.status || 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload video" } });
     }
 }
 async function replaceCaptions(input) {
