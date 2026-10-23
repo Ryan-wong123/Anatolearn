@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../api/api';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 interface Video {
   id: number;
@@ -29,6 +30,7 @@ export default function VideoPlayer() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+      <Breadcrumbs items={[{ label: 'Videos', to: '/videos' }, { label: video?.title ?? 'Video' }]} />
       <button
         onClick={() => navigate('/videos')}
         className="mb-6 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
