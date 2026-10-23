@@ -26,7 +26,7 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
     const response=await call('/api/auth/login',null,{email,password:'Testing123'});
     assert.equal(response.status,200);
     const cookie=response.headers.get('set-cookie').split(';')[0];
-    const {token}=await response.json();return {token,cookie,id};
+    const token=decodeURIComponent(cookie.split('=').slice(1).join('='));return {token,cookie,id};
   }
   try{
     const teacher=await login('teacher',1),student=await login('student',1),other=await login('student',2);

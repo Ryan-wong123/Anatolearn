@@ -3,7 +3,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { canDownload } = require('../../access');
 const storage = require('../../storage');
-const { visibleRows } = require('../catalog/catalog.service');
+const { visibleRows, paged } = require('../catalog/catalog.service');
 async function setDownloadPermission(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     if (typeof input.body.is_downloadable !== 'boolean')
@@ -16,7 +16,7 @@ async function setDownloadPermission(input) {
 async function listModels(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     const result = await repository.listModels(input.query, input.user.role === 'student');
-    return ({ ...outcomeMeta, status: 200, kind: 'json', body: await visibleRows(input, result.rows) });
+    return ({ ...outcomeMeta, status: 200, kind: 'json', ...paged(input, await visibleRows(input, result.rows)) });
 }
 async function getModel(input) {
     const outcomeMeta = { headers: {}, cookies: [] };

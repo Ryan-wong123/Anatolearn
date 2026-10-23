@@ -1,11 +1,15 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContextState';
 
-export default function ProtectedRoute() {
-  const { token } = useAppContext();
+export default function ProtectedRoute({ role }: { role?: 'teacher' | 'student' }) {
+  const { user } = useAppContext();
+  const location = useLocation();
 
-  if (!token) {
-    return <Navigate to="/login" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  }
+  if (role && user.role !== role) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <Outlet />;

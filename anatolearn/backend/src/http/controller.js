@@ -10,6 +10,7 @@ function controller(operation) {
             user: req.user,
             headers: req.headers,
             path: req.path,
+            ip: req.ip,
             file: req.file,
             files: req.files,
         });

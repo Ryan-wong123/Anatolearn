@@ -1,10 +1,14 @@
 import RequestState from './RequestState';
 import { useResource } from '../hooks/useResource';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
-  GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun, Moon, Menu, X,
+  GraduationCap, Box, Video, BookOpen, Library, UserCircle2, LogOut, Sun, Moon, Menu, X, Search, Bell, Users,
 } from 'lucide-react';
+import ErrorBoundary from './ErrorBoundary';
+import Footer from './Footer';
+import { ANNOUNCEMENTS_SEEN_EVENT, ANNOUNCEMENTS_SEEN_KEY } from './announcementsSeen';
 import { useAppContext } from '../context/AppContextState';
 import { api } from '../api/api';
 
@@ -15,6 +19,8 @@ const navItems = [
   { label: 'Quizzes', icon: BookOpen, path: '/quizzes' },
   { label: 'Library', icon: Library, path: '/library' },
 ];
+
+const teacherNavItems = [{ label: 'Users', icon: Users, path: '/admin/users' }];
 
 type Program = {
   id: number;
@@ -39,6 +45,29 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const {data:programs, loading:programsLoading, error:programsError, reload:reloadPrograms} = useResource<Program[]>(api.getPrograms, []);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [unreadAnnouncements, setUnreadAnnouncements] = useState(0);
+  const items = role === 'teacher' ? [...navItems, ...teacherNavItems] : navItems;
+
+  useEffect(() => {
+    let active = true;
+    const refresh = () => api.getAnnouncements().then((list) => {
+      if (!active) return;
+      let seen = 0;
+      try { seen = Date.parse(localStorage.getItem(ANNOUNCEMENTS_SEEN_KEY) || '') || 0; } catch { /* storage unavailable */ }
+      setUnreadAnnouncements(list.filter((item) => Date.parse(item.created_at) > seen).length);
+    }).catch(() => { /* the bell is a convenience; failures stay silent */ });
+    void refresh();
+    const timer = window.setInterval(refresh, 5 * 60 * 1000);
+    window.addEventListener(ANNOUNCEMENTS_SEEN_EVENT, refresh);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener(ANNOUNCEMENTS_SEEN_EVENT, refresh); };
+  }, []);
+
+  function handleSearch(event: FormEvent) {
+    event.preventDefault();
+    const term = searchTerm.trim();
+    if (term.length >= 2) { navigate(`/search?q=${encodeURIComponent(term)}`); setMenuOpen(false); }
+  }
 
 
 
@@ -74,7 +103,7 @@ export default function Layout() {
             </Link>
 
             <div className="hidden xl:flex space-x-1">
-              {navItems.map(({ label, icon: Icon, path }) => {
+              {items.map(({ label, icon: Icon, path }) => {
                 const isActive = location.pathname === path || location.pathname.startsWith(path + '/');
                 return (
                   <Link
@@ -95,7 +124,16 @@ export default function Layout() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <form role="search" onSubmit={handleSearch} className="relative hidden lg:block">
+              <label htmlFor="global-search" className="sr-only">Search models, videos, quizzes and library</label>
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+              <input id="global-search" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search…"
+                className="w-40 rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-sm text-slate-900 placeholder-slate-500 focus:w-56 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 transition-[width]" />
+            </form>
+            <Link to="/search" aria-label="Search" className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700 lg:hidden">
+              <Search className="h-5 w-5" />
+            </Link>
             <span className="hidden lg:inline text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Program
             </span>
@@ -143,6 +181,12 @@ export default function Layout() {
               </div>
             )}
 
+            <Link to="/announcements" aria-label={unreadAnnouncements ? `Announcements, ${unreadAnnouncements} new` : 'Announcements'} title="Announcements"
+              className="relative rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700">
+              <Bell className="h-5 w-5" />
+              {unreadAnnouncements > 0 && <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{unreadAnnouncements > 9 ? '9+' : unreadAnnouncements}</span>}
+            </Link>
+
             <button
               onClick={toggleTheme}
               className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:hover:bg-slate-800 transition-colors"
@@ -152,14 +196,14 @@ export default function Layout() {
             </button>
 
             <div className="flex items-center gap-2">
-              {user && (
-                <span className="hidden sm:block text-sm text-slate-600 dark:text-slate-400 max-w-[140px] truncate">
-                  {user.name}
-                </span>
-              )}
-              <span className="hidden sm:inline p-1" aria-hidden="true">
-                <UserCircle2 className="w-8 h-8 text-slate-600 dark:text-slate-400" />
-              </span>
+              <Link to="/profile" aria-label="My profile" title="My profile" className="flex items-center gap-2 rounded-lg p-1 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700">
+                {user && (
+                  <span className="hidden sm:block text-sm text-slate-600 dark:text-slate-400 max-w-[140px] truncate">
+                    {user.name}
+                  </span>
+                )}
+                <UserCircle2 className="w-8 h-8 text-slate-600 dark:text-slate-400" aria-hidden="true" />
+              </Link>
               <button
                 onClick={handleLogout}
                 className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -171,15 +215,26 @@ export default function Layout() {
           </div>
         </div>
         <div hidden={!menuOpen} onKeyDown={(event)=>{if(event.key==='Escape'){setMenuOpen(false);navigationToggle.current?.focus();}}} id="mobile-navigation" className="absolute top-16 inset-x-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 p-3 xl:hidden shadow-lg">
-          {navItems.map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
+          <form role="search" onSubmit={handleSearch} className="mb-2 flex gap-2 p-1">
+            <label htmlFor="mobile-search" className="sr-only">Search</label>
+            <input id="mobile-search" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search models, videos, quizzes…"
+              className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+            <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Search</button>
+          </form>
+          {items.map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
         </div>
       </nav>
       {logoutError && <p role="alert" className="p-3 text-red-600">{logoutError}</p>}
 
       <RequestState loading={false} error={programsError} onRetry={reloadPrograms} label="programmes" />
       <main ref={main} id="main-content" tabIndex={-1} className="flex-1">
-        <Outlet />
+        <ErrorBoundary key={location.pathname}>
+          <Suspense fallback={<p role="status" className="p-6 text-slate-600 dark:text-slate-300">Loading…</p>}>
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </main>
+      <Footer />
     </div>
   );
 }

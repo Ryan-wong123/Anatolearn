@@ -3,7 +3,7 @@ type Role = 'student' | 'teacher';
 type Program = string;
 type Theme = 'light' | 'dark';
 
-// What the backend's /api/auth/login and /api/auth/register return as `user`.
+// What the backend's /api/auth/login returns as `user`. The session itself is an httpOnly cookie the page cannot read.
 interface AuthUser {
   id: number;
   name: string;
@@ -17,9 +17,9 @@ interface AppContextType {
   setRole: (role: Role) => void;
   program: Program;
   setProgram: (program: Program) => void;
-  token: string | null;
   user: AuthUser | null;
-  login: (token: string, user: AuthUser) => void;
+  login: (user: AuthUser) => void;
+  updateUser: (patch: Partial<AuthUser>) => void;
   logout: () => Promise<void>;
   // True only in `npm run dev` (Vite's built-in dev flag) — false in a
   // production build. The Student|Teacher nav toggle checks this so it

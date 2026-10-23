@@ -28,6 +28,7 @@ function objectKey(assetPath) {
 }
 // Copies a validated staged upload into its permanent home and returns the stored asset path.
 async function persist(file, folder) {
+  await require('./scan').assertClean(file);
   const assetPath = `/${folder}/${file.filename}`;
   if (!REMOTE) return assetPath;
   const { PutObjectCommand } = require('@aws-sdk/client-s3');

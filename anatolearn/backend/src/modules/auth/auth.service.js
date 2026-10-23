@@ -3,6 +3,11 @@ const { randomUUID } = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { sessionToken } = require('../../access');
+const { record } = require('../../audit');
+const { newCsrfToken, CSRF_COOKIE } = require('../../csrf');
+const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS) || 5;
+const LOCKOUT_MINUTES = Number(process.env.LOCKOUT_MINUTES) || 15;
+const allowedDomains = () => (process.env.ALLOWED_EMAIL_DOMAINS || '').split(',').map((domain) => domain.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
 const VALID_ROLES = ['student', 'teacher'];
 const { timingSafeEqual } = require('crypto');
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -28,6 +33,10 @@ async function register(input) {
         if ([name, email, password].some((value) => typeof value !== 'string') || name.length > 255 || email.length > 255 || !EMAIL_PATTERN.test(email.trim())) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "A valid name and email are required" } });
         }
+        const domains = allowedDomains();
+        if (domains.length && !domains.includes(email.trim().toLowerCase().split('@').pop())) {
+            return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: `Registration is limited to ${domains.map((domain) => '@' + domain).join(', ')} email addresses` } });
+        }
         if (password.length < 8 || Buffer.byteLength(password) > 72) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "password must be 8 to 72 bytes long" } });
         }
@@ -46,6 +55,7 @@ async function register(input) {
         }
         const passwordHash = await bcrypt.hash(password, 12);
         const result = await repository.insertUser([name, normalizedEmail, passwordHash, role, program_id || null]);
+        void record({ actor: result.rows[0], action: 'auth.register', targetType: 'user', targetId: result.rows[0].id, detail: { role }, ip: input.ip });
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {
@@ -73,16 +83,27 @@ async function login(input) {
         if (!user) {
             return invalidCredentials();
         }
-        if (!passwordMatches) {
+        // Locked and disabled accounts get the same generic reply so attackers learn nothing about them.
+        if (user.is_locked || !user.is_active) {
+            void record({ actor: user, action: user.is_active ? 'auth.login_blocked_locked' : 'auth.login_blocked_disabled', targetType: 'user', targetId: user.id, ip: input.ip });
             return invalidCredentials();
         }
+        if (!passwordMatches) {
+            const failure = (await repository.registerFailedLogin([user.id, MAX_FAILED_LOGINS, LOCKOUT_MINUTES])).rows[0];
+            void record({ actor: user, action: failure.locked_until && failure.failed_login_count >= MAX_FAILED_LOGINS ? 'auth.account_locked' : 'auth.login_failed',
+                targetType: 'user', targetId: user.id, detail: { attempts: failure.failed_login_count }, ip: input.ip });
+            return invalidCredentials();
+        }
+        await repository.registerSuccessfulLogin([user.id]);
+        void record({ actor: user, action: 'auth.login', targetType: 'user', targetId: user.id, ip: input.ip });
         const sid = randomUUID();
         await repository.insertSession([sid, user.id]);
         const token = jwt.sign({ id: user.id, name: user.name, role: user.role, program_id: user.program_id, sid }, JWT_SECRET, { expiresIn: "24h" });
-        outcomeMeta.cookies.push({ name: 'anatolearn_session', value: token, options: { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', maxAge: 86400000, path: '/' } });
+        const cookieSecurity = { sameSite: 'strict', secure: process.env.NODE_ENV === 'production', maxAge: 86400000, path: '/' };
+        outcomeMeta.cookies.push({ name: 'anatolearn_session', value: token, options: { httpOnly: true, ...cookieSecurity } });
+        outcomeMeta.cookies.push({ name: CSRF_COOKIE, value: newCsrfToken(), options: { httpOnly: false, ...cookieSecurity } });
         (outcomeMeta.headers['Cache-Control'] = 'no-store');
         return ({ ...outcomeMeta, status: 200, kind: 'json', body: {
-                token,
                 user: {
                     id: user.id,
                     name: user.name,
@@ -107,6 +128,7 @@ async function logout(input) {
     if (typeof claims?.sid === 'string' && /^[0-9a-f-]{36}$/i.test(claims.sid))
         await repository.revokeSession([claims.sid, claims.id]);
     outcomeMeta.cookies.push({ name: 'anatolearn_session', clear: true, options: { path: '/' } });
+    outcomeMeta.cookies.push({ name: CSRF_COOKIE, clear: true, options: { path: '/' } });
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: { message: 'Logged out' } });
 }
 module.exports = { register, login, logout };

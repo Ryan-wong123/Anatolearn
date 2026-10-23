@@ -1,11 +1,16 @@
 const jwt = require('jsonwebtoken');
 const { findSessionUser } = require('./modules/auth/auth.repository');
 
+function readCookie(req, name) {
+  const prefix = `${name}=`;
+  const value = (req.headers.cookie || '').split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length);
+  try { return value && decodeURIComponent(value); } catch { return undefined; }
+}
+
 function sessionToken(req) {
   const bearer = req.headers.authorization;
   if (bearer?.startsWith('Bearer ')) return bearer.slice(7);
-  return (req.headers.cookie || '').split(';').map((part) => part.trim())
-    .find((part) => part.startsWith('anatolearn_session='))?.slice(19);
+  return readCookie(req, 'anatolearn_session');
 }
 
 async function authenticate(req, res, next) {
@@ -31,4 +36,4 @@ function canDownload(user, model) {
   return canRead(user, model) && model.is_downloadable === true;
 }
 
-module.exports = { authenticate, canRead, canDownload, sessionToken };
+module.exports = { authenticate, canRead, canDownload, sessionToken, readCookie };
