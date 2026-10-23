@@ -12,6 +12,8 @@ const app = express();
 if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
 app.disable('x-powered-by');
 app.use(requestLog);
+// Routes match exactly ("/api/Models/1" is a different path), so the access middleware sees the same path the handler does.
+app.set('case sensitive routing', true);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false }));
 const limiter = (windowMs, limit) => rateLimit({ windowMs, limit, standardHeaders: 'draft-7', legacyHeaders: false,
   skip: () => process.env.DISABLE_RATE_LIMIT === 'true', message: { message: 'Too many requests. Please try again later.' } });
