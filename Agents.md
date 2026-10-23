@@ -14,7 +14,7 @@ Read the documents relevant to the task before changing code:
 | [Architecture.md](docs/Architecture.md) | Current implementation, source boundaries, data flow and known gaps |
 | [design.md](docs/design.md) | Current theme, page layouts, interactions and responsive reference |
 | [coding_guidelines.md](docs/coding_guidelines.md) | Engineering constraints, naming, types and viewer lifecycle rules |
-| [Project README](docs/README.md) | Setup, local usage and documentation index |
+| [Project README](README.md) | Setup, local usage and documentation index |
 
 When requirements and implementation differ, preserve the distinction and report the gap. Do not remove requirements or declare them implemented solely to match existing code. Resolve scope changes using the user's instructions; explain unresolved conflicts instead of silently choosing a new product policy.
 
@@ -25,7 +25,7 @@ When requirements and implementation differ, preserve the distinction and report
 3. Implement the authorized change using the engineering and design references. Keep the work focused on the requested outcome.
 4. Run appropriate checks and evaluate the applicable acceptance criteria in `docs/PRD.md`. Distinguish checks actually run from historical results or unverified expectations.
 5. Update affected documentation before marking work complete. **After every implementation fix or feature, update `docs/Architecture.md` to reflect the resulting current implementation**, including relevant source boundaries, data flow, dependencies, behavior and remaining gaps. Also update these detailed documents when their subject changes:
-   - `docs/README.md`: setup, usage, architecture or local-run changes.
+   - `README.md`: setup, usage, architecture or local-run changes.
    - `docs/api_endpoints.md`: API routes, requests, responses, authentication or errors.
    - `docs/database_schema.md`: schema, relationships, seeds or migrations.
    - `docs/storage_structure.md`: upload paths, formats, limits or cloud migration, when relevant.
