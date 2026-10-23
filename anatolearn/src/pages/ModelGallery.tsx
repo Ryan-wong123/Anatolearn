@@ -2,9 +2,14 @@ import RequestState from '../components/RequestState';
 import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Upload, X, Search, Download, FileJson, FileText } from 'lucide-react';
+import Pagination from '../components/Pagination';
+import EmptyState from '../components/EmptyState';
+import UploadProgress from '../components/UploadProgress';
+import { usePageState } from '../components/content/usePageState';
+import { useUpload } from '../components/content/useUpload';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
 import { useConfirm } from '../context/ConfirmContextState';
@@ -22,6 +27,9 @@ interface ModelRecord {
   body_system: string | null;
   body_part: string | null;
 }
+
+const PAGE_SIZE = 12;
+const NO_MODELS = { items: [] as ModelRecord[], total: 0 };
 
 export default function ModelGallery() {
   const { role, program } = useAppContext();
@@ -42,7 +50,8 @@ export default function ModelGallery() {
   const [uploadBodySystem, setUploadBodySystem] = useState('');
   const [uploadBodyPart, setUploadBodyPart] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const upload = useUpload();
+  const uploading = upload.uploading;
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [editingModel, setEditingModel] = useState<ModelRecord | null>(null);
@@ -63,23 +72,39 @@ export default function ModelGallery() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const fetchModels = useCallback(() => api.getModels(role === 'student', {
-    q: debouncedSearch || undefined, system: systemFilter || undefined, part: partFilter || undefined,
-  }), [role, debouncedSearch, systemFilter, partFilter]);
-  const { data: models, reload: loadModels, loading, error: loadError } = useResource<ModelRecord[]>(fetchModels, [], program);
+  const filterKey = `${role}|${program}|${debouncedSearch}|${systemFilter}|${partFilter}`;
+  const [page, setPage] = usePageState(filterKey);
+  const listHeading = useRef<HTMLHeadingElement>(null);
+  const changePage = (next: number) => {
+    setPage(next);
+    requestAnimationFrame(() => { listHeading.current?.focus(); listHeading.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); });
+  };
 
-  // Task 4.4: system/part dropdowns are populated from unique values
-  // actually present in the current model list, not a fixed hardcoded set.
+  const fetchModels = useCallback(() => api.getModelsPage({
+    page, pageSize: PAGE_SIZE, publishedOnly: role === 'student',
+    q: debouncedSearch || undefined, system: systemFilter || undefined, part: partFilter || undefined,
+  }) as unknown as Promise<{ items: ModelRecord[]; total: number }>, [role, page, debouncedSearch, systemFilter, partFilter]);
+  const { data: modelPage, reload: reloadPage, loading, error: loadError } = useResource(fetchModels, NO_MODELS, `${program}|${page}|${filterKey}`);
+  const models = modelPage.items;
+
+  // Task 4.4: system/part dropdowns are populated from unique values actually present in the visible model set
+  // (not only the current page), so they stay complete while paging.
+  const fetchAllModels = useCallback(() => api.getModels(role === 'student') as Promise<ModelRecord[]>, [role]);
+  const { data: allModels, reload: reloadAll } = useResource<ModelRecord[]>(fetchAllModels, [], program);
+  const loadModels = () => { reloadPage(); reloadAll(); };
+  const afterRemoval = () => { if (models.length === 1 && page > 1) changePage(page - 1); loadModels(); };
   const availableSystems = useMemo(
-    () => Array.from(new Set(models.map((m) => m.body_system).filter((v): v is string => !!v))).sort(),
-    [models]
+    () => Array.from(new Set(allModels.map((m) => m.body_system).filter((v): v is string => !!v))).sort(),
+    [allModels]
   );
   // Body part options narrow to whatever's available within the currently
   // selected system, per Task 4.4's acceptance criteria.
   const availableParts = useMemo(() => {
-    const relevant = systemFilter ? models.filter((m) => m.body_system === systemFilter) : models;
+    const relevant = systemFilter ? allModels.filter((m) => m.body_system === systemFilter) : allModels;
     return Array.from(new Set(relevant.map((m) => m.body_part).filter((v): v is string => !!v))).sort();
-  }, [models, systemFilter]);
+  }, [allModels, systemFilter]);
+  const hasFilters = Boolean(debouncedSearch || systemFilter || partFilter);
+  const clearFilters = () => { setSearchInput(''); setDebouncedSearch(''); setSystemFilter(''); setPartFilter(''); };
 
   const handleUpload = async () => {
     if (!uploadTitle.trim()) {
@@ -92,27 +117,26 @@ export default function ModelGallery() {
     }
 
     try {
-      setUploading(true);
       setUploadError(null);
-      await api.uploadModel({
+      const outcome = await upload.run((options) => api.uploadModel({
         title: uploadTitle,
         description: uploadDescription || undefined,
         body_system: uploadBodySystem || undefined,
         body_part: uploadBodyPart || undefined,
         file: uploadFile,
-      });
+      }, options));
+      if (outcome.cancelled) { toast('Upload cancelled'); return; }
       loadModels();
       closeUploadModal();
       toast('Model uploaded successfully');
     } catch (err) {
       console.error('Failed to upload model:', err);
       setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
     }
   };
 
   const closeUploadModal = () => {
+    upload.cancel();
     setShowUpload(false);
     setUploadTitle('');
     setUploadDescription('');
@@ -146,7 +170,7 @@ export default function ModelGallery() {
 
     try {
       await api.deleteModel(model.id);
-      loadModels();
+      afterRemoval();
       toast('Model deleted');
     } catch (err) {
       console.error('Failed to delete model:', err);
@@ -267,7 +291,7 @@ export default function ModelGallery() {
             setSystemFilter(newSystem);
             // Reset the part filter if it no longer applies under the newly
             // selected system, rather than leaving a stale/invalid combo.
-            const stillValid = models.some(
+            const stillValid = allModels.some(
               (m) => (!newSystem || m.body_system === newSystem) && m.body_part === partFilter
             );
             if (!stillValid) setPartFilter('');
@@ -292,11 +316,20 @@ export default function ModelGallery() {
         </select>
       </div>
 
+      <h2 ref={listHeading} tabIndex={-1} className="sr-only">Models, page {page}</h2>
       <RequestState loading={loading} error={loadError} onRetry={loadModels} label="models" />
       {!loading && !loadError && models.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-8 text-center">
-          <p className="text-sm text-slate-500 dark:text-slate-400">No models match your search.</p>
-        </div>
+        hasFilters ? (
+          <EmptyState icon={<Search className="h-10 w-10" />} title="No models match your search"
+            action={<button type="button" onClick={clearFilters} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500">Clear filters</button>}>
+            Try a different search term, or choose another body system or part.
+          </EmptyState>
+        ) : (
+          <EmptyState icon={<Box className="h-10 w-10" />} title="No models yet"
+            action={role === 'teacher' ? <button type="button" onClick={() => setShowUpload(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500">Upload the first model</button> : undefined}>
+            {role === 'teacher' ? 'Upload a 3D model to get started. Students will see it once you publish it.' : 'Your teachers have not published any 3D models for your programme yet. Check back soon.'}
+          </EmptyState>
+        )
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {models.map((model) => (
@@ -412,6 +445,7 @@ export default function ModelGallery() {
           ))}
         </div>
       )}
+      <Pagination page={page} pageSize={PAGE_SIZE} total={modelPage.total} onPageChange={changePage} label="Model pages" />
 
       {showUpload && (
         <Dialog onClose={closeUploadModal} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
@@ -506,6 +540,7 @@ export default function ModelGallery() {
               </div>
             </div>
 
+            {uploading && <div className="mt-4"><UploadProgress fraction={upload.progress} fileName={uploadFile?.name} onCancel={upload.cancel} /></div>}
             {uploadError && (
               <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {uploadError}

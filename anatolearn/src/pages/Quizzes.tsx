@@ -3,8 +3,12 @@ import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import QuestionBank from '../components/QuestionBank';
 import ContentSettings from '../components/ContentSettings';
+import Pagination from '../components/Pagination';
+import BarList from '../components/dashboard/BarList';
+import Sparkline from '../components/dashboard/Sparkline';
+import type { StudentStats } from '../types/portal';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Clock, BookOpen, Search, Heart } from 'lucide-react';
+import { Clock, BookOpen, Search, Heart, RotateCcw } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
 import { api } from '../api/api';
@@ -77,6 +81,10 @@ interface AttemptAnswer { id:number; question_id:number; question:string; format
 interface OpenEndedResult { question_id:number; question:string; answer_text:string|null; teacher_score:number|null; }
 
 const optionLetters = ['A', 'B', 'C', 'D'] as const;
+const QUIZ_PAGE_SIZE = 12;
+const HISTORY_PAGE_SIZE = 10;
+type HistorySort = 'newest' | 'oldest' | 'highest';
+const clientNow = () => Date.now();
 
 const quizTypeBadgeClasses: Record<Quiz['type'], string> = {
   MCQ: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400',
@@ -99,6 +107,12 @@ export default function Quizzes() {
 
 
   const [quizSearchTerm, setQuizSearchTerm] = useState('');
+  const [quizPage, setQuizPage] = useState(1);
+  const [historyQuizId, setHistoryQuizId] = useState('all');
+  const [historyStatus, setHistoryStatus] = useState<'all' | 'graded' | 'pending_review'>('all');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historySort, setHistorySort] = useState<HistorySort>('newest');
+  const [historyPage, setHistoryPage] = useState(1);
   const [sessionId, setSessionId] = useState('');
   const [clockOffset, setClockOffset] = useState(0);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
@@ -163,6 +177,8 @@ export default function Quizzes() {
   const fetchHistory = useCallback(() => role === 'student' ? api.getMyAttempts() : Promise.resolve([]), [role]);
   const history = useResource<QuizAttemptSummary[]>(fetchHistory, [], program);
   const {data:attemptHistory} = history;
+  const fetchStats = useCallback(() => role === 'student' ? api.getMyStats() : Promise.resolve(null), [role]);
+  const stats = useResource<StudentStats | null>(fetchStats, null, program);
   const fetchFavorites = useCallback(async () => {
     if (role !== 'student') return new Set<number>();
     const data: {quizzes:{id:number}[]} = await api.getFavorites();
@@ -195,7 +211,7 @@ export default function Quizzes() {
     try {
       const session = await api.startQuiz(quiz.id);
       setSessionId(session.session_id);
-      setExpiresAt(session.expires_at); setClockOffset(Date.parse(session.server_now)-Date.now());
+      setExpiresAt(session.expires_at); setClockOffset(Date.parse(session.server_now)-clientNow());
       const loadedQuestions = session.questions;
 
 
@@ -251,6 +267,7 @@ export default function Quizzes() {
       // Task 8.8: refresh real history right away so the new attempt shows
       // up without needing a full page reload.
       history.reload();
+      stats.reload();
 
       const openEnded = questions
         .filter((q) => q.format === 'open_ended')
@@ -658,6 +675,30 @@ export default function Quizzes() {
     );
   });
 
+  const quizPages = Math.max(1, Math.ceil(filteredQuizzes.length / QUIZ_PAGE_SIZE));
+  const currentQuizPage = Math.min(quizPage, quizPages);
+  const pagedQuizzes = filteredQuizzes.length > QUIZ_PAGE_SIZE
+    ? filteredQuizzes.slice((currentQuizPage - 1) * QUIZ_PAGE_SIZE, currentQuizPage * QUIZ_PAGE_SIZE)
+    : filteredQuizzes;
+
+  const availableQuizzes = new Map(quizzes.map((quiz) => [quiz.id, quiz]));
+  const historyQuizOptions = [...new Map(attemptHistory.map((attempt) => [attempt.quiz_id, attempt.quiz_title])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]));
+  const historyTerm = historySearch.trim().toLowerCase();
+  const visibleHistory = attemptHistory
+    .filter((attempt) => (historyQuizId === 'all' || String(attempt.quiz_id) === historyQuizId)
+      && (historyStatus === 'all' || attempt.status === historyStatus)
+      && (!historyTerm || attempt.quiz_title.toLowerCase().includes(historyTerm)))
+    .sort((a, b) => historySort === 'highest' ? (b.score ?? -1) - (a.score ?? -1) || Date.parse(b.attempted_at) - Date.parse(a.attempted_at)
+      : historySort === 'oldest' ? Date.parse(a.attempted_at) - Date.parse(b.attempted_at)
+      : Date.parse(b.attempted_at) - Date.parse(a.attempted_at));
+  const historyPages = Math.max(1, Math.ceil(visibleHistory.length / HISTORY_PAGE_SIZE));
+  const currentHistoryPage = Math.min(historyPage, historyPages);
+  const pagedHistory = visibleHistory.slice((currentHistoryPage - 1) * HISTORY_PAGE_SIZE, currentHistoryPage * HISTORY_PAGE_SIZE);
+  const filtersActive = historyQuizId !== 'all' || historyStatus !== 'all' || historyTerm !== '';
+  const focusItems = (stats.data?.categories ?? []).map((item) => ({ label: item.category, value: item.accuracy, detail: `${item.answered} answered` }));
+  const filterControl = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -689,7 +730,7 @@ export default function Quizzes() {
         <input
           type="text"
           value={quizSearchTerm}
-          onChange={(e) => setQuizSearchTerm(e.target.value)}
+          onChange={(e) => { setQuizSearchTerm(e.target.value); setQuizPage(1); }}
           aria-label="Search quizzes"
           placeholder="Search quizzes by title, category, or description..."
           className="bg-white dark:bg-slate-900 w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 dark:focus:border-blue-300"
@@ -702,7 +743,7 @@ export default function Quizzes() {
             {quizSearchTerm ? 'No quizzes match your search.' : 'No quizzes available yet.'}
           </p>
         )}
-        {filteredQuizzes.map((quiz) => (
+        {pagedQuizzes.map((quiz) => (
           <div
             key={quiz.id}
             className="px-5 py-4 flex flex-wrap items-center gap-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
@@ -779,23 +820,87 @@ export default function Quizzes() {
         ))}
 
       </div>
+      <Pagination page={currentQuizPage} pageSize={QUIZ_PAGE_SIZE} total={filteredQuizzes.length} onPageChange={setQuizPage} label="Quiz list pages" />
+
+      {role === 'student' && (
+        <section aria-labelledby="quiz-focus-heading" className="mt-8">
+          <h2 id="quiz-focus-heading" className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-1">
+            Where to focus
+          </h2>
+          <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">Topics where your answers are least accurate come first.</p>
+          <RequestState loading={stats.loading} error={stats.error} onRetry={stats.reload} label="your learning statistics" />
+          {!stats.loading && !stats.error && stats.data && (
+            focusItems.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 py-8 text-center text-sm text-slate-600 dark:text-slate-400">
+                Complete a graded quiz to see which topics need more practice.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+                  <BarList items={focusItems.slice(0, 8)} ariaLabel="Accuracy by topic" />
+                </div>
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+                  <h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Your quizzes</h3>
+                  <ul className="space-y-3">
+                    {stats.data.quizzes.slice(0, 6).map((quiz) => (
+                      <li key={quiz.quiz_id} className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{quiz.title}</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400">
+                            Best {quiz.best_score != null ? `${quiz.best_score}%` : '—'} · Latest {quiz.latest_score != null ? `${quiz.latest_score}%` : '—'} · {quiz.attempts} attempt{quiz.attempts === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <Sparkline values={quiz.recent_scores} label={`${quiz.title} score trend`} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )
+          )}
+        </section>
+      )}
 
       {role === 'student' && (
         <div className="mt-8">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-3">
             My Quiz History
           </h2>
+          {attemptHistory.length > 0 && (
+            <div role="search" aria-label="Filter quiz history" className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <input type="search" value={historySearch} onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1); }}
+                aria-label="Search history by quiz title" placeholder="Search by quiz title…" className={`${filterControl} placeholder:text-slate-500 dark:placeholder:text-slate-400`} />
+              <select aria-label="Filter by quiz" value={historyQuizId} onChange={(e) => { setHistoryQuizId(e.target.value); setHistoryPage(1); }} className={filterControl}>
+                <option value="all">All quizzes</option>
+                {historyQuizOptions.map(([id, title]) => <option key={id} value={String(id)}>{title}</option>)}
+              </select>
+              <select aria-label="Filter by status" value={historyStatus} onChange={(e) => { setHistoryStatus(e.target.value as typeof historyStatus); setHistoryPage(1); }} className={filterControl}>
+                <option value="all">Any status</option>
+                <option value="graded">Graded</option>
+                <option value="pending_review">Pending review</option>
+              </select>
+              <select aria-label="Sort attempts" value={historySort} onChange={(e) => { setHistorySort(e.target.value as HistorySort); setHistoryPage(1); }} className={filterControl}>
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="highest">Highest score</option>
+              </select>
+            </div>
+          )}
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
             <RequestState loading={history.loading} error={history.error} onRetry={history.reload} label="quiz history" />
             {!history.loading && !history.error && attemptHistory.length === 0 ? (
               <div className="py-8 text-center text-sm text-slate-600 dark:text-slate-400">
                 No quiz attempts yet.
               </div>
+            ) : !history.loading && !history.error && visibleHistory.length === 0 ? (
+              <div className="py-8 text-center text-sm text-slate-600 dark:text-slate-400">
+                No attempts match these filters.{filtersActive && <> <button type="button" onClick={() => { setHistoryQuizId('all'); setHistoryStatus('all'); setHistorySearch(''); setHistoryPage(1); }} className="text-blue-700 dark:text-blue-400 underline">Clear filters</button></>}
+              </div>
             ) : (
-              attemptHistory.map((attempt) => (
+              pagedHistory.map((attempt) => (
                 <div
                   key={attempt.id}
-                  className="px-5 py-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                  className="px-5 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
                 >
                   <div>
                     <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{attempt.quiz_title}</p>
@@ -807,7 +912,16 @@ export default function Quizzes() {
                       })}
                     </p>
                   </div>
-                  <button onClick={() => { void reviewAttempt(attempt); }} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Review answers</button>
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => { void reviewAttempt(attempt); }} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">Review answers</button>
+                    {availableQuizzes.has(attempt.quiz_id) && (
+                      <button type="button" onClick={() => { void handleStartQuiz(availableQuizzes.get(attempt.quiz_id)!); }}
+                        aria-label={`Retake ${attempt.quiz_title}`}
+                        className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 dark:text-blue-400 hover:underline focus-visible:ring-2 focus-visible:ring-blue-500 rounded">
+                        <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />Retake
+                      </button>
+                    )}
+                  </div>
                   {attempt.status === 'graded' ? (
                     <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                       {attempt.score}%
@@ -821,6 +935,7 @@ export default function Quizzes() {
               ))
             )}
           </div>
+          <Pagination page={currentHistoryPage} pageSize={HISTORY_PAGE_SIZE} total={visibleHistory.length} onPageChange={setHistoryPage} label="Quiz history pages" />
         </div>
       )}
 

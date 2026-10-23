@@ -1,3 +1,4 @@
+const storage = require('../storage');
 // Adapt plain service inputs/results to Express in one place. Services never
 // receive the live request or response, so they can also be called from tests.
 function controller(operation) {
@@ -9,6 +10,7 @@ function controller(operation) {
             user: req.user,
             headers: req.headers,
             path: req.path,
+            ip: req.ip,
             file: req.file,
             files: req.files,
         });
@@ -25,6 +27,7 @@ function controller(operation) {
             case 'status': return res.sendStatus(result.status);
             case 'send': return res.send(result.body);
             case 'file': return res.sendFile(result.path);
+            case 'object': return storage.sendObject(res, result.assetPath, { range: req.headers.range, filename: result.filename });
             case 'download':
                 return res.download(result.path, result.filename, (error) => {
                     if (error && !res.headersSent) {

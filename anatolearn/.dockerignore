@@ -10,3 +10,5 @@ dist
 .playwright
 test-results
 playwright-report
+
+.env.production

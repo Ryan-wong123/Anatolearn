@@ -2,12 +2,19 @@ import RequestState from '../components/RequestState';
 import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { FileText, ExternalLink, Upload, X, Search } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
 import { useConfirm } from '../context/ConfirmContextState';
 import { api } from '../api/api';
+import Pagination from '../components/Pagination';
+import EmptyState from '../components/EmptyState';
+import UploadProgress from '../components/UploadProgress';
+import { usePageState } from '../components/content/usePageState';
+import { useUpload } from '../components/content/useUpload';
+
+const PAGE_SIZE = 10;
 
 type ResourceType = 'pdf' | 'document' | 'link' | 'image';
 
@@ -27,12 +34,15 @@ function ResourceIcon({ type }: { type: ResourceType }) {
   return <FileText className="w-8 h-8 text-green-500 dark:text-green-400" />;
 }
 
+const NO_RESOURCES = { items: [] as Resource[], total: 0 };
+
 export default function Library() {
   const { role, program } = useAppContext();
   const { toast } = useToast();
   const { confirm } = useConfirm();
 
   const [resourceSearchTerm, setResourceSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [showUpload, setShowUpload] = useState(false);
   const [uploadMode, setUploadMode] = useState<'file' | 'link'>('file');
@@ -41,7 +51,8 @@ export default function Library() {
   const [uploadFileType, setUploadFileType] = useState<'pdf' | 'document' | 'image'>('pdf');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadUrl, setUploadUrl] = useState('');
-  const [uploading, setUploading] = useState(false);
+  const upload = useUpload();
+  const uploading = upload.uploading;
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
@@ -51,8 +62,32 @@ export default function Library() {
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const fetchResources = useCallback(() => api.getResources(role === 'student'), [role]);
-  const { data: resources, reload: loadResources, loading, error: loadError } = useResource<Resource[]>(fetchResources, [], program);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(resourceSearchTerm.trim().toLowerCase()), 250);
+    return () => clearTimeout(timer);
+  }, [resourceSearchTerm]);
+
+  const filterKey = `${role}|${program}|${debouncedSearch}`;
+  const [page, setPage] = usePageState(filterKey);
+  const listHeading = useRef<HTMLHeadingElement>(null);
+  const changePage = (next: number) => {
+    setPage(next);
+    requestAnimationFrame(() => { listHeading.current?.focus(); listHeading.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); });
+  };
+
+  // Without a search the server pages the list. Text search is matched in the browser (the API has no text filter),
+  // so a search loads the full list and pages the matches.
+  const fetchResources = useCallback(async () => {
+    const publishedOnly = role === 'student';
+    if (!debouncedSearch) return api.getResourcesPage({ page, pageSize: PAGE_SIZE, publishedOnly }) as unknown as Promise<{ items: Resource[]; total: number }>;
+    const matches = ((await api.getResources(publishedOnly)) as Resource[]).filter((resource) =>
+      resource.title.toLowerCase().includes(debouncedSearch) || (resource.description || '').toLowerCase().includes(debouncedSearch));
+    return { items: matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), total: matches.length };
+  }, [role, page, debouncedSearch]);
+  const { data: resourcePage, reload: loadResources, loading, error: loadError } = useResource(fetchResources, NO_RESOURCES, `${program}|${page}|${filterKey}`);
+  const filteredResources = resourcePage.items;
+  const afterRemoval = () => { if (filteredResources.length === 1 && page > 1) changePage(page - 1); loadResources(); };
+  const clearSearch = () => { setResourceSearchTerm(''); setDebouncedSearch(''); };
 
   const handleUpload = async () => {
     if (!uploadTitle.trim()) {
@@ -73,27 +108,26 @@ export default function Library() {
     }
 
     try {
-      setUploading(true);
       setUploadError(null);
-      await api.uploadResource({
+      const outcome = await upload.run((options) => api.uploadResource({
         title: uploadTitle,
         description: uploadDescription || undefined,
         resource_type: uploadMode === 'link' ? 'link' : uploadFileType,
         url: uploadMode === 'link' ? uploadUrl : undefined,
         file: uploadMode === 'file' ? uploadFile || undefined : undefined,
-      });
+      }, options));
+      if (outcome.cancelled) { toast('Upload cancelled'); return; }
       loadResources();
       closeUploadModal();
       toast('Resource uploaded successfully');
     } catch (err) {
       console.error('Failed to upload resource:', err);
       setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
     }
   };
 
   const closeUploadModal = () => {
+    upload.cancel();
     setShowUpload(false);
     setUploadMode('file');
     setUploadTitle('');
@@ -173,22 +207,13 @@ export default function Library() {
 
     try {
       await api.deleteResource(resource.id);
-      loadResources();
+      afterRemoval();
       toast('Resource deleted');
     } catch (err) {
       console.error('Failed to delete resource:', err);
       toast('The change could not be saved. Please try again.', 'error');
     }
   };
-
-  const filteredResources = resources.filter((resource) => {
-    const term = resourceSearchTerm.trim().toLowerCase();
-    if (!term) return true;
-    return (
-      resource.title.toLowerCase().includes(term) ||
-      (resource.description || '').toLowerCase().includes(term)
-    );
-  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
@@ -226,10 +251,21 @@ export default function Library() {
       </div>
 
       <div className="mt-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <h2 ref={listHeading} tabIndex={-1} className="sr-only">Resources, page {page}</h2>
         <RequestState loading={loading} error={loadError} onRetry={loadResources} label="resources" />
       {!loading && !loadError && filteredResources.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-600 dark:text-slate-400">
-            {resourceSearchTerm ? 'No resources match your search.' : 'No resources uploaded yet.'}
+          <div className="p-4">
+            {debouncedSearch ? (
+              <EmptyState icon={<Search className="h-10 w-10" />} title="No resources match your search"
+                action={<button type="button" onClick={clearSearch} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500">Clear search</button>}>
+                Try a different title or description.
+              </EmptyState>
+            ) : (
+              <EmptyState icon={<FileText className="h-10 w-10" />} title="No resources yet"
+                action={role === 'teacher' ? <button type="button" onClick={() => setShowUpload(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500">Upload the first resource</button> : undefined}>
+                {role === 'teacher' ? 'Upload notes, photos or links and publish them for your students.' : 'No learning materials have been published for your programme yet. Check back soon.'}
+              </EmptyState>
+            )}
           </div>
         ) : (
           filteredResources.map((resource) => (
@@ -295,6 +331,7 @@ export default function Library() {
           ))
         )}
       </div>
+      <Pagination page={page} pageSize={PAGE_SIZE} total={resourcePage.total} onPageChange={changePage} label="Resource pages" />
 
       {showUpload && (
         <Dialog onClose={closeUploadModal} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
@@ -436,6 +473,7 @@ export default function Library() {
               )}
             </div>
 
+            {uploading && uploadMode === 'file' && <div className="mt-4"><UploadProgress fraction={upload.progress} fileName={uploadFile?.name} onCancel={upload.cancel} /></div>}
             {uploadError && (
               <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {uploadError}

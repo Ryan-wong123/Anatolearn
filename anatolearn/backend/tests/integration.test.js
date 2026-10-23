@@ -5,6 +5,8 @@ const bcrypt = require('bcryptjs');
 const pool = require('../src/db');
 const app = require('../src/server');
 const storage = require('../src/storage');
+// The suite signs in more often than the production login limit (10 per 15 minutes) allows.
+process.env.DISABLE_RATE_LIMIT = 'true';
 
 test('authenticated assets, permissions, programmes, assessment sessions and question bank',async(t)=>{
   const server=app.listen(0,'127.0.0.1');
@@ -26,7 +28,7 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
     const response=await call('/api/auth/login',null,{email,password:'Testing123'});
     assert.equal(response.status,200);
     const cookie=response.headers.get('set-cookie').split(';')[0];
-    const {token}=await response.json();return {token,cookie,id};
+    const token=decodeURIComponent(cookie.split('=').slice(1).join('='));return {token,cookie,id};
   }
   try{
     const teacher=await login('teacher',1),student=await login('student',1),other=await login('student',2);
