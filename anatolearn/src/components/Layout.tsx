@@ -97,7 +97,7 @@ export default function Layout() {
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
                 <GraduationCap className="w-5 h-5 text-white" />
               </div>
-              <span className="hidden 2xl:inline font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight font-display">
+              <span className="hidden min-[1900px]:inline font-bold text-xl text-slate-900 dark:text-slate-100 tracking-tight font-display">
                 AnatoLearn
               </span>
             </Link>
@@ -125,16 +125,16 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            <form role="search" onSubmit={handleSearch} className="relative hidden lg:block">
+            <form role="search" onSubmit={handleSearch} className="relative hidden min-[1800px]:block">
               <label htmlFor="global-search" className="sr-only">Search models, videos, quizzes and library</label>
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
               <input id="global-search" type="search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search…"
-                className="w-40 rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-sm text-slate-900 placeholder-slate-500 focus:w-56 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 transition-[width]" />
+                className="w-28 rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-sm text-slate-900 placeholder-slate-500 focus:w-44 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 transition-[width]" />
             </form>
-            <Link to="/search" aria-label="Search" className="hidden rounded-lg p-1.5 sm:block text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700 lg:hidden">
+            <Link to="/search" aria-label="Search" className="hidden rounded-lg p-1.5 sm:block text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-700 min-[1800px]:hidden">
               <Search className="h-5 w-5" />
             </Link>
-            <span className="hidden lg:inline text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="hidden min-[1800px]:inline text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Program
             </span>
 
@@ -158,7 +158,7 @@ export default function Layout() {
                 render (or do anything) in a production build — role there
                 comes only from the logged-in account. */}
             {isDevMode && (
-              <div className="hidden 2xl:flex items-center gap-2">
+              <div className="hidden min-[2000px]:flex items-center gap-2">
                 <button
                   onClick={() => setRole('student')}
                   className={`text-sm transition-colors ${
@@ -196,9 +196,9 @@ export default function Layout() {
             </button>
 
             <div className="flex items-center gap-2">
-              <Link to="/profile" aria-label="My profile" title="My profile" className="hidden items-center gap-2 rounded-lg p-1 sm:flex hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700">
+              <Link to="/profile" aria-label={user ? `${user.name}, my profile` : 'My profile'} title="My profile" className="hidden items-center gap-2 rounded-lg p-1 sm:flex hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-700">
                 {user && (
-                  <span className="hidden sm:block text-sm text-slate-600 dark:text-slate-400 max-w-[140px] truncate">
+                  <span className="hidden min-[1800px]:block text-sm text-slate-600 dark:text-slate-400 max-w-[140px] truncate">
                     {user.name}
                   </span>
                 )}
