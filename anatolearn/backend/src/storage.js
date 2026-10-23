@@ -114,9 +114,18 @@ async function validateResource(file,type) {
   const bytes=await fs.readFile(file.path);
   const ext=path.extname(file.originalname).toLowerCase();
   const matches = type==='pdf' ? ext==='.pdf' && bytes.subarray(0,5).toString()==='%PDF-'
-    : type==='document' ? (ext==='.docx' && bytes.length>=4 && bytes.readUInt32LE(0)===0x04034b50) || (ext==='.doc' && bytes.subarray(0,8).equals(Buffer.from('d0cf11e0a1b11e1','hex')))
+    : type==='document' ? (ext==='.docx' && bytes.length>=4 && bytes.readUInt32LE(0)===0x04034b50 && bytes.includes('word/') && bytes.includes('[Content_Types].xml')) || (ext==='.doc' && bytes.subarray(0,8).equals(Buffer.from('d0cf11e0a1b11ae1','hex')))
     : type==='image' && ((ext==='.png' && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'))) || (['.jpg','.jpeg'].includes(ext) && bytes.subarray(0,3).equals(Buffer.from('ffd8ff','hex'))) || (ext==='.webp' && bytes.subarray(0,4).toString()==='RIFF' && bytes.subarray(8,12).toString()==='WEBP'));
   if (!matches) throw Object.assign(new Error('The file contents do not match the selected PDF, document or photo format'),{status:400});
+}
+// Checks the container signature against the claimed extension so a renamed executable or script is not stored as video.
+async function validateVideo(file) {
+  const extension=path.extname(file.originalname).toLowerCase();
+  const handle=await fs.open(file.path,'r');
+  const head=Buffer.alloc(12);
+  try { await handle.read(head,0,12,0); } finally { await handle.close(); }
+  const valid=extension==='.mp4' ? head.subarray(4,8).toString('latin1')==='ftyp' : extension==='.webm' && head.subarray(0,4).equals(Buffer.from('1a45dfa3','hex'));
+  if (!valid) throw Object.assign(new Error('The file contents do not match an MP4 or WebM video'),{status:400});
 }
 async function validateCaptions(file) {
   if (file.size > 2 * 1024 * 1024) throw Object.assign(new Error('Caption files must be 2 MiB or smaller'),{status:400});
@@ -125,4 +134,4 @@ async function validateCaptions(file) {
   if (text.includes('\u0000') || !/^WEBVTT(?:[ \t].*)?(?:\r?\n|$)(?:[\s\S]*)$/.test(text))
     throw Object.assign(new Error('Caption file must be a UTF-8 WebVTT (.vtt) file starting with WEBVTT'),{status:400});
 }
-module.exports={ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateCaptions};
+module.exports={ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateVideo,validateCaptions};

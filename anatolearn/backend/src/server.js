@@ -6,6 +6,10 @@ function assertProductionConfig() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL must be set');
   if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_ORIGINS)
     throw new Error('FRONTEND_ORIGINS must list the public site origin(s) in production');
+  if (process.env.NODE_ENV === 'production' && !process.env.CLAMAV_HOST)
+    console.warn('WARNING: CLAMAV_HOST is not set, so uploads are not virus scanned.');
+  else if (process.env.NODE_ENV === 'production' && process.env.CLAMAV_REQUIRED !== 'true')
+    console.warn('WARNING: CLAMAV_REQUIRED is not true, so uploads are accepted unscanned whenever the scanner is down.');
 }
 
 if (require.main === module) {
