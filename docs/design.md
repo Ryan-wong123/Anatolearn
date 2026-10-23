@@ -95,7 +95,7 @@ The greeting reads “Welcome back” with the account name, followed by the sel
 
 Teacher layout has three white/deep-slate statistic cards: Models Uploaded (blue Box), Videos Uploaded (purple Video), Quizzes Created (green Activity). Values show an em dash until fetched. Quick Actions has four bordered tiles linking to Upload New Model, Manage Annotations, Add Educational Video and Create Quiz. They navigate to management pages rather than opening forms directly.
 
-Student layout has two metric cards: Quizzes Taken and Average Score, using BookOpen and yellow Trophy. The grid still declares three columns at sm. Recent Activity displays up to three attempts with dates, score or amber Pending Review pills. Favourites are compact video/quiz cards, up to two columns at sm, with 48px icon/thumbnail squares, truncated titles and filled red hearts. Empty activity/favourites show centered explanatory text in bordered panels. Three lower tiles link to models, videos and quizzes.
+Student layout has two metric cards: Quizzes Taken and Average Score, using BookOpen and yellow Trophy. The grid still declares three columns at sm. Recent Activity displays up to three attempts with dates, score or amber Pending Review pills. Favourites are compact model/library/video/quiz cards, each with a red-heart button that removes the favourite, up to two columns at sm, with 48px icon/thumbnail squares, truncated titles and filled red hearts. Empty activity/favourites show centered explanatory text in bordered panels. Three lower tiles link to models, videos and quizzes.
 
 There are no implemented Study Time, Models Explored or Student Engagement metrics, and no large illustrated Continue Learning cards.
 

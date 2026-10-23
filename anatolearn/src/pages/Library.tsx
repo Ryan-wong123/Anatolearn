@@ -11,6 +11,8 @@ import { api } from '../api/api';
 import Pagination from '../components/Pagination';
 import EmptyState from '../components/EmptyState';
 import UploadProgress from '../components/UploadProgress';
+import FavoriteButton from '../components/FavoriteButton';
+import { useFavorites } from '../components/content/useFavorites';
 import { usePageState } from '../components/content/usePageState';
 import { useUpload } from '../components/content/useUpload';
 
@@ -38,6 +40,7 @@ const NO_RESOURCES = { items: [] as Resource[], total: 0 };
 
 export default function Library() {
   const { role, program } = useAppContext();
+  const favorites = useFavorites('resource', 'resources');
   const { toast } = useToast();
   const { confirm } = useConfirm();
 
@@ -253,6 +256,7 @@ export default function Library() {
       <div className="mt-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         <h2 ref={listHeading} tabIndex={-1} className="sr-only">Resources, page {page}</h2>
         <RequestState loading={loading} error={loadError} onRetry={loadResources} label="resources" />
+        {favorites.enabled && <RequestState loading={false} error={favorites.error} onRetry={favorites.reload} label="resource favourites" />}
       {!loading && !loadError && filteredResources.length === 0 ? (
           <div className="p-4">
             {debouncedSearch ? (
@@ -292,6 +296,11 @@ export default function Library() {
                   {resource.description || 'No description provided.'}
                 </p>
               </div>
+
+              {favorites.enabled && (
+                <FavoriteButton title={resource.title} active={favorites.ids.has(resource.id)} onToggle={() => void favorites.toggle(resource.id)}
+                  disabled={favorites.loading || Boolean(favorites.error) || favorites.pending === resource.id} className="flex-shrink-0 border border-slate-200 dark:border-slate-700" />
+              )}
 
               {/*  Added "<a" below */}
               <a

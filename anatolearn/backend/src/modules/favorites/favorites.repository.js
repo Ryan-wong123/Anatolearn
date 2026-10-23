@@ -15,8 +15,24 @@ async function listQuizzes(parameters) {
      WHERE f.user_id = $1 AND f.item_type = 'quiz' AND q.is_published AND (q.program_id IS NULL OR q.program_id = $2)
      ORDER BY f.created_at DESC`, parameters);
 }
+async function listModels(parameters) {
+    return pool.query(`SELECT f.id AS favorite_id, f.item_type, f.created_at,
+            m.id, m.title, m.description, m.thumbnail_path, m.is_published
+     FROM favorites f
+     JOIN models m ON m.id = f.item_id
+     WHERE f.user_id = $1 AND f.item_type = 'model' AND m.is_published AND (m.program_id IS NULL OR m.program_id = $2)
+     ORDER BY f.created_at DESC`, parameters);
+}
+async function listResources(parameters) {
+    return pool.query(`SELECT f.id AS favorite_id, f.item_type, f.created_at,
+            r.id, r.title, r.description, r.resource_type, r.file_path, r.is_published
+     FROM favorites f
+     JOIN resources r ON r.id = f.item_id
+     WHERE f.user_id = $1 AND f.item_type = 'resource' AND r.is_published AND (r.program_id IS NULL OR r.program_id = $2)
+     ORDER BY f.created_at DESC`, parameters);
+}
 async function findContent(parameters, itemType) {
-    const table = { video: 'videos', quiz: 'quizzes' }[itemType];
+    const table = { video: 'videos', quiz: 'quizzes', model: 'models', resource: 'resources' }[itemType];
     if (!table) throw new Error('Unsupported favourite type');
     return pool.query(`SELECT * FROM ${table} WHERE id=$1`, parameters);
 }
@@ -29,4 +45,4 @@ async function insertFavorite(parameters) {
 async function deleteFavorite(parameters) {
     return pool.query(`DELETE FROM favorites WHERE user_id = $1 AND item_type = $2 AND item_id = $3 RETURNING *`, parameters);
 }
-module.exports = { listVideos, listQuizzes, findContent, insertFavorite, deleteFavorite };
+module.exports = { listVideos, listQuizzes, listModels, listResources, findContent, insertFavorite, deleteFavorite };

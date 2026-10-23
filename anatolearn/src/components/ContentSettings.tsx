@@ -33,9 +33,15 @@ export default function ContentSettings({ kind, id, onSaved, programId, timer, d
       </select>
       <button disabled={busy || loading || Boolean(programsError)} onClick={()=>void save(()=>api.setProgram(kind,id,value ? Number(value) : null))} className="rounded border px-3 py-2 hover:bg-blue-50 dark:hover:bg-slate-800 disabled:opacity-50">Assign programme</button>
       {kind === 'models' && <>
-        <span className="self-center">Downloads: {downloadable ? 'enabled' : 'disabled'}</span>
-        <button disabled={busy} onClick={()=>void save(()=>api.setDownloadPermission(id,true))} className="rounded border px-3 py-2 hover:bg-blue-50 dark:hover:bg-slate-800">Enable downloads</button>
-        <button disabled={busy} onClick={()=>void save(()=>api.setDownloadPermission(id,false))} className="rounded border px-3 py-2 hover:bg-blue-50 dark:hover:bg-slate-800">Disable downloads</button>
+        <label className="flex items-center gap-2">
+          <span>Downloads</span>
+          <select disabled={busy} aria-label="Model downloads" value={downloadable ? 'enabled' : 'disabled'}
+            onChange={(e)=>void save(()=>api.setDownloadPermission(id,e.target.value === 'enabled'))}
+            className="rounded border p-2 bg-white dark:bg-slate-900 disabled:opacity-50">
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
       </>}
       {kind === 'quizzes' && <>
         <input aria-label="Quiz time limit in seconds" type="number" min="30" max="86400" placeholder="Seconds (blank = untimed)" value={seconds} onChange={(e)=>setSeconds(e.target.value)} className="rounded border p-2 bg-white dark:bg-slate-900" />

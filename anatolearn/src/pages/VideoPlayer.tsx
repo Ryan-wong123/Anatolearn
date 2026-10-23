@@ -1,6 +1,6 @@
 import RequestState from '../components/RequestState';
 import { useResource } from '../hooks/useResource';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { api } from '../api/api';
@@ -14,6 +14,7 @@ interface Video {
   captions_path: string | null;
   thumbnail_path: string | null;
   created_at: string;
+  resume_position?: number;
 }
 
 export default function VideoPlayer() {
@@ -27,6 +28,26 @@ export default function VideoPlayer() {
     return Number.isSafeInteger(id) && id>0 ? api.getVideo(id) : Promise.reject(new Error('Invalid video identifier.'));
   },[videoId]);
   const {data:video,loading,error:loadError,reload} = useResource<Video|null>(fetchVideo,null,videoId);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSaved = useRef(0);
+  const savePosition = useCallback((target?: HTMLVideoElement | null) => {
+    const element = target ?? videoRef.current;
+    if (!video || !element || video.resume_position === undefined || !Number.isFinite(element.currentTime)) return;
+    // Restart from the beginning once the video has effectively finished.
+    const finished = Number.isFinite(element.duration) && element.currentTime >= element.duration - 2;
+    const position = finished ? 0 : Math.floor(element.currentTime);
+    if (position === lastSaved.current) return;
+    lastSaved.current = position;
+    api.saveVideoProgress(video.id, position).catch(() => undefined);
+  }, [video]);
+  useEffect(() => {
+    const element = videoRef.current; // the ref is already cleared when cleanup runs on route change
+    const onHide = () => savePosition(element);
+    const timer = window.setInterval(() => { if (element && !element.paused) savePosition(element); }, 10000);
+    window.addEventListener('pagehide', onHide);
+    return () => { window.clearInterval(timer); window.removeEventListener('pagehide', onHide); savePosition(element); };
+  }, [savePosition]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
@@ -46,6 +67,15 @@ export default function VideoPlayer() {
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         <video
           key={`${video.id}-${mediaRevision}`}
+          ref={videoRef}
+          onLoadedMetadata={(event) => {
+            const resume = video.resume_position ?? 0;
+            const { duration } = event.currentTarget;
+            if (resume > 0 && (!Number.isFinite(duration) || resume < duration - 2)) event.currentTarget.currentTime = resume;
+            lastSaved.current = Math.floor(resume);
+          }}
+          onPause={() => savePosition()}
+          onEnded={() => savePosition()}
           aria-label={video.title}
           onCanPlay={()=>setMediaError('')}
           onError={() => setMediaError('This video could not be played. Check that the media format is valid.')}

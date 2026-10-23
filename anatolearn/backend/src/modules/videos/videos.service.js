@@ -19,7 +19,22 @@ async function getVideo(input) {
     if (result.rows.length === 0) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Video not found" } });
     }
-    return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows[0] });
+    const video = result.rows[0];
+    if (input.user.role === 'student') {
+        // The view is recorded asynchronously, so this may read the previous visit's position, which is what resume needs.
+        const saved = (await repository.findPosition([input.user.id, video.id])).rows[0];
+        video.resume_position = saved ? saved.position_seconds : 0;
+    }
+    return ({ ...outcomeMeta, status: 200, kind: 'json', body: video });
+}
+async function saveProgress(input) {
+    const outcomeMeta = { headers: {}, cookies: [] };
+    const position = Number(input.body?.position);
+    if (!Number.isFinite(position) || position < 0 || position > 86400)
+        return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: 'position must be a number of seconds' } });
+    if (input.user.role === 'student')
+        await repository.savePosition([input.user.id, input.params.id, position]);
+    return ({ ...outcomeMeta, status: 204, kind: 'status' });
 }
 async function uploadVideo(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -99,4 +114,4 @@ async function updateVideo(input) {
     }
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows[0] });
 }
-module.exports = { listVideos, getVideo, uploadVideo, replaceCaptions, removeCaptions, deleteVideo, setPublication, updateVideo };
+module.exports = { listVideos, getVideo, saveProgress, uploadVideo, replaceCaptions, removeCaptions, deleteVideo, setPublication, updateVideo };

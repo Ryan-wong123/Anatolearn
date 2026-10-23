@@ -5,6 +5,7 @@ const { uploadVideoAndCaptions, cleanupFailedUpload } = require('../../middlewar
 module.exports = function registerRoutes(app) {
     app.get("/api/videos", authenticate, controller.listVideos);
     app.get("/api/videos/:id", authenticate, controller.getVideo);
+    app.put("/api/videos/:id/progress", authenticate, controller.saveProgress);
     app.post("/api/videos/upload", authenticate, requireTeacher, uploadVideoAndCaptions, cleanupFailedUpload, controller.uploadVideo);
     app.post('/api/videos/:id/captions', authenticate, requireTeacher, uploadVideoAndCaptions, cleanupFailedUpload, controller.replaceCaptions);
     app.delete('/api/videos/:id/captions', authenticate, requireTeacher, controller.removeCaptions);

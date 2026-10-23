@@ -3,6 +3,7 @@ const { controller } = require('../../http/controller');
 module.exports = {
     listVideos: controller(service.listVideos),
     getVideo: controller(service.getVideo),
+    saveProgress: controller(service.saveProgress),
     uploadVideo: controller(service.uploadVideo),
     replaceCaptions: controller(service.replaceCaptions),
     removeCaptions: controller(service.removeCaptions),
