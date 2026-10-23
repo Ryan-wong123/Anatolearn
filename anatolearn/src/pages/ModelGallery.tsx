@@ -8,6 +8,8 @@ import { Box, Upload, X, Search, Download, FileJson, FileText } from 'lucide-rea
 import Pagination from '../components/Pagination';
 import EmptyState from '../components/EmptyState';
 import UploadProgress from '../components/UploadProgress';
+import FavoriteButton from '../components/FavoriteButton';
+import { useFavorites } from '../components/content/useFavorites';
 import { usePageState } from '../components/content/usePageState';
 import { useUpload } from '../components/content/useUpload';
 import { useAppContext } from '../context/AppContextState';
@@ -36,6 +38,7 @@ export default function ModelGallery() {
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const navigate = useNavigate();
+  const favorites = useFavorites('model', 'models');
 
 
   // Search/filter — Tasks 4.1/4.3/4.4
@@ -318,6 +321,7 @@ export default function ModelGallery() {
 
       <h2 ref={listHeading} tabIndex={-1} className="sr-only">Models, page {page}</h2>
       <RequestState loading={loading} error={loadError} onRetry={loadModels} label="models" />
+      {favorites.enabled && <RequestState loading={false} error={favorites.error} onRetry={favorites.reload} label="model favourites" />}
       {!loading && !loadError && models.length === 0 ? (
         hasFilters ? (
           <EmptyState icon={<Search className="h-10 w-10" />} title="No models match your search"
@@ -350,6 +354,11 @@ export default function ModelGallery() {
                   <div className="w-full h-44 rounded-lg bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center mb-4">
                     <Box className="w-10 h-10 text-blue-600 dark:text-blue-400" />
                   </div>
+                )}
+
+                {favorites.enabled && (
+                  <FavoriteButton title={model.title} active={favorites.ids.has(model.id)} onToggle={() => void favorites.toggle(model.id)}
+                    disabled={favorites.loading || Boolean(favorites.error) || favorites.pending === model.id} className="absolute top-2 right-2" />
                 )}
 
                 {role === 'teacher' && !model.is_published && (

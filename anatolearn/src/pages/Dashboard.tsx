@@ -4,17 +4,23 @@ import BarList from '../components/dashboard/BarList';
 import Sparkline from '../components/dashboard/Sparkline';
 import StatCard from '../components/dashboard/StatCard';
 import { useResource } from '../hooks/useResource';
-import { useCallback } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
+import FavoriteButton from '../components/FavoriteButton';
 import {
-  Trophy, Activity, Box, Video, BookOpen, Heart, Play, Library, Megaphone, ClipboardCheck, Users, Eye, FileText, Compass, EyeOff,
+  Trophy, Activity, Box, Video, BookOpen, Play, Library, Megaphone, ClipboardCheck, Users, Eye, FileText, Compass, EyeOff,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContextState';
-import { api } from '../api/api';
+import { api, type FavoriteType } from '../api/api';
+import { useToast } from '../context/ToastContextState';
 import type { Announcement, RecentItem, StudentDashboard, TeacherDashboard } from '../types/portal';
 
 interface FavoriteVideo { id: number; title: string; thumbnail_path: string | null }
 interface FavoriteQuiz { id: number; title: string; category: string | null }
+interface FavoriteModel { id: number; title: string; thumbnail_path: string | null }
+interface FavoriteResource { id: number; title: string; resource_type: string }
+interface Favorites { videos: FavoriteVideo[]; quizzes: FavoriteQuiz[]; models: FavoriteModel[]; resources: FavoriteResource[] }
+const NO_FAVORITES: Favorites = { videos: [], quizzes: [], models: [], resources: [] };
 
 const cardClass = 'bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700';
 const tileLink = `flex items-center justify-center px-4 py-4 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500`;
@@ -58,8 +64,25 @@ function AnnouncementStrip({ items }: { items: Announcement[] }) {
   );
 }
 
-function StudentView({ data, favoriteVideos, favoriteQuizzes }: { data: StudentDashboard; favoriteVideos: FavoriteVideo[]; favoriteQuizzes: FavoriteQuiz[] }) {
-  const { summary, quizzes, categories, recent, counts } = data;
+// The link and the heart are siblings because a button cannot sit inside an anchor.
+function FavoriteCard({ to, title, label, icon, busy, onRemove }: { to: string; title: string; label: string; icon: ReactNode; busy: boolean; onRemove: () => void }) {
+  return (
+    <div className={`${cardClass} flex items-center gap-3 p-3 transition-shadow hover:shadow-md`}>
+      <Link to={to} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-blue-500">
+        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">{icon}</div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{title}</p>
+          <p className="text-xs text-slate-600 dark:text-slate-400">{label}</p>
+        </div>
+      </Link>
+      <FavoriteButton title={title} active disabled={busy} onToggle={onRemove} className="flex-shrink-0 border border-slate-200 dark:border-slate-700" />
+    </div>
+  );
+}
+
+function StudentView({ data, favorites, removing, onRemove }: { data: StudentDashboard; favorites: Favorites; removing: string | null; onRemove: (type: FavoriteType, id: number) => void }) {
+  const { videos: favoriteVideos, quizzes: favoriteQuizzes, models: favoriteModels, resources: favoriteResources } = favorites;
+  const { summary, quizzes, categories, recent } = data;
   const isNew = summary.attempts === 0 && recent.length === 0;
   const focus = categories.slice(0, 6).map((item) => ({ label: item.category, value: item.accuracy, detail: `${item.answered} answered` }));
   return (
@@ -104,16 +127,6 @@ function StudentView({ data, favoriteVideos, favoriteQuizzes }: { data: StudentD
         </section>
       )}
 
-      <section aria-labelledby="dash-explore" className="mt-8">
-        <h2 id="dash-explore" className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Available for you</h2>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Link to="/3dviewer" className={tileLink}><Box className="mr-2 h-4 w-4" aria-hidden="true" />{counts.models} 3D {counts.models === 1 ? 'model' : 'models'}</Link>
-          <Link to="/videos" className={tileLink}><Video className="mr-2 h-4 w-4" aria-hidden="true" />{counts.videos} {counts.videos === 1 ? 'video' : 'videos'}</Link>
-          <Link to="/quizzes" className={tileLink}><BookOpen className="mr-2 h-4 w-4" aria-hidden="true" />{counts.quizzes} {counts.quizzes === 1 ? 'quiz' : 'quizzes'}</Link>
-          <Link to="/library" className={tileLink}><Library className="mr-2 h-4 w-4" aria-hidden="true" />{counts.resources} library {counts.resources === 1 ? 'item' : 'items'}</Link>
-        </div>
-      </section>
-
       {quizzes.length > 0 && (
         <section aria-labelledby="dash-progress" className="mt-8">
           <h2 id="dash-progress" className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Quiz progress</h2>
@@ -148,33 +161,31 @@ function StudentView({ data, favoriteVideos, favoriteQuizzes }: { data: StudentD
 
       <section aria-labelledby="dash-fav" className="mt-8">
         <h2 id="dash-fav" className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Favourites</h2>
-        {favoriteVideos.length === 0 && favoriteQuizzes.length === 0 ? (
+        {favoriteVideos.length + favoriteQuizzes.length + favoriteModels.length + favoriteResources.length === 0 ? (
           <div className={`${cardClass} p-6 text-center`}>
-            <p className="text-sm text-slate-600 dark:text-slate-400">No favourites yet. Tap the heart icon on a video or quiz to save it here.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">No favourites yet. Tap the heart icon on a 3D model, video, quiz or library item to save it here.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {favoriteModels.map((model) => (
+              <FavoriteCard key={`model-${model.id}`} to={`/3dviewer/${model.id}`} title={model.title} label="3D model" busy={removing === `model-${model.id}`}
+                icon={model.thumbnail_path ? <img src={model.thumbnail_path} alt="" className="h-full w-full object-cover" /> : <Box className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />}
+                onRemove={() => onRemove('model', model.id)} />
+            ))}
+            {favoriteResources.map((resource) => (
+              <FavoriteCard key={`resource-${resource.id}`} to="/library" title={resource.title} label={`Library · ${resource.resource_type}`} busy={removing === `resource-${resource.id}`}
+                icon={<FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />}
+                onRemove={() => onRemove('resource', resource.id)} />
+            ))}
             {favoriteVideos.map((video) => (
-              <Link key={`video-${video.id}`} to={`/videos/${video.id}`} className={`${cardClass} flex items-center gap-3 p-3 transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500`}>
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
-                  {video.thumbnail_path ? <img src={video.thumbnail_path} alt="" className="h-full w-full object-cover" /> : <Play className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{video.title}</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">Video</p>
-                </div>
-                <Heart className="ml-auto h-4 w-4 flex-shrink-0 fill-red-500 text-red-500" aria-hidden="true" />
-              </Link>
+              <FavoriteCard key={`video-${video.id}`} to={`/videos/${video.id}`} title={video.title} label="Video" busy={removing === `video-${video.id}`}
+                icon={video.thumbnail_path ? <img src={video.thumbnail_path} alt="" className="h-full w-full object-cover" /> : <Play className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />}
+                onRemove={() => onRemove('video', video.id)} />
             ))}
             {favoriteQuizzes.map((quiz) => (
-              <Link key={`quiz-${quiz.id}`} to="/quizzes" className={`${cardClass} flex items-center gap-3 p-3 transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-blue-500`}>
-                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800"><BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" /></div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{quiz.title}</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">Quiz{quiz.category ? ` · ${quiz.category}` : ''}</p>
-                </div>
-                <Heart className="ml-auto h-4 w-4 flex-shrink-0 fill-red-500 text-red-500" aria-hidden="true" />
-              </Link>
+              <FavoriteCard key={`quiz-${quiz.id}`} to="/quizzes" title={quiz.title} label={`Quiz${quiz.category ? ` · ${quiz.category}` : ''}`} busy={removing === `quiz-${quiz.id}`}
+                icon={<BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />}
+                onRemove={() => onRemove('quiz', quiz.id)} />
             ))}
           </div>
         )}
@@ -266,10 +277,24 @@ export default function Dashboard() {
 
   const fetchDashboard = useCallback(() => api.getDashboard(), []);
   const dashboard = useResource<StudentDashboard | TeacherDashboard | null>(fetchDashboard, null, `${program}-${role}`);
-  const fetchFavorites = useCallback(async (): Promise<{ videos: FavoriteVideo[]; quizzes: FavoriteQuiz[] }> =>
-    role === 'student' ? api.getFavorites() : { videos: [], quizzes: [] }, [role]);
-  const favorites = useResource(fetchFavorites, { videos: [] as FavoriteVideo[], quizzes: [] as FavoriteQuiz[] }, `${program}-${role}`);
+  const fetchFavorites = useCallback(async (): Promise<Favorites> =>
+    role === 'student' ? api.getFavorites() : NO_FAVORITES, [role]);
+  const favorites = useResource(fetchFavorites, NO_FAVORITES, `${program}-${role}`);
   const { data, loading, error, reload } = dashboard;
+  const { toast } = useToast();
+  const [removing, setRemoving] = useState<string | null>(null);
+  const removeFavorite = async (type: FavoriteType, id: number) => {
+    setRemoving(`${type}-${id}`);
+    try {
+      await api.removeFavorite(type, id);
+      const key = `${type}s` as keyof Favorites;
+      favorites.setData((current) => ({ ...current, [key]: current[key].filter((item) => item.id !== id) }));
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not update favourite.', 'error');
+    } finally {
+      setRemoving(null);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
@@ -283,7 +308,7 @@ export default function Dashboard() {
       <RequestState loading={loading} error={error} onRetry={reload} label="dashboard" />
       {role === 'student' && <RequestState loading={false} error={favorites.error} onRetry={favorites.reload} label="favourites" />}
       {!loading && !error && data?.role === 'student' && role === 'student' && (
-        <StudentView data={data} favoriteVideos={favorites.data.videos} favoriteQuizzes={favorites.data.quizzes} />
+        <StudentView data={data} favorites={favorites.data} removing={removing} onRemove={(type, id) => void removeFavorite(type, id)} />
       )}
       {!loading && !error && data?.role === 'teacher' && role === 'teacher' && <TeacherView data={data} />}
     </div>

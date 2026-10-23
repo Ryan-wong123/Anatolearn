@@ -88,6 +88,8 @@ function query(params: Record<string, string | number | boolean | undefined | nu
     return text ? `?${text}` : '';
 }
 
+export type FavoriteType = 'video' | 'quiz' | 'model' | 'resource';
+
 export interface UploadOptions { onProgress?: (fraction: number) => void; signal?: AbortSignal }
 
 // fetch() cannot report upload progress, so file uploads use XMLHttpRequest. Aborting rejects with an AbortError.
@@ -276,6 +278,9 @@ export const api = {
         request(`/videos${publishedOnly ? '?published=true' : ''}`),
 
     getVideo: (id: number) => request(`/videos/${id}`),
+
+    saveVideoProgress: (id: number, position: number) =>
+        fetchResponse(`/videos/${id}/progress`, { method: 'PUT', body: JSON.stringify({ position }), keepalive: true }),
 
     uploadVideo: (data: { title: string; description?: string; program_id?: number; file: File; captions?: File }, upload?: UploadOptions) => {
         const formData = new FormData();
@@ -506,12 +511,12 @@ export const api = {
 
     getFavorites: () => request(`/favorites`),
 
-    addFavorite: (itemType: 'video' | 'quiz', itemId: number) =>
+    addFavorite: (itemType: FavoriteType, itemId: number) =>
         apiFetch(`/favorites`, {
             method: 'POST',
             body: JSON.stringify({ item_type: itemType, item_id: itemId }),
         }),
 
-    removeFavorite: (itemType: 'video' | 'quiz', itemId: number) =>
+    removeFavorite: (itemType: FavoriteType, itemId: number) =>
         apiFetch(`/favorites/${itemType}/${itemId}`, { method: 'DELETE' }),
 };

@@ -297,7 +297,8 @@ Apply `backend/sql/008_access_and_assessments.sql` after 001–007. It is additi
 - `resource_type` enum adds `image`.
 - `quiz_sessions`: UUID primary key; quiz_id/student_id cascade FKs; started_at TIMESTAMPTZ default NOW; nullable expires_at/submitted_at; questions JSONB NOT NULL containing the server snapshot and answer keys.
 - `question_bank`: SERIAL id; question TEXT; question_format enum; category; nullable option_a..d/correct_option/model_answer; created_at TIMESTAMPTZ. Bank records are independent of their source/imported questions.
-- `remove_content_favorites` deletion triggers on videos/quizzes clean polymorphic favourite references when content is deleted.
+- `favorites.item_type` allows `video`, `quiz`, `model` and `resource` (`017_favorite_models_resources.sql`).
+- `remove_content_favorites` deletion triggers on videos/quizzes/models/resources clean polymorphic favourite references when content is deleted.
 
 Submission transactions lock the session, insert attempt/answers and consume the session atomically. Manual grading locks the attempt and commits its answer/final score together. Question mutations lock their quiz and refuse changes after attempts or while sessions are active; starting a session takes a shared quiz lock while snapshotting. This preserves the existing question FK/history model instead of allowing edits to rewrite old results. Backup/restore and cleanup of old closed sessions remain operational considerations.
 
@@ -319,6 +320,6 @@ Schema changes are numbered files in `anatolearn/backend/sql`, applied once each
 | `users.is_active`, `failed_login_count`, `locked_until`, `last_login_at`, `password_changed_at` | Account disabling, per-account lockout, sign-in history |
 | `audit_log` (actor, action, target, detail JSON, ip, created_at) | Who did what: authentication events, user management, every successful state-changing API call |
 | `announcements` (title, body, program_id, expires_at, created_by) | Teacher notices shown to a programme or everyone |
-| `user_activity` (user_id, item_type, item_id, view_count, last_viewed_at) | Powers "continue where you left off" on the student dashboard |
+| `user_activity` (user_id, item_type, item_id, view_count, last_viewed_at, position_seconds) | `position_seconds` (migration `016_video_progress.sql`) stores the last video playback position. Powers "continue where you left off" on the student dashboard |
 
 The API connects at runtime as `anatolearn_app` (SELECT/INSERT/UPDATE/DELETE only); migrations and backups use the owner role.

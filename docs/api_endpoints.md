@@ -85,7 +85,10 @@ Exports a model's annotations as a downloadable file (defaults to `json` if `for
 Returns videos. Optional query param `?published=true` filters to `is_published = true` only (added 15 Jul 2026, matches the same pattern as quizzes). No server-side `?category=` or `?q=` filtering exists — search in `Videos.tsx` is done entirely client-side against the already-loaded list, and there's no `category` column on `videos` at all.
 
 ### `GET /api/videos/:id`
-Returns a single video. 404 if not found.
+Returns a single video. 404 if not found. For students the body also carries `resume_position` (seconds, 0 if none) from their last visit.
+
+### `PUT /api/videos/:id/progress`
+Authenticated. Body `{ position }` (seconds, 0–86400); 400 otherwise, 204 on success. Only a student's own existing `user_activity` row is updated (created by opening the video); other roles are accepted and ignored.
 
 ### `POST /api/videos/upload`
 Teacher-only multipart form upload. Fields: `video` (required, MP4/WebM, 200 MiB), optional `captions` (English WebVTT `.vtt`, UTF-8, starts with `WEBVTT`, maximum 2 MiB), `title` (required), optional `description` and `program_id`. Files receive generated UUID names under `PUBLIC_DIR/videos/` and `PUBLIC_DIR/captions/`; the new video is unpublished and returns `captions_path` (null if omitted). Validation/database failures remove newly uploaded files.
@@ -289,6 +292,7 @@ List endpoints for models, videos, quizzes and resources accept optional `page` 
 - `GET /api/profile` returns name, email, role, programme and last sign-in.
 - `PUT /api/profile` `{ name, program_id? }`. Students keep their registered programme (it controls content access); teachers may change theirs.
 - `PUT /api/profile/password` `{ current_password, new_password }` (8-72 bytes, uppercase letter and number). Signs out all other sessions.
+- `GET /api/favorites` (student) returns `{ videos, quizzes, models, resources }`; `POST /api/favorites` `{ item_type: 'video'|'quiz'|'model'|'resource', item_id }` and `DELETE /api/favorites/:item_type/:item_id` accept the same four types (models and resources added by migration 017). Unpublished or other-programme content is excluded/refused.
 - `GET /api/profile/export` downloads the user's own data as JSON (account, quiz attempts and answers, favourites, activity, downloads).
 - `DELETE /api/profile` `{ password }` deletes the account. The only active teacher cannot delete themselves.
 
