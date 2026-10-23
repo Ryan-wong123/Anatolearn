@@ -2,13 +2,21 @@ import RequestState from '../components/RequestState';
 import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Search, Play, Upload, X, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
 import { useConfirm } from '../context/ConfirmContextState';
 import { api } from '../api/api';
+import Pagination from '../components/Pagination';
+import EmptyState from '../components/EmptyState';
+import UploadProgress from '../components/UploadProgress';
+import { usePageState } from '../components/content/usePageState';
+import { useUpload } from '../components/content/useUpload';
+
+const PAGE_SIZE = 12;
+const NO_VIDEOS = { items: [] as Video[], total: 0 };
 
 interface Video {
   id: number;
@@ -38,13 +46,15 @@ export default function Videos() {
 
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showUpload, setShowUpload] = useState(false);
 
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadCaptions, setUploadCaptions] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const upload = useUpload();
+  const uploading = upload.uploading;
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
@@ -95,12 +105,32 @@ export default function Videos() {
     }
   };
 
-  const fetchVideos = useCallback(() => api.getVideos(role === 'student'), [role]);
-  const { data: videos, reload: loadVideos, loading, error: loadError } = useResource<Video[]>(fetchVideos, [], program);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  const filtered = videos.filter((v) =>
-    v.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const filterKey = `${role}|${program}|${debouncedSearch}`;
+  const [page, setPage] = usePageState(filterKey);
+  const listHeading = useRef<HTMLHeadingElement>(null);
+  const changePage = (next: number) => {
+    setPage(next);
+    requestAnimationFrame(() => { listHeading.current?.focus(); listHeading.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }); });
+  };
+
+  // Without a search the server pages the list. Title search is matched in the browser (the API has no text filter),
+  // so a search loads the full list and pages the matches.
+  const fetchVideos = useCallback(async () => {
+    const publishedOnly = role === 'student';
+    if (!debouncedSearch) return api.getVideosPage({ page, pageSize: PAGE_SIZE, publishedOnly }) as unknown as Promise<{ items: Video[]; total: number }>;
+    const term = debouncedSearch.toLowerCase();
+    const matches = ((await api.getVideos(publishedOnly)) as Video[]).filter((video) => video.title.toLowerCase().includes(term));
+    return { items: matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), total: matches.length };
+  }, [role, page, debouncedSearch]);
+  const { data: videoPage, reload: loadVideos, loading, error: loadError } = useResource(fetchVideos, NO_VIDEOS, `${program}|${page}|${filterKey}`);
+  const filtered = videoPage.items;
+  const afterRemoval = () => { if (filtered.length === 1 && page > 1) changePage(page - 1); loadVideos(); };
+  const clearSearch = () => { setSearch(''); setDebouncedSearch(''); };
 
   const handleUpload = async () => {
     if (!uploadTitle.trim()) {
@@ -113,26 +143,25 @@ export default function Videos() {
     }
 
     try {
-      setUploading(true);
       setUploadError(null);
-      await api.uploadVideo({
+      const outcome = await upload.run((options) => api.uploadVideo({
         title: uploadTitle,
         description: uploadDescription || undefined,
         file: uploadFile,
         captions: uploadCaptions ?? undefined,
-      });
+      }, options));
+      if (outcome.cancelled) { toast('Upload cancelled'); return; }
       loadVideos();
       closeUploadModal();
       toast('Video uploaded successfully');
     } catch (err) {
       console.error('Failed to upload video:', err);
       setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
     }
   };
 
   const closeUploadModal = () => {
+    upload.cancel();
     setShowUpload(false);
     setUploadTitle('');
     setUploadDescription('');
@@ -165,7 +194,7 @@ export default function Videos() {
 
     try {
       await api.deleteVideo(video.id);
-      loadVideos();
+      afterRemoval();
       toast('Video deleted');
     } catch (err) {
       console.error('Failed to delete video:', err);
@@ -268,7 +297,21 @@ export default function Videos() {
       </div>
 
       <RequestState loading={false} error={role === 'teacher' ? annotations.error : favorites.error} onRetry={role === 'teacher' ? annotations.reload : favorites.reload} label={role === 'teacher' ? 'annotation links' : 'video favourites'} />
+      <h2 ref={listHeading} tabIndex={-1} className="sr-only">Videos, page {page}</h2>
       <RequestState loading={loading} error={loadError} onRetry={loadVideos} label="videos" />
+      {!loading && !loadError && filtered.length === 0 && (
+        debouncedSearch ? (
+          <EmptyState icon={<Search className="h-10 w-10" />} title="No videos match your search"
+            action={<button type="button" onClick={clearSearch} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500">Clear search</button>}>
+            Try a different title.
+          </EmptyState>
+        ) : (
+          <EmptyState icon={<Play className="h-10 w-10" />} title="No videos yet"
+            action={role === 'teacher' ? <button type="button" onClick={() => setShowUpload(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500">Upload the first video</button> : undefined}>
+            {role === 'teacher' ? 'Upload a video and publish it so students can watch it.' : 'No videos have been published for your programme yet. Check back soon.'}
+          </EmptyState>
+        )
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((video) => (
           <div
@@ -354,12 +397,8 @@ export default function Videos() {
           </div>
         ))}
 
-        {!loading && !loadError && filtered.length === 0 && (
-          <div className="col-span-3 text-center py-12 text-slate-600 dark:text-slate-400 text-sm">
-            No videos found.
-          </div>
-        )}
       </div>
+      <Pagination page={page} pageSize={PAGE_SIZE} total={videoPage.total} onPageChange={changePage} label="Video pages" />
 
       {showUpload && (
         <Dialog onClose={closeUploadModal} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
@@ -432,6 +471,7 @@ export default function Videos() {
               </div>
             </div>
 
+            {uploading && <div className="mt-4"><UploadProgress fraction={upload.progress} fileName={uploadFile?.name} onCancel={upload.cancel} /></div>}
             {uploadError && (
               <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
                 {uploadError}
