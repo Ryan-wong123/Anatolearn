@@ -224,7 +224,7 @@ function TeacherView({ data }: { data: TeacherDashboard }) {
           {recent_attempts.length === 0 ? (
             <EmptyState title="No attempts yet">Student quiz attempts will show up here as soon as they come in.</EmptyState>
           ) : (
-            <div className={`${cardClass} overflow-x-auto`}>
+            <div tabIndex={0} role="region" aria-label="Recent quiz attempts table, scrolls sideways on small screens" className={`${cardClass} overflow-x-auto focus-visible:ring-2 focus-visible:ring-blue-500`}>
               <table className="w-full text-left text-sm">
                 <caption className="sr-only">Ten most recent quiz attempts</caption>
                 <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-600 dark:border-slate-700 dark:text-slate-400">
