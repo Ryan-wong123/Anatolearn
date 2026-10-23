@@ -24,6 +24,7 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<Role>('student');
   const [inviteCode, setInviteCode] = useState('');
+  const [consent, setConsent] = useState(false);
   const [programId, setProgramId] = useState<string>('');
   const selectedProgramId = programId || (programs[0] ? String(programs[0].id) : '');
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +48,11 @@ export default function Register() {
 
     if (password !== confirmPassword) {
       setError('Passwords do not match');
+      return;
+    }
+
+    if (!consent) {
+      setError('Please confirm that you have read the Privacy notice and Terms of use');
       return;
     }
 
@@ -201,6 +207,23 @@ export default function Register() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <input
+              id="consent"
+              type="checkbox"
+              required
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
+            />
+            <label htmlFor="consent" className="text-sm text-slate-700 dark:text-slate-300">
+              I have read the{' '}
+              <Link to="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-700 dark:text-blue-400 underline">Privacy notice</Link>
+              {' '}and{' '}
+              <Link to="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-700 dark:text-blue-400 underline">Terms of use</Link>.
+            </label>
           </div>
 
           {error && (
