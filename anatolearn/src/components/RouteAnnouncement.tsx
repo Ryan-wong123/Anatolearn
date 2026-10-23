@@ -9,6 +9,12 @@ const PAGE_NAMES: Record<string, string> = {
   videos: 'Videos',
   quizzes: 'Quizzes',
   library: 'Library',
+  profile: 'Profile',
+  search: 'Search',
+  announcements: 'Announcements',
+  admin: 'Users',
+  privacy: 'Privacy notice',
+  terms: 'Terms of use',
 };
 
 export default function RouteAnnouncement() {

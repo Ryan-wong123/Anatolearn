@@ -2,7 +2,7 @@ const pool = require('../../db');
 async function findSessionUser(parameters) {
     return pool.query(`SELECT u.id, u.name, u.role, u.program_id FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2
-      AND s.revoked_at IS NULL AND s.expires_at > NOW()`, parameters);
+      AND s.revoked_at IS NULL AND s.expires_at > NOW() AND u.is_active`, parameters);
 }
 async function findExistingEmail(parameters) {
     return pool.query("SELECT id FROM users WHERE email = $1", parameters);
@@ -13,7 +13,7 @@ async function insertUser(parameters) {
        RETURNING id, name, email, role, program_id, created_at`, parameters);
 }
 async function findUserByEmail(parameters) {
-    return pool.query("SELECT id, name, email, password_hash, role, program_id FROM users WHERE email = $1", parameters);
+    return pool.query("SELECT id, name, email, password_hash, role, program_id, is_active, locked_until, (locked_until > NOW()) AS is_locked FROM users WHERE email = $1", parameters);
 }
 async function insertSession(parameters) {
     return pool.query("INSERT INTO auth_sessions(id,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '24 hours')", parameters);
@@ -21,4 +21,15 @@ async function insertSession(parameters) {
 async function revokeSession(parameters) {
     return pool.query('UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2', parameters);
 }
-module.exports = { findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };
+async function findProgram(parameters) {
+    return pool.query('SELECT id FROM programs WHERE id = $1', parameters);
+}
+async function registerFailedLogin(parameters) {
+    return pool.query(`UPDATE users SET failed_login_count = failed_login_count + 1,
+      locked_until = CASE WHEN failed_login_count + 1 >= $2 THEN NOW() + $3 * INTERVAL '1 minute' ELSE locked_until END
+      WHERE id = $1 RETURNING failed_login_count, locked_until`, parameters);
+}
+async function registerSuccessfulLogin(parameters) {
+    return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1', parameters);
+}
+module.exports = { registerFailedLogin, registerSuccessfulLogin, findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };

@@ -22,4 +22,12 @@ async function visibleRows(input, rows) {
     return rows.filter((row) => canRead(input.user, row) &&
         (!selected || row.program_id == null || row.program_id === selectedId));
 }
-module.exports = { assignProgram, visibleRows };
+// Optional paging for list endpoints: ?page=1&page_size=24. Without page_size every row is returned, so older clients keep working.
+function paged(input, rows) {
+    const size = Number.parseInt(input.query?.page_size, 10);
+    if (!Number.isInteger(size) || size < 1) return { body: rows, headers: { 'X-Total-Count': String(rows.length) } };
+    const page = Math.max(1, Number.parseInt(input.query.page, 10) || 1);
+    const limit = Math.min(size, 100);
+    return { body: rows.slice((page - 1) * limit, page * limit), headers: { 'X-Total-Count': String(rows.length) } };
+}
+module.exports = { assignProgram, visibleRows, paged };

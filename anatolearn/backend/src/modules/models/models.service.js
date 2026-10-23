@@ -3,7 +3,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { canDownload } = require('../../access');
 const storage = require('../../storage');
-const { visibleRows } = require('../catalog/catalog.service');
+const { visibleRows, paged } = require('../catalog/catalog.service');
 async function setDownloadPermission(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     if (typeof input.body.is_downloadable !== 'boolean')
@@ -16,7 +16,7 @@ async function setDownloadPermission(input) {
 async function listModels(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     const result = await repository.listModels(input.query, input.user.role === 'student');
-    return ({ ...outcomeMeta, status: 200, kind: 'json', body: await visibleRows(input, result.rows) });
+    return ({ ...outcomeMeta, status: 200, kind: 'json', ...paged(input, await visibleRows(input, result.rows)) });
 }
 async function getModel(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -45,13 +45,13 @@ async function uploadModel(input) {
         if (!title) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "title is required" } });
         }
-        const filePath = `/models/anatomy/${input.file.filename}`;
+        const filePath = await storage.persist(input.file, 'models/anatomy');
         const result = await repository.insertModel([title, description || null, filePath, program_id || null, body_system || null, body_part || null]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {
         console.error("Failed to upload model:", err);
-        return ({ ...outcomeMeta, status: err.status || 500, kind: 'json', body: { message: err.message || "Failed to upload model" } });
+        return ({ ...outcomeMeta, status: err.status || 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload model" } });
     }
 }
 async function deleteModel(input) {
@@ -103,8 +103,7 @@ async function saveNeutralView(input) {
     catch (err) {
         console.error("Failed to save neutral view:", err);
         return ({ ...outcomeMeta, status: 500, kind: 'json', body: {
-                message: err.message ||
-                    "Failed to save neutral view",
+                message: "Failed to save neutral view",
             } });
     }
 }
@@ -132,8 +131,6 @@ async function downloadModel(input) {
         if (!canDownload(input.user, model)) {
             return ({ ...outcomeMeta, status: 403, kind: 'json', body: { message: "This model is not available for download" } });
         }
-        const publicDir = storage.ROOT;
-        const absolutePath = path.join(publicDir, model.file_path);
         const ext = path.extname(model.file_path);
         const safeTitle = model.title.replace(/[^a-z0-9_-]+/gi, "_");
         const downloadName = `${safeTitle}${ext}`;
@@ -144,11 +141,13 @@ async function downloadModel(input) {
         catch (logErr) {
             console.error("Failed to log download (continuing anyway):", logErr);
         }
-        return ({ ...outcomeMeta, status: 200, kind: 'download', path: absolutePath, filename: downloadName });
+        if (storage.REMOTE)
+            return ({ ...outcomeMeta, status: 200, kind: 'object', assetPath: model.file_path, filename: downloadName });
+        return ({ ...outcomeMeta, status: 200, kind: 'download', path: storage.resolveAsset(model.file_path), filename: downloadName });
     }
     catch (err) {
         console.error("Failed to process download:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.message || "Failed to download model" } });
+        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to download model" } });
     }
 }
 async function saveThumbnail(input) {
@@ -158,13 +157,15 @@ async function saveThumbnail(input) {
         if (!thumbnailDataUrl) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "Missing thumbnail data" } });
         }
+        if (typeof thumbnailDataUrl !== 'string' || !/^\d+$/.test(input.params.id))
+            return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "Invalid thumbnail request" } });
         const base64Data = thumbnailDataUrl.replace(/^data:image\/png;base64,/, "");
-        const thumbnailsDir = path.join(storage.ROOT, "thumbnails");
-        await fs.mkdir(thumbnailsDir, { recursive: true });
+        const png = Buffer.from(base64Data, "base64");
+        if (png.length > 2 * 1024 * 1024 || !png.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")))
+            return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "Thumbnail must be a PNG image of 2 MiB or smaller" } });
         const filename = `model-${input.params.id}.png`;
-        const filePath = path.join(thumbnailsDir, filename);
-        await fs.writeFile(filePath, base64Data, "base64");
         const publicPath = `/thumbnails/${filename}`;
+        await storage.writeAsset(publicPath, png);
         const result = await repository.updateThumbnail([publicPath, input.params.id]);
         if (result.rows.length === 0) {
             return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Model not found" } });

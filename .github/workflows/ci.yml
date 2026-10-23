@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: anatolearn
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: anatolearn
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U anatolearn" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://anatolearn:password@localhost:5432/anatolearn
+      JWT_SECRET: ci-only-secret-0123456789abcdef0123456789
+      PUBLIC_DIR: ${{ github.workspace }}/.ci-public
+      DISABLE_RATE_LIMIT: "true"
+    defaults:
+      run:
+        working-directory: anatolearn/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: anatolearn/backend/package-lock.json
+      - run: npm ci
+      - run: mkdir -p "$PUBLIC_DIR/models/anatomy"
+      - run: npm run migrate
+      - run: npm test
+      - run: npm run test:integration
+
+  frontend:
+    name: Frontend lint, tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: anatolearn
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: anatolearn/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:api
+      - run: npm run test:viewer
+      - run: npm run test:models
+      - run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: anatolearn
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: anatolearn/backend
+
+  docker:
+    name: Production images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: anatolearn/backend
+          file: anatolearn/backend/Dockerfile.prod
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - uses: docker/build-push-action@v6
+        with:
+          context: anatolearn
+          file: anatolearn/Dockerfile.web.prod
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - name: Validate production compose file
+        working-directory: anatolearn
+        run: |
+          POSTGRES_PASSWORD=x APP_DB_PASSWORD=x JWT_SECRET=0123456789abcdef0123456789abcdef FRONTEND_ORIGINS=https://example.com \
+          TEACHER_INVITE_CODE=x S3_BUCKET=x AWS_REGION=us-east-1 SITE_DOMAIN=example.com \
+          docker compose -f docker-compose.prod.yml config --quiet

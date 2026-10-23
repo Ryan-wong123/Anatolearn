@@ -1,16 +1,16 @@
 const repository = require('./resources.repository');
 const fs = require('fs/promises');
 const storage = require('../../storage');
-const { visibleRows } = require('../catalog/catalog.service');
+const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listResources(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     const { published } = input.query;
     if (published === "true" || input.user.role === "student") {
         const result = await repository.listPublished();
-        return ({ ...outcomeMeta, status: 200, kind: 'json', body: await visibleRows(input, result.rows) });
+        return ({ ...outcomeMeta, status: 200, kind: 'json', ...paged(input, await visibleRows(input, result.rows)) });
     }
     const result = await repository.listAll();
-    return ({ ...outcomeMeta, status: 200, kind: 'json', body: await visibleRows(input, result.rows) });
+    return ({ ...outcomeMeta, status: 200, kind: 'json', ...paged(input, await visibleRows(input, result.rows)) });
 }
 async function uploadResource(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -47,14 +47,14 @@ async function uploadResource(input) {
                 await fs.unlink(input.file.path).catch(() => { });
                 return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: error.message } });
             }
-            filePath = `/resources/${input.file.filename}`;
+            filePath = await storage.persist(input.file, 'resources');
         }
         const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {
         console.error("Failed to upload resource:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.message || "Failed to upload resource" } });
+        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload resource" } });
     }
 }
 async function deleteResource(input) {

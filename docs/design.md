@@ -122,7 +122,7 @@ The canvas route uses a relative, full-width, overflow-hidden container with hei
 | Drawing preview | pointer-transparent full-canvas SVG, z-10, cyan polyline |
 | Region generation | canvas overlay, z-40, pale/dark translucent background, spinner and progress copy |
 
-Instructions explicitly list Left Mouse: Rotate, Right Mouse: Pan, Scroll: Zoom, and current mode. Highlight/region modes add yellow/cyan guidance. There are no separate zoom/pan icon buttons in the current toolbar.
+Instructions list Left Mouse: Rotate, Right Mouse: Pan, Scroll: Zoom (touch screens show One finger: Rotate, Two fingers: Pan, Pinch: Zoom) and the current mode. Highlight/region modes add yellow/cyan guidance. There are no separate zoom/pan icon buttons in the current toolbar.
 
 Teacher tools are Add Annotation, Draw Highlight, Region Fill and Set/Update Neutral View. Point mode switches its button to a pale red cancel state; highlight uses yellow-300; region uses cyan-300. Shared controls return to saved neutral view or automatic framing when none is saved, show/hide annotations and switch canvas background. Tool text toggles to the cancel action while active.
 

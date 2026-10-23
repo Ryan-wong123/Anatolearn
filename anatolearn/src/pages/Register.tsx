@@ -23,6 +23,8 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<Role>('student');
+  const [inviteCode, setInviteCode] = useState('');
+  const [consent, setConsent] = useState(false);
   const [programId, setProgramId] = useState<string>('');
   const selectedProgramId = programId || (programs[0] ? String(programs[0].id) : '');
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,11 @@ export default function Register() {
       return;
     }
 
+    if (!consent) {
+      setError('Please confirm that you have read the Privacy notice and Terms of use');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -57,6 +64,7 @@ export default function Register() {
         email,
         password,
         role,
+        invite_code: role === 'teacher' ? inviteCode : undefined,
         program_id: selectedProgramId ? Number(selectedProgramId) : undefined,
       });
       navigate('/login');
@@ -165,6 +173,23 @@ export default function Register() {
             </select>
           </div>
 
+          {role === 'teacher' && (
+            <div>
+              <label htmlFor="inviteCode" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Teacher invite code
+              </label>
+              <input
+                autoComplete="off" id="inviteCode"
+                type="password"
+                required
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                placeholder="Provided by your administrator"
+              />
+            </div>
+          )}
+
           <div>
             <label htmlFor="program" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Program
@@ -182,6 +207,23 @@ export default function Register() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <input
+              id="consent"
+              type="checkbox"
+              required
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500"
+            />
+            <label htmlFor="consent" className="text-sm text-slate-700 dark:text-slate-300">
+              I have read the{' '}
+              <Link to="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-700 dark:text-blue-400 underline">Privacy notice</Link>
+              {' '}and{' '}
+              <Link to="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-700 dark:text-blue-400 underline">Terms of use</Link>.
+            </label>
           </div>
 
           {error && (

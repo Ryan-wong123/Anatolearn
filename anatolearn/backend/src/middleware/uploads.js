@@ -14,7 +14,7 @@ const uploadVideoAndCaptions = multer({
     storage: multer.diskStorage({
         destination: (req, file, cb) => {
             const folder = path.extname(file.originalname).toLowerCase() === '.vtt' ? 'captions' : 'videos';
-            const target = path.join(storage.ROOT, folder);
+            const target = path.join(storage.UPLOAD_ROOT, folder);
             fs.mkdir(target, { recursive: true }).then(() => cb(null, target)).catch((err) => cb(err, target));
         },
         filename: (req, file, cb) => {
@@ -31,7 +31,7 @@ const uploadVideoAndCaptions = multer({
 }).fields([{ name: 'video', maxCount: 1 }, { name: 'captions', maxCount: 1 }]);
 const modelStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const modelsDir = path.join(storage.ROOT, "models/anatomy");
+        const modelsDir = path.join(storage.UPLOAD_ROOT, "models/anatomy");
         fs.mkdir(modelsDir, { recursive: true })
             .then(() => cb(null, modelsDir))
             .catch((err) => cb(err, modelsDir));
@@ -58,7 +58,7 @@ const uploadModel = multer({
 });
 const resourceStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const resourcesDir = path.join(storage.ROOT, "resources");
+        const resourcesDir = path.join(storage.UPLOAD_ROOT, "resources");
         fs.mkdir(resourcesDir, { recursive: true })
             .then(() => cb(null, resourcesDir))
             .catch((err) => cb(err, resourcesDir));

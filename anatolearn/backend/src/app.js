@@ -1,8 +1,23 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { authenticate } = require('./access');
+const requestLog = require('./requestLog');
+const { csrfProtection } = require('./csrf');
+const { auditMutations } = require('./audit');
 const app = express();
+// One reverse proxy (the web container) sits in front in production; needed for real client IPs and secure cookies.
+if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
+app.disable('x-powered-by');
+app.use(requestLog);
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false }));
+const limiter = (windowMs, limit) => rateLimit({ windowMs, limit, standardHeaders: 'draft-7', legacyHeaders: false,
+  skip: () => process.env.DISABLE_RATE_LIMIT === 'true', message: { message: 'Too many requests. Please try again later.' } });
+app.use('/api/auth/login', limiter(15 * 60 * 1000, 10));
+app.use('/api/auth/register', limiter(60 * 60 * 1000, 10));
+app.use('/api', limiter(60 * 1000, 600));
 // Express 4 does not forward rejected async handlers by default.
 for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
   const register = app[method].bind(app);
@@ -23,6 +38,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "10mb" }));
+app.use('/api', csrfProtection, auditMutations);
 
 
 
@@ -40,6 +56,11 @@ require('./modules/annotations/annotations.routes')(app);
 require('./modules/videos/videos.routes')(app);
 require('./modules/resources/resources.routes')(app);
 require('./modules/favorites/favorites.routes')(app);
+require('./modules/users/users.routes')(app);
+require('./modules/profile/profile.routes')(app);
+require('./modules/announcements/announcements.routes')(app);
+require('./modules/search/search.routes')(app);
+require('./modules/dashboard/dashboard.routes')(app);
 app.use((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return next(err);

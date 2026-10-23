@@ -1,0 +1,18 @@
+# Optional override that ships container logs to CloudWatch Logs (the instance role needs logs:CreateLogStream and logs:PutLogEvents).
+#   docker compose -f docker-compose.prod.yml -f docker-compose.cloudwatch.yml --env-file .env.production up -d
+x-cloudwatch: &cloudwatch
+  logging: !override
+    driver: awslogs
+    options:
+      awslogs-region: ${AWS_REGION}
+      awslogs-group: /anatolearn/production
+      awslogs-create-group: "true"
+      tag: "{{.Name}}"
+
+services:
+  postgres: *cloudwatch
+  clamav: *cloudwatch
+  backend: *cloudwatch
+  web: *cloudwatch
+  caddy: *cloudwatch
+  backup: *cloudwatch

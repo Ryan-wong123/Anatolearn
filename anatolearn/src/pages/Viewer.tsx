@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContextState';
 import { useAppContext } from '../context/AppContextState';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useParams } from 'react-router-dom';
+import Breadcrumbs from '../components/Breadcrumbs';
 import { api } from '../api/api';
 import type {
   Annotation,
@@ -852,7 +853,11 @@ export default function Viewer() {
   }
 
   return (
-    <div ref={viewerRef} className="relative h-[calc(100vh-4rem)] w-full overflow-hidden bg-slate-50">
+    <>
+    <div className="flex h-10 items-center overflow-hidden border-b border-slate-200 bg-white px-4 dark:border-slate-700 dark:bg-slate-900 [&_nav]:mb-0">
+      <Breadcrumbs items={[{ label: '3D Viewer', to: '/3dviewer' }, { label: selectedModel?.title ?? 'Model' }]} />
+    </div>
+    <div ref={viewerRef} className="relative h-[calc(100vh-6.5rem)] w-full overflow-hidden bg-slate-50">
       <div ref={containerRef} className="absolute inset-0" />
       <ViewerOverlay
         key={selectedModel?.id ?? modelId}
@@ -869,5 +874,6 @@ export default function Viewer() {
         onSaveNeutralView={() => { void saveNeutralView(getCurrentNeutralView()); }} onReturnToNeutralView={returnToNeutralView}
       />
     </div>
+    </>
   );
 }
