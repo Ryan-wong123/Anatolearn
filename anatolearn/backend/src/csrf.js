@@ -2,7 +2,7 @@ const { randomBytes, timingSafeEqual } = require('crypto');
 const { readCookie } = require('./access');
 
 const CSRF_COOKIE = 'anatolearn_csrf';
-const EXEMPT = new Set(['/api/auth/login', '/api/auth/register', '/api/auth/logout']);
+const EXEMPT = new Set(['/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/auth/mfa/verify']);
 
 function newCsrfToken() { return randomBytes(32).toString('hex'); }
 

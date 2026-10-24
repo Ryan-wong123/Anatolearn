@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import { KeyRound, Lock, Pencil, Plus, Power, Trash2, Unlock } from 'lucide-react';
+import { KeyRound, Lock, ShieldOff, Pencil, Plus, Power, Trash2, Unlock } from 'lucide-react';
 import Breadcrumbs from '../components/Breadcrumbs';
 import EmptyState from '../components/EmptyState';
 import Pagination from '../components/Pagination';
@@ -40,10 +40,13 @@ function useDebounced<T>(value: T, delay = 300): T {
 }
 
 function StatusBadge({ user }: { user: UserSummary }) {
+  const mfaBadge = user.role !== 'student' && (user.mfa_enabled
+    ? <span className="ml-1.5 inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-900 dark:bg-blue-900/40 dark:text-blue-200">2FA on</span>
+    : <span className="ml-1.5 inline-block rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-100">2FA off</span>);
   const [label, color] = !user.is_active ? ['Disabled', 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100']
     : user.is_locked ? ['Locked', 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200']
     : ['Active', 'bg-green-100 text-green-900 dark:bg-green-900/40 dark:text-green-200'];
-  return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>{label}</span>;
+  return <><span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>{label}</span>{mfaBadge}</>;
 }
 
 function CreateDialog({ programmes, onClose, onCreated }: { programmes: Programme[]; onClose: () => void; onCreated: (user: UserSummary, temporaryPassword?: string) => void }) {
@@ -204,6 +207,11 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
     finally { setBusyId(null); }
   }
 
+  async function resetMfa(user: UserSummary) {
+    if (!(await confirm({ title: `Reset two-factor authentication for ${user.name}?`, message: 'Use this when they have lost their device and recovery codes. They are signed out everywhere and must set up two-factor authentication again after signing in with their password.', confirmLabel: 'Reset two-factor', danger: true }))) return;
+    await run(user, () => api.resetUserMfa(user.id), 'Two-factor authentication reset');
+  }
+
   async function remove(user: UserSummary) {
     if (!(await confirm({ title: `Delete ${user.name}?`, message: 'The account, favourites and activity are permanently removed. Past quiz attempts are kept without a name.', confirmLabel: 'Delete account', danger: true }))) return;
     await run(user, () => api.deleteUser(user.id), 'Account deleted');
@@ -279,6 +287,7 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
                           {user.is_active ? <Lock className="h-3 w-3" aria-hidden="true" /> : <Power className="h-3 w-3" aria-hidden="true" />}{user.is_active ? 'Disable' : 'Enable'}
                         </button>
                         <button type="button" disabled={busy} onClick={() => resetPassword(user)} aria-label={`Reset password for ${user.name}`} className={smallButton}><KeyRound className="h-3 w-3" aria-hidden="true" />Reset password</button>
+                        {user.mfa_enabled && !isSelf && <button type="button" disabled={busy} onClick={() => resetMfa(user)} aria-label={`Reset two-factor authentication for ${user.name}`} className={smallButton}><ShieldOff className="h-3 w-3" aria-hidden="true" />Reset 2FA</button>}
                         <button type="button" disabled={busy || isSelf} title={isSelf ? 'Use your profile page to delete your own account' : undefined} onClick={() => remove(user)} aria-label={`Delete ${user.name}`} className={`${smallButton} !text-red-700 dark:!text-red-300`}><Trash2 className="h-3 w-3" aria-hidden="true" />Delete</button>
                       </div>
                     </td>

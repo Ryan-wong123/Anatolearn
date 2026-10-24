@@ -18,6 +18,7 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSe
 const limiter = (windowMs, limit) => rateLimit({ windowMs, limit, standardHeaders: 'draft-7', legacyHeaders: false,
   skip: () => process.env.DISABLE_RATE_LIMIT === 'true', message: { message: 'Too many requests. Please try again later.' } });
 app.use('/api/auth/login', limiter(15 * 60 * 1000, 10));
+app.use(['/api/auth/mfa/verify', '/api/profile/mfa'], limiter(15 * 60 * 1000, 20));
 app.use('/api/auth/register', limiter(60 * 60 * 1000, 10));
 const uploadLimiter = limiter(60 * 60 * 1000, 60);
 app.use(['/api/models/upload', '/api/resources/upload', '/api/videos/upload', '/api/videos/:id/captions'], (req, res, next) => req.method === 'POST' ? uploadLimiter(req, res, next) : next());

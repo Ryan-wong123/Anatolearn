@@ -28,6 +28,14 @@ function sessionExpired() {
     window.dispatchEvent(new Event('anatolearn-session-expired'));
 }
 
+export type LoginResult = {
+    user?: { id: number; name: string; email: string; role: 'student' | 'teacher' | 'admin'; program_id: number | null };
+    mfa_setup_required?: boolean;
+    mfa_required?: boolean;
+    mfa_token?: string;
+    recovery_codes_remaining?: number;
+};
+
 export class ApiError extends Error {
     status: number;
     constructor(message: string, status = 0) { super(message); this.name = 'ApiError'; this.status = status; }
@@ -53,6 +61,8 @@ async function fetchResponse(endpoint: string, options: RequestInit = {}) {
     if (!res.ok) {
         let body: unknown;
         try { body = await res.json(); } catch { /* Non-JSON proxy/server errors use the readable fallback. */ }
+        if (res.status === 403 && typeof body === 'object' && body !== null && 'code' in body && body.code === 'mfa_setup_required')
+            window.dispatchEvent(new Event('anatolearn-mfa-required'));
         throw new ApiError(messageFor(res.status, body), res.status);
     }
     return res;
@@ -158,6 +168,14 @@ export const api = {
     updateProfile: (data: { name: string; program_id?: number | null }): Promise<Profile> => apiFetch('/profile', { method: 'PUT', body: JSON.stringify(data) }),
     changePassword: (current_password: string, new_password: string): Promise<{ message: string }> =>
         apiFetch('/profile/password', { method: 'PUT', body: JSON.stringify({ current_password, new_password }) }),
+    mfaSetup: (password: string): Promise<{ secret: string; otpauth_uri: string }> =>
+        apiFetch('/profile/mfa/setup', { method: 'POST', body: JSON.stringify({ password }) }),
+    mfaEnable: (code: string): Promise<{ recovery_codes: string[] }> =>
+        apiFetch('/profile/mfa/enable', { method: 'POST', body: JSON.stringify({ code }) }),
+    mfaDisable: (password: string, code: string): Promise<{ message: string }> =>
+        apiFetch('/profile/mfa/disable', { method: 'POST', body: JSON.stringify({ password, code }) }),
+    mfaRecoveryCodes: (password: string, code: string): Promise<{ recovery_codes: string[] }> =>
+        apiFetch('/profile/mfa/recovery-codes', { method: 'POST', body: JSON.stringify({ password, code }) }),
     exportMyData: () => downloadFile('/profile/export'),
     deleteMyAccount: (password: string) => apiFetch('/profile', { method: 'DELETE', body: JSON.stringify({ password }) }),
 
@@ -170,6 +188,7 @@ export const api = {
         apiFetch(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     resetUserPassword: (id: number, password?: string): Promise<{ temporary_password?: string; message?: string }> =>
         apiFetch(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify(password ? { password } : {}) }),
+    resetUserMfa: (id: number): Promise<{ message: string }> => apiFetch(`/users/${id}/reset-mfa`, { method: 'POST' }),
     deleteUser: (id: number) => apiFetch(`/users/${id}`, { method: 'DELETE' }),
     getAuditLog: (opts: { page: number; pageSize: number; action?: string; actor?: number }) =>
         requestPaged<AuditEntry>(`/audit-log${query({ action: opts.action, actor: opts.actor, page: opts.page, page_size: opts.pageSize })}`),
@@ -198,11 +217,14 @@ export const api = {
     importQuestion: (quizId: number, bankId: number) => apiFetch(`/quizzes/${quizId}/bank-questions/${bankId}`, {method:'POST'}),
     deleteBankQuestion: (id: number) => apiFetch(`/question-bank/${id}`, {method:'DELETE'}),
     updateBankQuestion: (id: number, data: object) => apiFetch(`/question-bank/${id}`, {method:'PUT',body:JSON.stringify(data)}),
-    login: (email: string, password: string) =>
+    login: (email: string, password: string): Promise<LoginResult> =>
         apiFetch("/auth/login", {
             method: "POST",
             body: JSON.stringify({ email, password }),
         }),
+    // Second step of sign-in for accounts with two-factor authentication: an authenticator code or a recovery code.
+    verifyMfa: (mfa_token: string, code: string): Promise<LoginResult> =>
+        apiFetch('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ mfa_token, code }) }),
 
     register: (data: {
         name: string;

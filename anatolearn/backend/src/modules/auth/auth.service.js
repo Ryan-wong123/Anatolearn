@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const { sessionToken } = require('../../access');
 const { record } = require('../../audit');
 const { newCsrfToken, CSRF_COOKIE } = require('../../csrf');
+const mfa = require('../../mfa');
+const MFA_CHALLENGE_MINUTES = 5;
 const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS) || 5;
 const LOCKOUT_MINUTES = Number(process.env.LOCKOUT_MINUTES) || 15;
 const allowedDomains = () => (process.env.ALLOWED_EMAIL_DOMAINS || '').split(',').map((domain) => domain.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
@@ -94,28 +96,72 @@ async function login(input) {
                 targetType: 'user', targetId: user.id, detail: { attempts: failure.failed_login_count }, ip: input.ip });
             return invalidCredentials();
         }
-        await repository.registerSuccessfulLogin([user.id]);
-        void record({ actor: user, action: 'auth.login', targetType: 'user', targetId: user.id, ip: input.ip });
-        const sid = randomUUID();
-        await repository.insertSession([sid, user.id]);
-        const token = jwt.sign({ id: user.id, name: user.name, role: user.role, program_id: user.program_id, sid }, JWT_SECRET, { expiresIn: "24h" });
-        const cookieSecurity = { sameSite: 'strict', secure: process.env.NODE_ENV === 'production', maxAge: 86400000, path: '/' };
-        outcomeMeta.cookies.push({ name: 'anatolearn_session', value: token, options: { httpOnly: true, ...cookieSecurity } });
-        outcomeMeta.cookies.push({ name: CSRF_COOKIE, value: newCsrfToken(), options: { httpOnly: false, ...cookieSecurity } });
-        (outcomeMeta.headers['Cache-Control'] = 'no-store');
-        return ({ ...outcomeMeta, status: 200, kind: 'json', body: {
-                user: {
-                    id: user.id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    program_id: user.program_id,
-                },
-            } });
+        // Staff with MFA enrolled prove the second factor before any session exists.
+        if (user.mfa_enabled) {
+            void record({ actor: user, action: 'auth.mfa_challenge', targetType: 'user', targetId: user.id, ip: input.ip });
+            const mfaToken = jwt.sign({ uid: user.id, purpose: 'mfa' }, JWT_SECRET, { expiresIn: `${MFA_CHALLENGE_MINUTES}m` });
+            return ({ ...outcomeMeta, headers: { 'Cache-Control': 'no-store' }, status: 200, kind: 'json', body: { mfa_required: true, mfa_token: mfaToken } });
+        }
+        return await startSession(user, input, outcomeMeta);
     }
     catch (err) {
         console.error("Failed to log in:", err);
         return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: "Failed to log in" } });
+    }
+}
+// Issues the session and CSRF cookies once every required factor has been proven.
+async function startSession(user, input, outcomeMeta) {
+    await repository.registerSuccessfulLogin([user.id]);
+    void record({ actor: user, action: 'auth.login', targetType: 'user', targetId: user.id, ip: input.ip });
+    const sid = randomUUID();
+    await repository.insertSession([sid, user.id]);
+    const token = jwt.sign({ id: user.id, name: user.name, role: user.role, program_id: user.program_id, sid }, JWT_SECRET, { expiresIn: "24h" });
+    const cookieSecurity = { sameSite: 'strict', secure: process.env.NODE_ENV === 'production', maxAge: 86400000, path: '/' };
+    outcomeMeta.cookies.push({ name: 'anatolearn_session', value: token, options: { httpOnly: true, ...cookieSecurity } });
+    outcomeMeta.cookies.push({ name: CSRF_COOKIE, value: newCsrfToken(), options: { httpOnly: false, ...cookieSecurity } });
+    outcomeMeta.headers['Cache-Control'] = 'no-store';
+    return ({ ...outcomeMeta, status: 200, kind: 'json', body: {
+            user: { id: user.id, name: user.name, email: user.email, role: user.role, program_id: user.program_id },
+            mfa_setup_required: mfa.mfaRequired(user.role) && !user.mfa_enabled,
+        } });
+}
+// Checks an authenticator code, or a recovery code, for a user who has MFA enabled. Returns { ok, usedRecovery, remaining }.
+async function checkSecondFactor(user, code) {
+    if (mfa.looksLikeRecoveryCode(code)) {
+        const used = (await repository.consumeRecoveryCode([user.id, mfa.hashRecoveryCode(code)])).rows[0];
+        return used ? { ok: true, usedRecovery: true, remaining: used.remaining } : { ok: false };
+    }
+    const step = mfa.verifyTotp(mfa.decryptSecret(user.mfa_secret), code, { lastStep: user.mfa_last_step });
+    if (step == null || !(await repository.claimTotpStep([user.id, step])).rows.length) return { ok: false };
+    return { ok: true };
+}
+async function verifyMfa(input) {
+    const outcomeMeta = { headers: {}, cookies: [] };
+    const invalid = () => ({ ...outcomeMeta, status: 401, kind: 'json', body: { message: 'Invalid or expired verification code' } });
+    try {
+        const { mfa_token, code } = input.body || {};
+        if (typeof mfa_token !== 'string' || typeof code !== 'string' || code.length > 32) return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: 'mfa_token and code are required' } });
+        let claims;
+        try { claims = jwt.verify(mfa_token, JWT_SECRET, { algorithms: ['HS256'] }); } catch { return invalid(); }
+        if (claims.purpose !== 'mfa' || !Number.isInteger(claims.uid)) return invalid();
+        const user = (await repository.findUserForMfa([claims.uid])).rows[0];
+        if (!user || user.is_locked || !user.is_active) return invalid();
+        const result = await checkSecondFactor(user, code);
+        if (!result.ok) {
+            // Wrong codes feed the same lockout as wrong passwords, so the second factor cannot be brute-forced.
+            const failure = (await repository.registerFailedLogin([user.id, MAX_FAILED_LOGINS, LOCKOUT_MINUTES])).rows[0];
+            void record({ actor: user, action: failure.locked_until && failure.failed_login_count >= MAX_FAILED_LOGINS ? 'auth.account_locked' : 'auth.mfa_failed',
+                targetType: 'user', targetId: user.id, detail: { attempts: failure.failed_login_count }, ip: input.ip });
+            return invalid();
+        }
+        if (result.usedRecovery) void record({ actor: user, action: 'auth.mfa_recovery_used', targetType: 'user', targetId: user.id, detail: { remaining: result.remaining }, ip: input.ip });
+        const outcome = await startSession({ ...user, mfa_enabled: true }, input, outcomeMeta);
+        if (result.usedRecovery) outcome.body.recovery_codes_remaining = result.remaining;
+        return outcome;
+    }
+    catch (err) {
+        console.error('Failed to verify MFA code:', err);
+        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: 'Failed to verify code' } });
     }
 }
 async function logout(input) {
@@ -131,4 +177,4 @@ async function logout(input) {
     outcomeMeta.cookies.push({ name: CSRF_COOKIE, clear: true, options: { path: '/' } });
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: { message: 'Logged out' } });
 }
-module.exports = { register, login, logout };
+module.exports = { register, login, logout, verifyMfa, checkSecondFactor };

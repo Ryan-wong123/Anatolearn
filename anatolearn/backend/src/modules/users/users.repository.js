@@ -1,6 +1,6 @@
 const pool = require('../../db');
 const USER_COLUMNS = `id, name, email, role, program_id, is_active, last_login_at, created_at,
-  (locked_until IS NOT NULL AND locked_until > NOW()) AS is_locked`;
+  (locked_until IS NOT NULL AND locked_until > NOW()) AS is_locked, (mfa_enabled_at IS NOT NULL) AS mfa_enabled`;
 async function listUsers({ q, role, status }) {
     const conditions = [], parameters = [];
     if (q) { parameters.push(`%${q}%`); conditions.push(`(name ILIKE $${parameters.length} OR email ILIKE $${parameters.length})`); }
@@ -39,4 +39,8 @@ async function listAuditLog({ actor, action }) {
     return pool.query(`SELECT id, actor_id, actor_name, action, target_type, target_id, detail, ip, created_at FROM audit_log
       ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''} ORDER BY id DESC LIMIT 1000`, parameters);
 }
-module.exports = { listUsers, findUser, findByEmail, insertUser, updateUser, setPassword, revokeSessions, deleteUser, countOtherActiveTeachers, countOtherActiveAdmins, findProgram, listAuditLog };
+async function resetMfa(parameters) {
+    return pool.query(`UPDATE users SET mfa_secret = NULL, mfa_pending_secret = NULL, mfa_enabled_at = NULL, mfa_last_step = NULL,
+      mfa_recovery_hashes = '{}' WHERE id = $1 RETURNING id`, parameters);
+}
+module.exports = { resetMfa, listUsers, findUser, findByEmail, insertUser, updateUser, setPassword, revokeSessions, deleteUser, countOtherActiveTeachers, countOtherActiveAdmins, findProgram, listAuditLog };

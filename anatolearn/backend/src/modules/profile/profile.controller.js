@@ -6,4 +6,8 @@ module.exports = {
     changePassword: controller(service.changePassword),
     exportData: controller(service.exportData),
     deleteAccount: controller(service.deleteAccount),
+    setupMfa: controller(service.setupMfa),
+    enableMfa: controller(service.enableMfa),
+    disableMfa: controller(service.disableMfa),
+    regenerateRecoveryCodes: controller(service.regenerateRecoveryCodes),
 };
