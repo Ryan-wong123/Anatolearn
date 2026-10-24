@@ -1,6 +1,6 @@
 export interface UserSummary {
   id: number; name: string; email: string; role: 'student' | 'teacher' | 'admin'; program_id: number | null;
-  is_active: boolean; is_locked: boolean; last_login_at: string | null; created_at: string;
+  is_active: boolean; is_locked: boolean; mfa_enabled: boolean; last_login_at: string | null; created_at: string;
 }
 export interface AuditEntry {
   id: number; actor_id: number | null; actor_name: string | null; action: string; target_type: string | null;
@@ -12,6 +12,7 @@ export interface Announcement {
 export interface Profile {
   id: number; name: string; email: string; role: 'student' | 'teacher' | 'admin'; program_id: number | null; program_name: string | null;
   created_at: string; last_login_at: string | null;
+  mfa_enabled: boolean; mfa_required: boolean; mfa_recovery_codes_left: number;
 }
 export interface SearchHit { id: number; title: string; description: string | null; [key: string]: unknown }
 export interface SearchResults {

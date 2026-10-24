@@ -61,6 +61,16 @@ async function resetPassword(input) {
     await record({ actor: input.user, action: 'user.reset_password', targetType: 'user', targetId: id, ip: input.ip });
     return { ...meta(), status: 200, kind: 'json', headers: { 'Cache-Control': 'no-store' }, body: input.body.password == null ? { temporary_password: password } : { message: 'Password updated' } };
 }
+// For staff who lost their device and recovery codes. They sign in with their password and must enrol again.
+async function resetMfa(input) {
+    const id = Number(input.params.id);
+    if (!(await repository.findUser([id])).rows[0]) return fail(404, 'User not found');
+    if (id === input.user.id) return fail(400, 'Use your profile page to manage your own two-factor authentication');
+    await repository.resetMfa([id]);
+    await repository.revokeSessions([id]);
+    await record({ actor: input.user, action: 'user.reset_mfa', targetType: 'user', targetId: id, ip: input.ip });
+    return { ...meta(), status: 200, kind: 'json', body: { message: 'Two-factor authentication reset' } };
+}
 async function deleteUser(input) {
     const id = Number(input.params.id);
     const current = (await repository.findUser([id])).rows[0];
@@ -75,4 +85,4 @@ async function listAuditLog(input) {
     const rows = (await repository.listAuditLog(input.query)).rows;
     return { ...meta(), status: 200, kind: 'json', ...paged({ query: { page_size: input.query.page_size || 50, page: input.query.page } }, rows) };
 }
-module.exports = { listUsers, createUser, updateUser, resetPassword, deleteUser, listAuditLog };
+module.exports = { resetMfa, listUsers, createUser, updateUser, resetPassword, deleteUser, listAuditLog };

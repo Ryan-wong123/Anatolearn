@@ -10,6 +10,10 @@ export default function ProtectedRoute({ role }: { role?: Role | Role[] }) {
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
+  // Staff who still have to enrol in two-factor authentication can only reach their profile, where setup lives.
+  if (user.mfa_setup_required && location.pathname !== '/profile') {
+    return <Navigate to="/profile" replace />;
+  }
   if (role && !(Array.isArray(role) ? role : [role]).includes(user.role)) {
     return <Navigate to={user.role === 'admin' ? '/admin/users' : '/dashboard'} replace />;
   }

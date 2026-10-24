@@ -1,6 +1,6 @@
 const pool = require('../../db');
 async function findSessionUser(parameters) {
-    return pool.query(`SELECT u.id, u.name, u.role, u.program_id FROM auth_sessions s
+    return pool.query(`SELECT u.id, u.name, u.role, u.program_id, (u.mfa_enabled_at IS NOT NULL) AS mfa_enabled FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2
       AND s.revoked_at IS NULL AND s.expires_at > NOW() AND u.is_active`, parameters);
 }
@@ -13,7 +13,7 @@ async function insertUser(parameters) {
        RETURNING id, name, email, role, program_id, created_at`, parameters);
 }
 async function findUserByEmail(parameters) {
-    return pool.query("SELECT id, name, email, password_hash, role, program_id, is_active, locked_until, (locked_until > NOW()) AS is_locked FROM users WHERE email = $1", parameters);
+    return pool.query("SELECT id, name, email, password_hash, role, program_id, is_active, locked_until, (locked_until > NOW()) AS is_locked, (mfa_enabled_at IS NOT NULL) AS mfa_enabled FROM users WHERE email = $1", parameters);
 }
 async function insertSession(parameters) {
     return pool.query("INSERT INTO auth_sessions(id,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '24 hours')", parameters);
@@ -32,4 +32,16 @@ async function registerFailedLogin(parameters) {
 async function registerSuccessfulLogin(parameters) {
     return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1', parameters);
 }
-module.exports = { registerFailedLogin, registerSuccessfulLogin, findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };
+async function findUserForMfa(parameters) {
+    return pool.query(`SELECT id, name, email, role, program_id, is_active, (locked_until > NOW()) AS is_locked,
+      mfa_secret, mfa_last_step FROM users WHERE id = $1 AND mfa_enabled_at IS NOT NULL`, parameters);
+}
+// Both claims are atomic so two parallel requests cannot spend the same code twice.
+async function claimTotpStep(parameters) {
+    return pool.query('UPDATE users SET mfa_last_step = $2 WHERE id = $1 AND (mfa_last_step IS NULL OR mfa_last_step < $2) RETURNING id', parameters);
+}
+async function consumeRecoveryCode(parameters) {
+    return pool.query(`UPDATE users SET mfa_recovery_hashes = array_remove(mfa_recovery_hashes, $2)
+      WHERE id = $1 AND $2 = ANY(mfa_recovery_hashes) RETURNING cardinality(mfa_recovery_hashes) AS remaining`, parameters);
+}
+module.exports = { findUserForMfa, claimTotpStep, consumeRecoveryCode, registerFailedLogin, registerSuccessfulLogin, findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };

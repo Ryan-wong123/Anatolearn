@@ -5,6 +5,7 @@ module.exports = {
     createUser: controller(service.createUser),
     updateUser: controller(service.updateUser),
     resetPassword: controller(service.resetPassword),
+    resetMfa: controller(service.resetMfa),
     deleteUser: controller(service.deleteUser),
     listAuditLog: controller(service.listAuditLog),
 };

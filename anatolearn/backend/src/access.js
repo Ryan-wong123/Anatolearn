@@ -1,5 +1,8 @@
 const jwt = require('jsonwebtoken');
 const { findSessionUser } = require('./modules/auth/auth.repository');
+const { mfaRequired } = require('./mfa');
+// Staff who have not enrolled yet may reach only what they need to enrol.
+const MFA_ENROLMENT_PATHS = ['/api/profile', '/api/profile/mfa/setup', '/api/profile/mfa/enable'];
 
 function readCookie(req, name) {
   const prefix = `${name}=`;
@@ -20,6 +23,8 @@ async function authenticate(req, res, next) {
     const result = await findSessionUser([claims.sid, claims.id]);
     if (!result.rows[0]) throw new Error('Session expired');
     req.user = { ...claims, ...result.rows[0] };
+    if (mfaRequired(req.user.role) && !req.user.mfa_enabled && !MFA_ENROLMENT_PATHS.includes(req.originalUrl.split('?')[0].replace(/\/+$/, '')))
+      return res.status(403).json({ code: 'mfa_setup_required', message: 'Set up two-factor authentication to continue.' });
     next();
   } catch (error) {
     if (error.code && !['22P02'].includes(error.code)) return next(error);
