@@ -1,0 +1,22 @@
+#!/bin/bash
+# Keeps AI attribution out of commit history.
+#   - Removes "Co-Authored-By: Claude/Anthropic", "Claude-Session:" and "Generated with Claude Code" lines from the message.
+#   - Refuses to commit if the author or committer is Claude/Anthropic: fix with
+#       git config user.name "<your name>" && git config user.email "<your email>"
+# Enabled per clone with: git config core.hooksPath .githooks   (Claude Code sessions do this automatically).
+set -euo pipefail
+message_file="$1"
+
+for who in GIT_AUTHOR_IDENT GIT_COMMITTER_IDENT; do
+  ident=$(git var "$who" 2>/dev/null || true)
+  if echo "$ident" | grep -qiE 'anthropic|^claude( |<)'; then
+    echo "error: refusing to commit as '${ident%% <*}' ($who is Claude/Anthropic)." >&2
+    echo "       Set the author first:  git config user.name \"<your name>\" && git config user.email \"<your email>\"" >&2
+    exit 1
+  fi
+done
+
+pattern='^(Co-Authored-By:.*(claude|anthropic)|Claude-Session:|.*Generated with \[?Claude Code|https://claude\.ai/code/session_)'
+cleaned=$(grep -v -i -E "$pattern" "$message_file" || true)
+# Drop blank lines left at the end by the removed trailers.
+printf '%s\n' "$cleaned" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$message_file"

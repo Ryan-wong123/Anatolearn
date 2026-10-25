@@ -1,0 +1,39 @@
+name: Commit hygiene
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-hygiene-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authorship:
+    name: No AI authorship or attribution in commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Looks only at the commits this pull request adds. Fails if any is authored or committed by Claude/Anthropic, or carries
+      # an AI attribution trailer. The commit-msg hook in .githooks prevents this locally; this is the safety net for everything else.
+      - name: Check the pull request's commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          bad=0
+          for commit in $(git rev-list "$BASE..$HEAD"); do
+            identity=$(git log -1 --format='%an <%ae> | %cn <%ce>' "$commit")
+            if echo "$identity" | grep -qiE 'anthropic|(^|\| )claude( |<)'; then
+              echo "::error::${commit:0:7} is authored or committed by Claude/Anthropic: $identity"; bad=1
+            fi
+            if git log -1 --format=%B "$commit" | grep -qiE '^(Co-Authored-By:.*(claude|anthropic)|Claude-Session:|.*Generated with \[?Claude Code|https://claude\.ai/code/session_)'; then
+              echo "::error::${commit:0:7} has an AI attribution line in its message"; bad=1
+            fi
+          done
+          [ "$bad" = 0 ] && echo "All $(git rev-list --count "$BASE..$HEAD") commits are clean."
+          exit "$bad"
