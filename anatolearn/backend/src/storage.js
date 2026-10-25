@@ -168,6 +168,7 @@ async function validateResource(file,type) {
     : type==='document' ? await docxOk() || (ext==='.doc' && bytes.subarray(0,8).equals(Buffer.from('d0cf11e0a1b11ae1','hex')))
     : type==='image' && ((ext==='.png' && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'))) || (['.jpg','.jpeg'].includes(ext) && bytes.subarray(0,3).equals(Buffer.from('ffd8ff','hex'))) || (ext==='.webp' && bytes.subarray(0,4).toString()==='RIFF' && bytes.subarray(8,12).toString()==='WEBP'));
   if (!matches) throw Object.assign(new Error('The file contents do not match the selected PDF, document or photo format'),{status:400});
+  if (type==='image') require('./imageSize').assertImageSize(bytes,'The photo');
 }
 // Checks the container signature against the claimed extension so a renamed executable or script is not stored as video.
 async function validateVideo(file) {
