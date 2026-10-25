@@ -35,9 +35,11 @@ async function authenticate(req, res, next) {
   }
 }
 
+// Students: published and in their programme. Teachers: anything published, plus their own drafts and unclaimed content, but not
+// other teachers' drafts. `=== null` (not `== null`) so a row loaded without its owner_id column fails closed.
 function canRead(user, content) {
-  return user.role === 'teacher' || Boolean(content.is_published &&
-    (content.program_id == null || content.program_id === user.program_id));
+  if (user.role === 'teacher') return content.is_published === true || content.owner_id === null || content.owner_id === user.id;
+  return Boolean(content.is_published && (content.program_id == null || content.program_id === user.program_id));
 }
 
 function canDownload(user, model) {

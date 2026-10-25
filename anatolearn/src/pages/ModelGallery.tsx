@@ -2,6 +2,7 @@ import RequestState from '../components/RequestState';
 import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
+import OwnerNote from '../components/OwnerNote';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Upload, X, Search, Download, FileJson, FileText } from 'lucide-react';
@@ -28,6 +29,8 @@ interface ModelRecord {
   is_downloadable: boolean;
   body_system: string | null;
   body_part: string | null;
+  can_manage?: boolean;
+  owner_name?: string | null;
 }
 
 const PAGE_SIZE = 12;
@@ -397,8 +400,9 @@ export default function ModelGallery() {
                 </button>
               </div>
 
-              <ContentSettings kind="models" id={model.id} programId={model.program_id} downloadable={model.is_downloadable} onSaved={loadModels} />
-              {role === 'teacher' && (
+              <ContentSettings kind="models" id={model.id} programId={model.program_id} downloadable={model.is_downloadable} canManage={model.can_manage} onSaved={loadModels} />
+              <OwnerNote kind="models" item={model} onChanged={loadModels} />
+              {role === 'teacher' && model.can_manage !== false && (
                 <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 relative">
                   <button
                     onClick={(e) => openEdit(model, e)}

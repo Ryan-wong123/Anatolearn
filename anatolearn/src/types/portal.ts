@@ -8,6 +8,7 @@ export interface AuditEntry {
 }
 export interface Announcement {
   id: number; title: string; body: string; program_id: number | null; created_at: string; expires_at: string | null; author: string | null;
+  can_manage?: boolean; owner_name?: string | null;
 }
 export interface Profile {
   id: number; name: string; email: string; role: 'student' | 'teacher' | 'admin'; program_id: number | null; program_name: string | null;

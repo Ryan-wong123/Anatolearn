@@ -1,9 +1,10 @@
 const controller = require('./announcements.controller');
 const { authenticate } = require('../../access');
+const { manage } = require('../../middleware/ownership');
 const { requireTeacher } = require('../../middleware/roles');
 module.exports = function registerRoutes(app) {
     app.get('/api/announcements', authenticate, controller.listAnnouncements);
     app.post('/api/announcements', authenticate, requireTeacher, controller.createAnnouncement);
-    app.put('/api/announcements/:id', authenticate, requireTeacher, controller.updateAnnouncement);
-    app.delete('/api/announcements/:id', authenticate, requireTeacher, controller.deleteAnnouncement);
+    app.put('/api/announcements/:id', authenticate, requireTeacher, manage('announcements'), controller.updateAnnouncement);
+    app.delete('/api/announcements/:id', authenticate, requireTeacher, manage('announcements'), controller.deleteAnnouncement);
 };

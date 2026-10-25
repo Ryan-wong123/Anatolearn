@@ -1,9 +1,10 @@
 import type { RefObject } from 'react';
-import { useAppContext } from '../../context/AppContextState';
 import DraggablePanel from './DraggablePanel';
 import type { Annotation, LinkedVideo } from './types';
 
 interface AnnotationDetailsPanelProps {
+  // Show Move, Edit and Delete (teachers, on models they manage).
+  canEdit: boolean;
   boundaryRef: RefObject<HTMLDivElement | null>;
   onDragStateChange: (dragging: boolean) => void;
   annotation: Annotation;
@@ -25,6 +26,7 @@ function annotationTypeLabel(annotation: Annotation) {
 }
 
 export default function AnnotationDetailsPanel({
+  canEdit,
   boundaryRef,
   onDragStateChange,
   annotation, busy,
@@ -35,7 +37,6 @@ export default function AnnotationDetailsPanel({
   onDelete,
   onClose,
 }: AnnotationDetailsPanelProps) {
-  const { role } = useAppContext();
   return (
     <DraggablePanel
       boundaryRef={boundaryRef}
@@ -71,7 +72,7 @@ export default function AnnotationDetailsPanel({
         )}
 
         <div className="mt-4 flex gap-2">
-          {role === 'teacher' && (
+          {canEdit && (
             <>
               <button disabled={busy} onClick={onReposition} className="flex-1 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">Move</button>
               <button disabled={busy} onClick={onEdit} className="text-slate-900 dark:text-slate-100 flex-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">

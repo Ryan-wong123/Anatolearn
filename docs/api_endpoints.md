@@ -301,6 +301,14 @@ List endpoints for models, videos, quizzes and resources accept optional `page` 
 - `GET /api/profile/export` downloads the user's own data as JSON (account, quiz attempts and answers, favourites, activity, downloads).
 - `DELETE /api/profile` `{ password }` deletes the account. The only active teacher cannot delete themselves.
 
+## Content ownership
+
+Teachers own what they create. Routes that change, delete, publish or grade content (models, videos, quizzes and their questions, resources, annotations, question-bank entries, announcements, attempt grading, program assignment) answer **403** `{ message: "This belongs to another teacher..." }` when the content belongs to another teacher, and **404** when it is another teacher's unpublished draft. `GET /api/quizzes/:id/attempts`, `/attempts/pending`, `/api/attempts/:id` and `/api/attempts/:id/answers` are limited to the quiz owner, and `GET /api/quizzes/:id/questions` returns answer keys only to the owner. `/api/teacher/overview` and `/api/dashboard` count only the teacher's own quizzes' attempts. Content rows returned to teachers carry `can_manage` and `owner_name`; students and administrators get neither (nor `owner_id`).
+
+- `POST /api/:kind/:id/claim` (teacher; kind is `models`, `videos`, `quizzes`, `resources`, `question-bank` or `announcements`) takes ownership of content nobody owns. 409 if another teacher owns it, 404 if it does not exist or is another teacher's draft.
+- `POST /api/users/:id/transfer-content` `{ to_user_id }` (administrator) moves everything the user owns to an active teacher and returns `{ moved, total, to }`.
+- `POST /api/content/assign-unclaimed` `{ to_user_id }` (administrator) gives all unclaimed content to an active teacher.
+
 ## Users and audit log (administrator only)
 
 These routes require the `admin` role (`403 Administrator access required` for everyone else, including teachers). `GET /api/dashboard` returns `{ "role": "admin" }` for administrators, who have no dashboard figures.

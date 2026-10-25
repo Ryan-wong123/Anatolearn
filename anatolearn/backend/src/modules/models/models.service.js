@@ -47,7 +47,7 @@ async function uploadModel(input) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "title is required" } });
         }
         const filePath = await storage.persist(input.file, 'models/anatomy');
-        const result = await repository.insertModel([title, description || null, filePath, program_id || null, body_system || null, body_part || null]);
+        const result = await repository.insertModel([title, description || null, filePath, program_id || null, body_system || null, body_part || null, input.user.id]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {

@@ -1,5 +1,6 @@
 const repository = require('../modules/catalog/catalog.repository');
 const { canRead } = require('../access');
+const { canManage } = require('../ownership');
 const pool = require('../db');
 const SINGULAR = { models: 'model', videos: 'video', quizzes: 'quiz', resources: 'resource' };
 // Remembers what each student opens so the dashboard can offer "continue where you left off".
@@ -30,7 +31,7 @@ module.exports = (req, res, next) => {
         const attempt = path.match(/^\/attempts\/([^/]+)(?:\/|$)/i);
         if (attempt) {
             const row = /^\d+$/.test(attempt[1]) ? (await repository.findAttemptOwner([attempt[1]])).rows[0] : null;
-            if (!row || (req.user.role !== 'teacher' && row.student_id !== req.user.id))
+            if (!row || (req.user.role === 'teacher' ? !canManage(req.user, row) : row.student_id !== req.user.id))
                 return res.status(404).json({ message: 'Attempt not found' });
         }
         next();

@@ -26,10 +26,12 @@ async function updateAnnotation(parameters) {
      WHERE id = $6
      RETURNING *`, parameters);
 }
-async function listWithModelTitles() {
+// parameters: [teacherId]. Annotations of other teachers' unpublished models are not listed.
+async function listWithModelTitles(parameters) {
     return pool.query(`SELECT a.id, a.label, a.annotation_type, m.title AS model_title
      FROM annotations a
      JOIN models m ON m.id = a.model_id
-     ORDER BY m.title, a.label`);
+     WHERE m.is_published OR m.owner_id IS NULL OR m.owner_id = $1
+     ORDER BY m.title, a.label`, parameters);
 }
 module.exports = { listForModel, listForExport, insertAnnotation, deleteAnnotation, updateAnnotation, listWithModelTitles };

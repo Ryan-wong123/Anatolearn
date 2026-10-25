@@ -27,8 +27,13 @@ app.use('/api', limiter(60 * 1000, 600));
 // Express 4 does not forward rejected async handlers by default.
 for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
   const register = app[method].bind(app);
-  app[method] = (route, ...handlers) => register(route, ...handlers.map((handler) =>
-    (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)));
+  app[method] = (route, ...handlers) => register(route, ...handlers.map((handler) => {
+    const wrapped = (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+    // Keep the handler's name and ownership marker visible, so tests can check which guards each route has.
+    Object.defineProperty(wrapped, 'name', { value: handler.name });
+    wrapped.ownership = handler.ownership;
+    return wrapped;
+  }));
 }
 
 
@@ -67,6 +72,7 @@ require('./modules/profile/profile.routes')(app);
 require('./modules/announcements/announcements.routes')(app);
 require('./modules/search/search.routes')(app);
 require('./modules/dashboard/dashboard.routes')(app);
+require('./modules/ownership/ownership.routes')(app);
 app.use((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return next(err);

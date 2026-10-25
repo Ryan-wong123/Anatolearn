@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAppContext } from '../../context/AppContextState';
 import type { ComponentProps, RefObject } from 'react';
 import AnnotationDetailsPanel from './AnnotationDetailsPanel';
 import AnnotationFormModal from './AnnotationFormModal';
@@ -41,6 +42,9 @@ interface ViewerOverlayProps {
 }
 
 export default function ViewerOverlay(props: ViewerOverlayProps) {
+  const { role } = useAppContext();
+  // Teachers edit annotations only on models they own (or that nobody owns yet); other teachers get a read-only viewer.
+  const canEdit = role === 'teacher' && props.model?.can_manage !== false;
   const [panelOpen, setPanelOpen] = useState(true);
   const [playingVideo, setPlayingVideo] = useState<LinkedVideo | null>(null);
   const drawMode = props.mode === 'highlight';
@@ -55,6 +59,7 @@ export default function ViewerOverlay(props: ViewerOverlayProps) {
     {props.moving && <p role="status" className="absolute left-4 top-44 z-30 rounded-lg bg-white p-3 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">Moving annotation…</p>}
     <ViewerInstructions modeText={VIEWER_MODE_LABELS[props.mode]} drawMode={drawMode} regionMode={regionMode} />
     <ViewerToolbar
+      canEdit={canEdit}
       disabled={!props.model || props.loading || props.moving}
       addMode={props.mode === 'point'} drawMode={drawMode} regionMode={regionMode}
       annotationsVisible={props.annotationsVisible} darkBackground={props.darkBackground}
@@ -84,7 +89,7 @@ export default function ViewerOverlay(props: ViewerOverlayProps) {
     />
     {props.selectedAnnotation && (
       <AnnotationDetailsPanel
-        busy={props.moving} boundaryRef={props.boundaryRef} onDragStateChange={props.onDragStateChange} annotation={props.selectedAnnotation}
+        canEdit={canEdit} busy={props.moving} boundaryRef={props.boundaryRef} onDragStateChange={props.onDragStateChange} annotation={props.selectedAnnotation}
         linkedVideo={props.videos.find((video) => video.annotation_id === props.selectedAnnotation?.id) ?? null}
         onPlayVideo={setPlayingVideo} onReposition={props.onReposition} onEdit={props.onEdit} onDelete={props.onDelete} onClose={props.onClose}
       />

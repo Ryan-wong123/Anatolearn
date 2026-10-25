@@ -15,8 +15,8 @@ async function listQuestions(parameters, includeAnswerKeys) {
     return pool.query(`SELECT ${columns} FROM quiz_questions WHERE quiz_id = $1 ORDER BY id`, parameters);
 }
 async function insertQuiz(parameters) {
-    return pool.query(`INSERT INTO quizzes (title, description, type, category, program_id, is_published)
-       VALUES ($1, $2, $3, $4, $5, false)
+    return pool.query(`INSERT INTO quizzes (title, description, type, category, program_id, is_published, owner_id)
+       VALUES ($1, $2, $3, $4, $5, false, $6)
        RETURNING *`, parameters);
 }
 async function updateQuiz(parameters) {

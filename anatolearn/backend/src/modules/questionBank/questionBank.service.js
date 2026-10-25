@@ -4,7 +4,7 @@ const { validQuestion } = require('../questions/question.validation');
 const { withEditableQuiz } = require('../questions/questions.service');
 async function listQuestions(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
-    const rows = (await repository.listQuestions()).rows;
+    const rows = (await repository.listQuestions([input.user.id])).rows;
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: rows });
 }
 async function saveFromQuiz(input) {
@@ -12,7 +12,7 @@ async function saveFromQuiz(input) {
     const q = (await repository.findQuizQuestion([input.params.id])).rows[0];
     if (!q)
         return ({ ...outcomeMeta, status: 404, kind: 'status' });
-    const row = (await repository.insertBankQuestion([q.question, q.format, input.body.category || q.category, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, q.model_answer])).rows[0];
+    const row = (await repository.insertBankQuestion([q.question, q.format, input.body.category || q.category, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option, q.model_answer, input.user.id])).rows[0];
     return ({ ...outcomeMeta, status: 201, kind: 'json', body: row });
 }
 async function updateQuestion(input) {

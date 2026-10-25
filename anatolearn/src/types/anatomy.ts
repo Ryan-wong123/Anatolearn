@@ -170,4 +170,7 @@ export interface ModelRecord {
   thumbnail_path: string | null;
   neutral_view: NeutralView | null;
   is_downloadable?: boolean;
+  // Set for teachers: false when another teacher owns the model (view only).
+  can_manage?: boolean;
+  owner_name?: string | null;
 }
