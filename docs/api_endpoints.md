@@ -211,6 +211,7 @@ Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, co
 }
 ```
 
+- If the account has two-factor authentication on, the response is instead `{ "mfa_required": true, "mfa_token": "..." }` (no session cookie yet). Send the token and a code to `POST /api/auth/mfa/verify`. On a normal sign-in the body also contains `mfa_setup_required` (true when the account's role requires two-factor authentication and it is not set up).
 - 401 if the email doesn't exist **or** the password is wrong — deliberately the same generic `"Invalid email or password"` message either way, so a failed login can't be used to check which emails are registered
 - 400 if `email` or `password` is missing
 - 500 if `JWT_SECRET` isn't configured on the server (logged as a startup warning too)
@@ -246,6 +247,7 @@ This section supersedes older submission/download/result behavior in historical 
 
 | Endpoint | Access | Request / result |
 |---|---|---|
+| POST /api/auth/mfa/verify | public, origin checked, rate limited | body `{ mfa_token, code }`; `code` is a 6-digit authenticator code or a recovery code. Success sets the session cookies and returns `{ user }` (plus `recovery_codes_remaining` if a recovery code was used); 401 otherwise. Wrong codes count towards the account lockout |
 | POST /api/auth/logout | public, origin checked | clears media cookie; frontend then clears sessionStorage |
 | PATCH /api/models/:id/download-permission | teacher | `{is_downloadable: boolean}` -> model; default false; downloads require read access and this flag for both roles |
 | PATCH /api/:kind/:id/program | teacher | kind=models/videos/quizzes/resources; `{program_id: positive integer or null}` -> updated record; null means shared |
@@ -255,7 +257,7 @@ This section supersedes older submission/download/result behavior in historical 
 | POST /api/quiz-sessions/:id/cancel | session owner | closes unused session; used by cancel/navigation |
 | POST /api/quizzes/:id/submit | session owner/student | `{session_id, answers:[{question_id,selected_option?,answer_text?}]}`; each snapshot question exactly once; blanks explicitly represented; rejects missing/foreign/duplicate IDs and invalid options |
 | GET /api/quizzes/:id/attempts | teacher | all graded and pending attempts, including student_name |
-| GET /api/attempts/:id and /api/attempts/:id/answers | owner or teacher | other accounts receive 404; answer review includes question/options and grading |
+| GET /api/attempts/:id and /api/attempts/:id/answers | owner or teacher | other accounts receive 404; answer review includes question/options and grading. For students `correct_option` and `model_answer` are `null` until the attempt is `graded` (all-MCQ attempts are graded at once; attempts with open-ended questions after the teacher finishes marking). The `feedback` in the `POST /api/quizzes/:id/submit` response follows the same rule |
 | PATCH /api/attempt-answers/:id/grade | teacher | finite `{teacher_score:0..100}`, open-ended answers only; transactional update/final score |
 | GET /api/question-bank | teacher | bank records including category and keys |
 | POST /api/question-bank/from-question/:id | teacher | `{category?: string}` -> independent bank copy |
@@ -291,10 +293,22 @@ List endpoints for models, videos, quizzes and resources accept optional `page` 
 
 - `GET /api/profile` returns name, email, role, programme and last sign-in.
 - `PUT /api/profile` `{ name, program_id? }`. Students keep their registered programme (it controls content access); teachers may change theirs.
-- `PUT /api/profile/password` `{ current_password, new_password }` (8-72 bytes, uppercase letter and number). Signs out all other sessions.
+- `GET /api/profile` also returns, for teachers, `storage_used_bytes` and `storage_limit_bytes` (0 = unlimited). Uploads to `/api/models/upload`, `/api/resources/upload` and `/api/videos/upload` answer **413** `{ message }` when they would exceed the teacher's or the site's storage limit (decided from `Content-Length` before the file is stored, then again with the real size), and **400** when a `.docx` or `.usdz` archive is unsafe.
+- `GET /api/profile` also returns `active_sessions` and `session_idle_minutes`. `DELETE /api/profile/sessions` ends every session of the account including the current one and clears the cookies (cookie sessions need the CSRF header). A session unused for longer than `session_idle_minutes` returns 401 like an expired one.
+- `GET /api/profile` also returns `mfa_enabled`, `mfa_required` and `mfa_recovery_codes_left`.
+- Two-factor authentication (teachers and administrators): `POST /api/profile/mfa/setup` `{ password }` returns `{ secret, otpauth_uri }`; `POST /api/profile/mfa/enable` `{ code }` turns it on and returns the one-time `recovery_codes`; `POST /api/profile/mfa/disable` `{ password, code }` (403 when `MFA_REQUIRED` applies to the role); `POST /api/profile/mfa/recovery-codes` `{ password, code }` replaces the recovery codes. When `MFA_REQUIRED=true`, a staff account that has not enrolled gets `403 { code: 'mfa_setup_required' }` from every endpoint except `GET /api/profile` and the setup/enable calls.
+- `PUT /api/profile/password` `{ current_password, new_password }` (the password policy: 8 characters, 12 for teachers and administrators, 72 bytes at most, uppercase letter and number, not common, not containing the name or email; a 400 explains which rule failed). Signs out all other sessions. The same policy applies to `POST /api/auth/register` and to passwords an administrator sets in `POST /api/users` and `POST /api/users/:id/reset-password`.
 - `GET /api/favorites` (student) returns `{ videos, quizzes, models, resources }`; `POST /api/favorites` `{ item_type: 'video'|'quiz'|'model'|'resource', item_id }` and `DELETE /api/favorites/:item_type/:item_id` accept the same four types (models and resources added by migration 017). Unpublished or other-programme content is excluded/refused.
 - `GET /api/profile/export` downloads the user's own data as JSON (account, quiz attempts and answers, favourites, activity, downloads).
 - `DELETE /api/profile` `{ password }` deletes the account. The only active teacher cannot delete themselves.
+
+## Content ownership
+
+Teachers own what they create. Routes that change, delete, publish or grade content (models, videos, quizzes and their questions, resources, annotations, question-bank entries, announcements, attempt grading, program assignment) answer **403** `{ message: "This belongs to another teacher..." }` when the content belongs to another teacher, and **404** when it is another teacher's unpublished draft. `GET /api/quizzes/:id/attempts`, `/attempts/pending`, `/api/attempts/:id` and `/api/attempts/:id/answers` are limited to the quiz owner, and `GET /api/quizzes/:id/questions` returns answer keys only to the owner. `/api/teacher/overview` and `/api/dashboard` count only the teacher's own quizzes' attempts. Content rows returned to teachers carry `can_manage` and `owner_name`; students and administrators get neither (nor `owner_id`).
+
+- `POST /api/:kind/:id/claim` (teacher; kind is `models`, `videos`, `quizzes`, `resources`, `question-bank` or `announcements`) takes ownership of content nobody owns. 409 if another teacher owns it, 404 if it does not exist or is another teacher's draft.
+- `POST /api/users/:id/transfer-content` `{ to_user_id }` (administrator) moves everything the user owns to an active teacher and returns `{ moved, total, to }`.
+- `POST /api/content/assign-unclaimed` `{ to_user_id }` (administrator) gives all unclaimed content to an active teacher.
 
 ## Users and audit log (administrator only)
 
@@ -304,6 +318,7 @@ These routes require the `admin` role (`403 Administrator access required` for e
 - `POST /api/users` `{ name, email, role, program_id?, password? }`. Without a password a temporary one is generated and returned once as `temporary_password`.
 - `PATCH /api/users/:id` `{ name?, role?, program_id?, is_active?, unlock? }`. Disabling or changing role revokes the user's sessions. `role` may be `student`, `teacher` or `admin`. Administrators cannot demote or disable themselves, and at least one active administrator must remain. Public registration still accepts only `student` and `teacher`.
 - `POST /api/users/:id/reset-password` `{ password? }` generates or sets a password and signs the user out everywhere.
+- `POST /api/users/:id/reset-mfa` clears the user's two-factor authentication and signs them out everywhere (for a lost device). Not allowed on yourself. `GET /api/users` rows include `mfa_enabled`.
 - `DELETE /api/users/:id`
 - `GET /api/audit-log?action=<prefix>&actor=<id>&page=&page_size=` lists authentication events, user management and every successful state-changing API call (who, what, record id, IP; no request bodies).
 

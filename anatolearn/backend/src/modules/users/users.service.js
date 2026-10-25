@@ -3,12 +3,11 @@ const { randomBytes } = require('crypto');
 const repository = require('./users.repository');
 const { record } = require('../../audit');
 const { paged } = require('../catalog/catalog.service');
+const { passwordProblem } = require('../../passwords');
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const meta = () => ({ headers: {}, cookies: [] });
 const fail = (status, message) => ({ ...meta(), status, kind: 'json', body: { message } });
 const ROLES = ['student', 'teacher', 'admin'];
-const passwordProblem = (password) => typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password) > 72
-    || !/[A-Z]/.test(password) || !/[0-9]/.test(password) ? 'Password must be 8-72 characters with an uppercase letter and a number' : null;
 const generatePassword = () => `Aa1-${randomBytes(9).toString('base64url')}`;
 
 async function listUsers(input) {
@@ -24,7 +23,8 @@ async function createUser(input) {
     const normalized = email.trim().toLowerCase();
     if ((await repository.findByEmail([normalized])).rows[0]) return fail(409, 'An account with this email already exists');
     const password = input.body.password ?? generatePassword();
-    if (input.body.password != null && passwordProblem(password)) return fail(400, passwordProblem(password));
+    const weakness = input.body.password != null && passwordProblem(password, { role, email: normalized, name });
+    if (weakness) return fail(400, weakness);
     const user = (await repository.insertUser([name.trim(), normalized, await bcrypt.hash(password, 12), role, program_id ?? null])).rows[0];
     await record({ actor: input.user, action: 'user.create', targetType: 'user', targetId: user.id, detail: { role }, ip: input.ip });
     return { ...meta(), status: 201, kind: 'json', body: { user, ...(input.body.password == null ? { temporary_password: password } : {}) } };
@@ -53,13 +53,25 @@ async function updateUser(input) {
 }
 async function resetPassword(input) {
     const id = Number(input.params.id);
-    if (!(await repository.findUser([id])).rows[0]) return fail(404, 'User not found');
+    const target = (await repository.findUser([id])).rows[0];
+    if (!target) return fail(404, 'User not found');
     const password = input.body.password ?? generatePassword();
-    if (input.body.password != null && passwordProblem(password)) return fail(400, passwordProblem(password));
+    const weakness = input.body.password != null && passwordProblem(password, { role: target.role, email: target.email, name: target.name });
+    if (weakness) return fail(400, weakness);
     await repository.setPassword([id, await bcrypt.hash(password, 12)]);
     await repository.revokeSessions([id]);
     await record({ actor: input.user, action: 'user.reset_password', targetType: 'user', targetId: id, ip: input.ip });
     return { ...meta(), status: 200, kind: 'json', headers: { 'Cache-Control': 'no-store' }, body: input.body.password == null ? { temporary_password: password } : { message: 'Password updated' } };
+}
+// For staff who lost their device and recovery codes. They sign in with their password and must enrol again.
+async function resetMfa(input) {
+    const id = Number(input.params.id);
+    if (!(await repository.findUser([id])).rows[0]) return fail(404, 'User not found');
+    if (id === input.user.id) return fail(400, 'Use your profile page to manage your own two-factor authentication');
+    await repository.resetMfa([id]);
+    await repository.revokeSessions([id]);
+    await record({ actor: input.user, action: 'user.reset_mfa', targetType: 'user', targetId: id, ip: input.ip });
+    return { ...meta(), status: 200, kind: 'json', body: { message: 'Two-factor authentication reset' } };
 }
 async function deleteUser(input) {
     const id = Number(input.params.id);
@@ -75,4 +87,4 @@ async function listAuditLog(input) {
     const rows = (await repository.listAuditLog(input.query)).rows;
     return { ...meta(), status: 200, kind: 'json', ...paged({ query: { page_size: input.query.page_size || 50, page: input.query.page } }, rows) };
 }
-module.exports = { listUsers, createUser, updateUser, resetPassword, deleteUser, listAuditLog };
+module.exports = { resetMfa, listUsers, createUser, updateUser, resetPassword, deleteUser, listAuditLog };

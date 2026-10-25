@@ -166,7 +166,7 @@ export default function Viewer() {
       centerCamera(model);
     }
 
-    void loadViewerAnnotations(selectedModel.id, { getAnnotations: api.getAnnotations, updateAnnotation: role === 'teacher' ? api.updateAnnotation : async (id, payload) => ({id,...payload}) }, {
+    void loadViewerAnnotations(selectedModel.id, { getAnnotations: api.getAnnotations, updateAnnotation: role === 'teacher' && selectedModel.can_manage !== false ? api.updateAnnotation : async (id, payload) => ({id,...payload}) }, {
       isActive: () => sceneEpochRef.current === epoch,
       replace: (loaded) => {
         clearAnnotationHitTargets();
@@ -181,7 +181,7 @@ export default function Viewer() {
       onError: () => setAssetError('Some annotations could not be loaded or saved. Reload the model to try again.'),
     }).finally(() => { if (sceneEpochRef.current === epoch) setAssetLoading(false); });
 
-    return !selectedModel.thumbnail_path && role === 'teacher' ? selectedModel.id : null;
+    return !selectedModel.thumbnail_path && role === 'teacher' && selectedModel.can_manage !== false ? selectedModel.id : null;
   });
 
   const onCanvasClick = useEffectEvent((event: MouseEvent, raycast: Raycast, getModelHit: ModelHit) => {

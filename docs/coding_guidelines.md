@@ -413,3 +413,10 @@ The Express backend uses a layered modular monolith under anatolearn/backend/src
 Services currently return HTTP-shaped result records to preserve response compatibility; controller.js is the only place that applies their headers, cookies, exports or streams to Express. Services may acquire/release pg connections and coordinate filesystem utilities. Keep validated dynamic table/column/filter fragments internal; never pass unchecked client SQL fragments into repositories. Share question validation through questions/question.validation.js, and shared publication/programme/download rules through access.js. Cross-feature bank imports use the question-edit transaction service so copied questions follow the same locking rules.
 
 app.js composes middleware/routes and handles errors; server.js starts the process and maintenance. Keep both free of feature handlers. Preserve compatibility shims until their external/test callers are deliberately migrated. Operational maintenance SQL is outside the feature repository convention. Existing frontend conventions above continue to apply; this refactor does not change product requirements.
+
+## 19. Commits and pull requests
+
+- Commits are authored by the person who owns the change. Claude Code sessions in this repository commit as the repository owner: `.claude/hooks/session-start.sh` sets the repo-local git identity when it is unset or is Claude/Anthropic, and never touches anyone's global config or an identity that is already set.
+- Commit messages and pull request descriptions carry no AI attribution (no `Co-Authored-By: Claude`, `Claude-Session:` or "Generated with" lines). `.claude/settings.json` turns Claude Code's attribution off, `.githooks/commit-msg` removes those lines and refuses a Claude/Anthropic author, and the `Commit hygiene` workflow fails a pull request that contains either.
+- To use the hook in your own clone: `git config core.hooksPath .githooks`.
+- Write the subject as a short imperative sentence and the body as what changed and why. Keep unrelated changes in separate commits.

@@ -22,7 +22,7 @@ const uploadVideoAndCaptions = multer({
             cb(null, `${ext === '.vtt' ? 'captions' : 'video'}-${randomUUID()}${ext}`);
         },
     }),
-    limits: { fileSize: 200 * 1024 * 1024, files: 2, fieldSize: 2 * 1024 * 1024 },
+    limits: { fileSize: 200 * 1024 * 1024, files: 2, fields: 20, fieldSize: 64 * 1024 },
     fileFilter: (req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();
         const accepted = file.fieldname === 'video' ? ['.mp4', '.webm'].includes(ext) : file.fieldname === 'captions' && ext === '.vtt';
@@ -37,14 +37,14 @@ const modelStorage = multer.diskStorage({
             .catch((err) => cb(err, modelsDir));
     },
     filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
+        const ext = path.extname(file.originalname).toLowerCase();
         const safeName = `model-${randomUUID()}${ext}`;
         cb(null, safeName);
     },
 });
 const uploadModel = multer({
     storage: modelStorage,
-    limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+    limits: { fileSize: 200 * 1024 * 1024, files: 1, fields: 20, fieldSize: 64 * 1024 }, // 200MB
     fileFilter: (req, file, cb) => {
         const allowed = [".glb", ".gltf", ".obj", ".usdz"];
         const ext = path.extname(file.originalname).toLowerCase();
@@ -64,14 +64,14 @@ const resourceStorage = multer.diskStorage({
             .catch((err) => cb(err, resourcesDir));
     },
     filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
+        const ext = path.extname(file.originalname).toLowerCase();
         const safeName = `resource-${randomUUID()}${ext}`;
         cb(null, safeName);
     },
 });
 const uploadResource = multer({
     storage: resourceStorage,
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+    limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 20, fieldSize: 64 * 1024 }, // 50MB
     fileFilter: (req, file, cb) => {
         const allowed = [".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg", ".webp"];
         const ext = path.extname(file.originalname).toLowerCase();

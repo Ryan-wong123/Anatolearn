@@ -5,6 +5,7 @@ import type { FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 import { api } from '../api/api';
+import { passwordProblem, passwordRules } from '../components/account/styles';
 
 type Role = 'student' | 'teacher';
 
@@ -36,13 +37,9 @@ export default function Register() {
     setError(null);
     if (programsLoading || programsError || !selectedProgramId) { setError('Choose an available programme before creating your account.'); return; }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-
-    if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
-      setError('Password must contain at least one uppercase letter and one number');
+    const passwordIssue = passwordProblem(password, role);
+    if (passwordIssue) {
+      setError(passwordIssue);
       return;
     }
 
@@ -139,7 +136,7 @@ export default function Register() {
               placeholder="At least 8 characters"
             />
             <p id="password-requirements" className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-              Use at least 8 characters, including one uppercase letter and one number.
+              {passwordRules(role)}
             </p>
           </div>
 

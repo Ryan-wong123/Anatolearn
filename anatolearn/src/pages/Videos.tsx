@@ -2,6 +2,7 @@ import RequestState from '../components/RequestState';
 import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
+import OwnerNote from '../components/OwnerNote';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Search, Play, Upload, X, Heart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -29,6 +30,8 @@ interface Video {
   is_published: boolean;
   annotation_id: number | null;
   created_at: string;
+  can_manage?: boolean;
+  owner_name?: string | null;
 }
 
 interface AnnotationOption {
@@ -370,8 +373,9 @@ export default function Videos() {
                 Watch Video →
               </p>
 
-              <ContentSettings kind="videos" id={video.id} programId={video.program_id} onSaved={loadVideos} />
-              {role === 'teacher' && (
+              <ContentSettings kind="videos" id={video.id} programId={video.program_id} canManage={video.can_manage} onSaved={loadVideos} />
+              <OwnerNote kind="videos" item={video} onChanged={loadVideos} />
+              {role === 'teacher' && video.can_manage !== false && (
                 <div className="mt-3 flex items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                   <button
                     onClick={(e) => openEdit(video, e)}

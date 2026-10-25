@@ -4,6 +4,7 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
 import { ApiError, api } from '../api/api';
+import type { LoginResult } from '../api/api';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,6 +16,30 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Set once the password is accepted for an account that has two-factor authentication.
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+
+  function finish(result: LoginResult) {
+    if (!result.user) throw new Error('Could not sign in. Please try again.');
+    login({ ...result.user, mfa_setup_required: result.mfa_setup_required });
+    const from = (location.state as { from?: string } | null)?.from;
+    navigate(result.mfa_setup_required ? '/profile' : from && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true });
+  }
+
+  async function handleVerify(e: FormEvent) {
+    e.preventDefault();
+    if (!mfaToken) return;
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      finish(await api.verifyMfa(mfaToken, code.trim()));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not verify the code. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -22,10 +47,9 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      const { user } = await api.login(email, password);
-      login(user);
-      const from = (location.state as { from?: string } | null)?.from;
-      navigate(from && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true });
+      const result = await api.login(email, password);
+      if (result.mfa_required && result.mfa_token) { setMfaToken(result.mfa_token); setCode(''); return; }
+      finish(result);
     } catch (error) {
       // Deliberately generic — matches the backend's own generic message,
       // and doesn't reveal whether the email or the password was wrong.
@@ -46,7 +70,7 @@ export default function Login() {
             AnatoLearn
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 text-center mt-1">
-            Sign in to continue
+            {mfaToken ? 'Two-step verification' : 'Sign in to continue'}
           </p>
         </div>
 
@@ -56,6 +80,29 @@ export default function Login() {
           </p>
         )}
 
+        {mfaToken ? (
+          <form onSubmit={handleVerify} className="space-y-4">
+            <div>
+              <label htmlFor="mfa-code" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Authentication code</label>
+              <input
+                id="mfa-code" type="text" inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={32}
+                aria-describedby="mfa-code-help" value={code} onChange={(e) => setCode(e.target.value)}
+                className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 tracking-widest focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                placeholder="123456"
+              />
+              <p id="mfa-code-help" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+            </div>
+            {error && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">{error}</p>
+            )}
+            <button type="submit" disabled={isSubmitting || !code.trim()} className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+              {isSubmitting ? 'Verifying…' : 'Verify'}
+            </button>
+            <button type="button" onClick={() => { setMfaToken(null); setCode(''); setPassword(''); setError(null); }} className="w-full text-sm text-slate-600 dark:text-slate-400 underline hover:text-blue-700 dark:hover:text-blue-400">
+              Back to sign in
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -101,6 +148,7 @@ export default function Login() {
             {isSubmitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        )}
 
         <p className="text-sm text-slate-500 dark:text-slate-400 text-center mt-6">
           Don't have an account?{' '}

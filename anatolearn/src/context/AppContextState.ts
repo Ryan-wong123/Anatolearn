@@ -10,6 +10,8 @@ interface AuthUser {
   email: string;
   role: Role;
   program_id: number | null;
+  // Staff must enrol in two-factor authentication before they can use the rest of the app.
+  mfa_setup_required?: boolean;
 }
 
 interface AppContextType {

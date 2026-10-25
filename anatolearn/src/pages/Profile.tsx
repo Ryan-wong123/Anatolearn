@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Moon, Sun, Trash2 } from 'lucide-react';
+import { Download, LogOut, Moon, Sun, Trash2 } from 'lucide-react';
 import Breadcrumbs from '../components/Breadcrumbs';
 import RequestState from '../components/RequestState';
 import Modal from '../components/account/Modal';
-import { cardClass, dangerButton, errorBox, inputClass, labelClass, passwordProblem, primaryButton, secondaryButton, successBox } from '../components/account/styles';
+import MfaCard from '../components/account/MfaCard';
+import { cardClass, dangerButton, errorBox, inputClass, labelClass, passwordProblem, passwordRules, primaryButton, secondaryButton, successBox } from '../components/account/styles';
 import { formatDate, formatDateTime } from '../components/account/time';
 import { useResource } from '../hooks/useResource';
 import { useAppContext } from '../context/AppContextState';
+import { useConfirm } from '../context/ConfirmContextState';
 import { useToast } from '../context/ToastContextState';
 import { api } from '../api/api';
 import type { Profile as ProfileRecord } from '../types/portal';
@@ -85,7 +87,7 @@ function DetailsCard({ profile, programmes, onSaved }: { profile: ProfileRecord;
   );
 }
 
-function PasswordCard() {
+function PasswordCard({ role }: { role: ProfileRecord['role'] }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -96,7 +98,7 @@ function PasswordCard() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null); setDone(null);
-    const problem = passwordProblem(next);
+    const problem = passwordProblem(next, role);
     if (problem) { setError(problem); return; }
     if (next !== confirm) { setError('New passwords do not match'); return; }
     if (next === current) { setError('Choose a password different from your current one'); return; }
@@ -120,7 +122,7 @@ function PasswordCard() {
         <div>
           <label htmlFor="new-password" className={labelClass}>New password</label>
           <input id="new-password" type="password" autoComplete="new-password" required aria-describedby="new-password-rules" value={next} onChange={(e) => setNext(e.target.value)} className={inputClass} />
-          <p id="new-password-rules" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Use at least 8 characters, including one uppercase letter and one number.</p>
+          <p id="new-password-rules" className="mt-1 text-xs text-slate-600 dark:text-slate-400">{passwordRules(role)}</p>
         </div>
         <div>
           <label htmlFor="confirm-password" className={labelClass}>Confirm new password</label>
@@ -130,6 +132,63 @@ function PasswordCard() {
         {done && <p role="status" className={successBox}>{done}</p>}
         <button type="submit" disabled={saving || !current || !next || !confirm} className={primaryButton}>{saving ? 'Updating…' : 'Update password'}</button>
       </form>
+    </section>
+  );
+}
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.max(bytes / 1024 ** 2, 0.1).toFixed(1)} MB`;
+}
+
+function StorageCard({ used, limit }: { used: number; limit: number }) {
+  const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  return (
+    <section aria-labelledby="storage-heading" className={cardClass}>
+      <h2 id="storage-heading" className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Upload storage</h2>
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+        {limit > 0
+          ? `You have used ${formatBytes(used)} of your ${formatBytes(limit)} allowance for models, videos and resources. Deleting content frees the space.`
+          : `You have used ${formatBytes(used)} for models, videos and resources.`}
+      </p>
+      {limit > 0 && (
+        <div role="progressbar" aria-label="Storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <div className={`h-full rounded-full ${percent >= 90 ? 'bg-red-600' : percent >= 70 ? 'bg-amber-500' : 'bg-blue-600'}`} style={{ width: `${percent}%` }} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SessionsCard({ profile }: { profile: ProfileRecord }) {
+  const navigate = useNavigate();
+  const { logout } = useAppContext();
+  const { confirm } = useConfirm();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const hours = profile.session_idle_minutes / 60;
+  const idle = hours >= 1 && Number.isInteger(hours) ? `${hours} hour${hours === 1 ? '' : 's'}` : `${profile.session_idle_minutes} minutes`;
+
+  async function signOutEverywhere() {
+    if (!(await confirm({ title: 'Sign out on all devices?', message: 'Every browser and device where you are signed in, including this one, will be signed out. Use this if you lost a device or used a shared computer.', confirmLabel: 'Sign out everywhere', danger: true }))) return;
+    setBusy(true); setError(null);
+    try { await api.signOutEverywhere(); }
+    catch (err) { setError(message(err, 'Could not sign you out everywhere')); setBusy(false); return; }
+    // The server already revoked every session and cleared the cookies; this just resets local state.
+    try { await logout(); } catch { sessionStorage.removeItem('anatolearn_user'); }
+    navigate('/login', { replace: true });
+  }
+
+  return (
+    <section aria-labelledby="sessions-heading" className={cardClass}>
+      <h2 id="sessions-heading" className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Signed-in devices</h2>
+      <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+        You are signed in on {profile.active_sessions} device{profile.active_sessions === 1 ? '' : 's'}. For your security, a session ends after {idle} without activity, and always after 24 hours.
+      </p>
+      {error && <p role="alert" className={`${errorBox} mb-4`}>{error}</p>}
+      <button type="button" onClick={signOutEverywhere} disabled={busy} className={secondaryButton}>
+        <LogOut className="h-4 w-4" aria-hidden="true" />{busy ? 'Signing out…' : 'Sign out on all devices…'}
+      </button>
     </section>
   );
 }
@@ -212,7 +271,13 @@ export default function Profile() {
             </button>
           </section>
 
-          <PasswordCard />
+          <PasswordCard role={profile.role} />
+
+          {profile.storage_used_bytes !== undefined && <StorageCard used={profile.storage_used_bytes} limit={profile.storage_limit_bytes ?? 0} />}
+
+          <SessionsCard profile={profile} />
+
+          {profile.role !== 'student' && <MfaCard profile={profile} onChanged={(patch) => setOverride({ ...profile, ...patch })} />}
 
           <section aria-labelledby="privacy-heading" className={cardClass}>
             <h2 id="privacy-heading" className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Your data</h2>

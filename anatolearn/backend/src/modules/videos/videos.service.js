@@ -1,5 +1,6 @@
 const repository = require('./videos.repository');
 const storage = require('../../storage');
+const quota = require('../../quota');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listVideos(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -48,16 +49,19 @@ async function uploadVideo(input) {
         if (!title) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "title is required" } });
         }
+        await storage.validateVideo(videoFile);
         if (captionFile)
             await storage.validateCaptions(captionFile);
+        const bytes = videoFile.size + (captionFile?.size ?? 0);
+        await quota.assertWithin(input.user.id, bytes);
         const videoPath = await storage.persist(videoFile, 'videos');
         const captionsPath = captionFile ? await storage.persist(captionFile, 'captions') : null;
-        const result = await repository.insertVideo([title, description || null, videoPath, captionsPath, program_id || null]);
+        const result = await repository.insertVideo([title, description || null, videoPath, captionsPath, program_id || null, input.user.id, bytes]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {
         console.error("Failed to upload video:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload video" } });
+        return ({ ...outcomeMeta, status: err.status || 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload video" } });
     }
 }
 async function replaceCaptions(input) {

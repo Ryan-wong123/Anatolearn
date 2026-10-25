@@ -32,20 +32,25 @@ async function counts(parameters) {
       (SELECT count(*)::int FROM quizzes WHERE is_published AND (program_id IS NULL OR program_id = $1)) AS quizzes,
       (SELECT count(*)::int FROM resources WHERE is_published AND (program_id IS NULL OR program_id = $1)) AS resources`, parameters);
 }
-async function teacherOverview() {
+// A teacher's overview covers the content they manage (their own plus unclaimed) and the attempts on their quizzes only.
+// parameters: [teacherId]. User counts are headcounts and are not scoped.
+async function teacherOverview(parameters) {
+    const mine = 'owner_id IS NULL OR owner_id = $1';
     const [totals, pending, recent, byQuiz] = await Promise.all([
         pool.query(`SELECT (SELECT count(*)::int FROM users WHERE role = 'student' AND is_active) AS students,
           (SELECT count(*)::int FROM users WHERE role = 'teacher' AND is_active) AS teachers,
-          (SELECT count(*)::int FROM models) AS models, (SELECT count(*)::int FROM videos) AS videos,
-          (SELECT count(*)::int FROM quizzes) AS quizzes, (SELECT count(*)::int FROM resources) AS resources,
-          (SELECT count(*)::int FROM models WHERE NOT is_published) + (SELECT count(*)::int FROM videos WHERE NOT is_published)
-            + (SELECT count(*)::int FROM quizzes WHERE NOT is_published) + (SELECT count(*)::int FROM resources WHERE NOT is_published) AS unpublished,
-          (SELECT count(*)::int FROM quiz_attempts WHERE attempted_at > NOW() - INTERVAL '7 days') AS attempts_this_week`),
-        pool.query("SELECT count(*)::int AS n FROM quiz_attempts WHERE status = 'pending_review'"),
+          (SELECT count(*)::int FROM models WHERE ${mine}) AS models, (SELECT count(*)::int FROM videos WHERE ${mine}) AS videos,
+          (SELECT count(*)::int FROM quizzes WHERE ${mine}) AS quizzes, (SELECT count(*)::int FROM resources WHERE ${mine}) AS resources,
+          (SELECT count(*)::int FROM models WHERE NOT is_published AND (${mine})) + (SELECT count(*)::int FROM videos WHERE NOT is_published AND (${mine}))
+            + (SELECT count(*)::int FROM quizzes WHERE NOT is_published AND (${mine})) + (SELECT count(*)::int FROM resources WHERE NOT is_published AND (${mine})) AS unpublished,
+          (SELECT count(*)::int FROM quiz_attempts t JOIN quizzes q ON q.id = t.quiz_id WHERE t.attempted_at > NOW() - INTERVAL '7 days' AND (q.owner_id IS NULL OR q.owner_id = $1)) AS attempts_this_week`, parameters),
+        pool.query(`SELECT count(*)::int AS n FROM quiz_attempts t JOIN quizzes q ON q.id = t.quiz_id
+          WHERE t.status = 'pending_review' AND (q.owner_id IS NULL OR q.owner_id = $1)`, parameters),
         pool.query(`SELECT t.id, t.score, t.status, t.attempted_at, q.title AS quiz_title, q.id AS quiz_id, u.name AS student_name FROM quiz_attempts t
-          JOIN quizzes q ON q.id = t.quiz_id LEFT JOIN users u ON u.id = t.student_id ORDER BY t.attempted_at DESC LIMIT 10`),
+          JOIN quizzes q ON q.id = t.quiz_id LEFT JOIN users u ON u.id = t.student_id
+          WHERE q.owner_id IS NULL OR q.owner_id = $1 ORDER BY t.attempted_at DESC LIMIT 10`, parameters),
         pool.query(`SELECT q.id AS quiz_id, q.title, COUNT(t.id)::int AS attempts, ROUND(AVG(t.score))::int AS average_score FROM quizzes q
-          JOIN quiz_attempts t ON t.quiz_id = q.id GROUP BY q.id ORDER BY COUNT(t.id) DESC LIMIT 8`),
+          JOIN quiz_attempts t ON t.quiz_id = q.id WHERE q.owner_id IS NULL OR q.owner_id = $1 GROUP BY q.id ORDER BY COUNT(t.id) DESC LIMIT 8`, parameters),
     ]);
     return { totals: totals.rows[0], pending_review: pending.rows[0].n, recent_attempts: recent.rows, quiz_performance: byQuiz.rows };
 }

@@ -1,0 +1,16 @@
+title = "AnatoLearn secret scanning"
+
+[extend]
+useDefault = true
+
+# Files that only ever contain throwaway values: CI fixtures, the dev compose file, the example env file and tests.
+# Real secrets must never be committed anywhere, including these paths.
+[allowlist]
+description = "Known non-secret fixtures"
+paths = [
+  '''\.github/workflows/ci\.yml''',
+  '''anatolearn/docker-compose\.yml''',
+  '''anatolearn/\.env\.production\.example''',
+  '''anatolearn/backend/tests/.*''',
+  '''docs/.*''',
+]

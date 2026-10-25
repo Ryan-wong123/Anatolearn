@@ -1,6 +1,7 @@
 const pool = require('../../db');
 async function findProfile(parameters) {
-    return pool.query(`SELECT u.id, u.name, u.email, u.role, u.program_id, p.name AS program_name, u.created_at, u.last_login_at
+    return pool.query(`SELECT u.id, u.name, u.email, u.role, u.program_id, p.name AS program_name, u.created_at, u.last_login_at, (u.mfa_enabled_at IS NOT NULL) AS mfa_enabled,
+      cardinality(u.mfa_recovery_hashes) AS mfa_recovery_codes_left
       FROM users u LEFT JOIN programs p ON p.id = u.program_id WHERE u.id = $1`, parameters);
 }
 async function findPasswordHash(parameters) { return pool.query('SELECT password_hash FROM users WHERE id = $1', parameters); }
@@ -31,4 +32,21 @@ async function exportData(userId) {
     ]);
     return { quiz_attempts: attempts.rows, quiz_answers: answers.rows, favorites: favorites.rows, activity: activity.rows, model_downloads: downloads.rows };
 }
-module.exports = { findProfile, findPasswordHash, updateProfile, findProgram, setPassword, revokeOtherSessions, revokeAllSessions, countOtherActiveTeachers, countOtherActiveAdmins, deleteUser, exportData };
+async function findMfaState(parameters) {
+    return pool.query('SELECT email, mfa_secret, mfa_pending_secret, mfa_last_step, mfa_enabled_at FROM users WHERE id = $1', parameters);
+}
+async function setPendingMfaSecret(parameters) { return pool.query('UPDATE users SET mfa_pending_secret = $2 WHERE id = $1 AND mfa_enabled_at IS NULL', parameters); }
+async function enableMfa(parameters) {
+    return pool.query(`UPDATE users SET mfa_secret = mfa_pending_secret, mfa_pending_secret = NULL, mfa_enabled_at = NOW(), mfa_last_step = $2,
+      mfa_recovery_hashes = $3 WHERE id = $1 AND mfa_pending_secret IS NOT NULL AND mfa_enabled_at IS NULL RETURNING id`, parameters);
+}
+async function disableMfa(parameters) {
+    return pool.query(`UPDATE users SET mfa_secret = NULL, mfa_pending_secret = NULL, mfa_enabled_at = NULL, mfa_last_step = NULL,
+      mfa_recovery_hashes = '{}' WHERE id = $1`, parameters);
+}
+async function replaceRecoveryCodes(parameters) { return pool.query('UPDATE users SET mfa_recovery_hashes = $2 WHERE id = $1', parameters); }
+async function countActiveSessions(parameters) {
+    return pool.query(`SELECT count(*)::int AS n FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+      AND last_seen_at > NOW() - $2::int * INTERVAL '1 minute'`, parameters);
+}
+module.exports = { countActiveSessions, findMfaState, setPendingMfaSecret, enableMfa, disableMfa, replaceRecoveryCodes, findProfile, findPasswordHash, updateProfile, findProgram, setPassword, revokeOtherSessions, revokeAllSessions, countOtherActiveTeachers, countOtherActiveAdmins, deleteUser, exportData };

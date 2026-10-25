@@ -108,8 +108,20 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       const bad=await call(`/api/quizzes/${quiz.id}/submit`,student.token,{session_id:session.session_id,answers:[{question_id:q1.id,selected_option:'B'},{question_id:q1.id,selected_option:'B'}]});assert.equal(bad.status,400);
       assert.equal(Number((await pool.query('SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id=$1',[quiz.id])).rows[0].count),0);
       const body={session_id:session.session_id,answers:[{question_id:q1.id,selected_option:'B'},{question_id:q2.id,answer_text:'Femur'}]};
-      const response=await call(`/api/quizzes/${quiz.id}/submit`,student.token,body);assert.equal(response.status,200);attempt=(await response.json()).attempt;
+      const response=await call(`/api/quizzes/${quiz.id}/submit`,student.token,body);assert.equal(response.status,200);const submitted=await response.json();attempt=submitted.attempt;
+      assert.equal(submitted.status,'pending_review');
+      assert.ok(submitted.feedback.length===1&&submitted.feedback.every((item)=>item.correct_option===null&&item.is_correct===true),'the key is withheld at submit while open-ended answers await marking, but correctness is shown');
       assert.equal((await call(`/api/quizzes/${quiz.id}/submit`,student.token,body)).status,409);
+    });
+    await t.test('answer keys reach students only once the whole attempt is marked',async()=>{
+      const asStudent=await(await call(`/api/attempts/${attempt.id}/answers`,student.token)).json();
+      assert.equal(asStudent.length,2);
+      for(const row of asStudent){assert.equal(row.correct_option,null);assert.equal(row.model_answer,null);}
+      assert.equal(asStudent.find(row=>row.question_id===q1.id).is_correct,true,'whether an MCQ answer was right is still shown');
+      assert.equal(asStudent.find(row=>row.question_id===q1.id).selected_option,'B','their own selection is still shown');
+      const asTeacher=await(await call(`/api/attempts/${attempt.id}/answers`,teacher.token)).json();
+      assert.equal(asTeacher.find(row=>row.question_id===q1.id).correct_option,'B');
+      assert.equal(asTeacher.find(row=>row.question_id===q2.id).model_answer,'Femur');
     });
     await t.test('attempt ownership and transactional grading preserve complete results',async()=>{
       assert.equal((await call(`/api/attempts/${attempt.id}`,other.token)).status,404);
@@ -118,7 +130,35 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       const answers=await(await call(`/api/attempts/${attempt.id}/answers`,teacher.token)).json();
       assert.equal((await call(`/api/attempt-answers/${answers.find(a=>a.question_id===q2.id).id}/grade`,teacher.token,{teacher_score:80},'PATCH')).status,200);
       const result=await(await call(`/api/attempts/${attempt.id}`,student.token)).json();assert.equal(result.score,90);assert.equal(result.status,'graded');
+      const marked=await(await call(`/api/attempts/${attempt.id}/answers`,student.token)).json();
+      assert.equal(marked.find(row=>row.question_id===q1.id).correct_option,'B','once marked the student can review the key');
+      assert.equal(marked.find(row=>row.question_id===q2.id).model_answer,'Femur');
       const all=await(await call(`/api/quizzes/${quiz.id}/attempts`,teacher.token)).json();assert.ok(all.some(a=>a.id===attempt.id&&a.status==='graded'));
+    });
+    await t.test('access checks cannot be bypassed by path case, percent-encoded ids or HEAD requests',async()=>{
+      const encode=(id)=>String(id).replace(/\d/g,(digit)=>'%3'+digit);
+      const guarded=(await pool.query('INSERT INTO models(title,file_path,is_published,program_id) VALUES($1,$2,true,1) RETURNING id',[stamp+'-guarded','/models/guarded.obj'])).rows[0];modelIds.push(guarded.id);
+      const paths=[`/api/attempts/${attempt.id}`,`/api/attempts/${attempt.id}/answers`,`/api/quizzes/${quiz.id}/questions`,`/api/models/${guarded.id}`,`/api/models/${guarded.id}/annotations`];
+      for(const original of paths){
+        const [,, kind, id, ...rest]=original.split('/');
+        const variants=[original,`/api/${kind[0].toUpperCase()+kind.slice(1)}/${id}`+(rest.length?'/'+rest.join('/'):''),`/api/${kind}/${encode(id)}`+(rest.length?'/'+rest.join('/'):''),original.replace('/api/','/api//')];
+        for(const variant of variants){
+          assert.notEqual((await call(variant,other.token)).status,200,`${variant} must not be readable by a student from another programme`);
+          assert.notEqual((await call(variant,other.token,null,'HEAD')).status,200,`HEAD ${variant}`);
+        }
+      }
+      assert.equal((await call(`/api/attempts/${encode(attempt.id)}`,student.token)).status,200);
+      assert.equal((await call('/api/attempts/not-a-number',student.token)).status,404);
+      assert.equal((await call('/api/models/%E0%A4%A',student.token)).status,400);
+    });
+    await t.test('an all-multiple-choice quiz is marked at once, so its review shows the key immediately',async()=>{
+      const mcq=(await pool.query("INSERT INTO quizzes(title,type,is_published,program_id) VALUES($1,'MCQ',true,1) RETURNING *",[stamp+'-mcq'])).rows[0];quizIds.push(mcq.id);
+      const only=(await pool.query("INSERT INTO quiz_questions(quiz_id,question,option_a,option_b,option_c,option_d,correct_option) VALUES($1,'Pick C','A','B','C','D','C') RETURNING *",[mcq.id])).rows[0];
+      const started=await(await call(`/api/quizzes/${mcq.id}/start`,student.token,{})).json();
+      const done=await(await call(`/api/quizzes/${mcq.id}/submit`,student.token,{session_id:started.session_id,answers:[{question_id:only.id,selected_option:'A'}]})).json();
+      assert.equal(done.status,'graded');assert.equal(done.feedback[0].correct_option,'C');assert.equal(done.feedback[0].is_correct,false);
+      const review=await(await call(`/api/attempts/${done.attempt.id}/answers`,student.token)).json();
+      assert.equal(review[0].correct_option,'C');
     });
     await t.test('expired sessions reject late answers',async()=>{
       const expired=await(await call(`/api/quizzes/${quiz.id}/start`,student.token,{})).json();
@@ -175,12 +215,12 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call('/api/health')).status,200);
       assert.equal((await call('/api/programs')).status,200);
       const email=`${stamp}-registration@example.test`;
-      const registered=await call('/api/auth/register',null,{name:stamp,email,password:'Testing123',role:'student',program_id:1});
+      const registered=await call('/api/auth/register',null,{name:stamp,email,password:'Maple9Window',role:'student',program_id:1});
       assert.equal(registered.status,201);
       const account=await registered.json();userIds.push(account.id);
       assert.equal(account.email,email);
       assert.equal('password_hash' in account,false);
-      assert.equal((await call('/api/auth/register',null,{name:stamp,email,password:'Testing123',role:'student'})).status,409);
+      assert.equal((await call('/api/auth/register',null,{name:stamp,email,password:'Maple9Window',role:'student'})).status,409);
       assert.equal((await call('/api/auth/login',null,{email,password:'incorrect'})).status,401);
       assert.equal((await call('/api/auth/logout',null,{})).status,200);
       const untrusted=await fetch(base+'/api/auth/login',{method:'POST',headers:{Origin:'https://untrusted.example','Content-Type':'application/json'},body:'{}'});
@@ -229,13 +269,32 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call(`/api/resources/${resource.id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
       assert.equal((await call('/api/resources',student.token)).status,200);
       assert.equal((await call(`/api/resources/${resource.id}`,teacher.token,null,'DELETE')).status,200);
-      const videoForm=new FormData();videoForm.append('title',stamp);videoForm.append('video',new Blob(['fixture video']),'fixture.mp4');
+      const videoForm=new FormData();videoForm.append('title',stamp);videoForm.append('video',new Blob([Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from('ftypisom'),Buffer.alloc(16)])]),'fixture.mp4');
       const uploadedVideo=await fetch(base+'/api/videos/upload',{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:videoForm});
       assert.equal(uploadedVideo.status,201);const video=await uploadedVideo.json();videoIds.push(video.id);refactorPaths.push(video.video_path);
       assert.equal((await call(`/api/videos/${video.id}`,teacher.token,{title:stamp+'-updated'},'PUT')).status,200);
       assert.equal((await call(`/api/videos/${video.id}/publish`,teacher.token,{is_published:true},'PATCH')).status,200);
       assert.equal((await call(`/api/videos/${video.id}`,student.token)).status,200);
       assert.equal((await call(`/api/videos/${video.id}`,teacher.token,null,'DELETE')).status,200);
+    });
+    await t.test('uploads are validated by content, not just extension, and report client errors as 4xx',async()=>{
+      const send=(path,field,bytes,name,extra={})=>{const form=new FormData();form.append('title',stamp);for(const [key,value] of Object.entries(extra))form.append(key,value);form.append(field,new Blob([bytes]),name);
+        return fetch(base+path,{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:form});};
+      const script=Buffer.from('#!/bin/sh\necho pwned\n');
+      assert.equal((await send('/api/videos/upload','video',script,'evil.mp4')).status,400);
+      assert.equal((await send('/api/videos/upload','video',Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from('ftypisom')]),'renamed.webm')).status,400);
+      assert.equal((await send('/api/resources/upload','file',script,'evil.pdf',{resource_type:'pdf'})).status,400);
+      assert.equal((await send('/api/resources/upload','file',Buffer.from('PK\u0003\u0004 not really a docx'),'fake.docx',{resource_type:'document'})).status,400);
+      assert.equal((await send('/api/resources/upload','file',Buffer.from('<svg onload=alert(1)>'),'x.svg',{resource_type:'image'})).status,400);
+      const legacy=await send('/api/resources/upload','file',Buffer.concat([Buffer.from('d0cf11e0a1b11ae1','hex'),Buffer.alloc(32)]),'legacy.DOC',{resource_type:'document'});
+      assert.equal(legacy.status,201);const created=await legacy.json();resourceIds.push(created.id);
+      assert.match(created.file_path,/\.doc$/);refactorPaths.push(created.file_path);
+    });
+    await t.test('responses carry the one-year HSTS policy without includeSubDomains',async()=>{
+      for(const path of ['/api/health','/api/models']){
+        const header=(await call(path,teacher.token)).headers.get('strict-transport-security');
+        assert.equal(header,'max-age=31536000',path);
+      }
     });
     await t.test('photo materials upload, authenticated delivery and logout cookie clearing',async()=>{
       const form=new FormData();form.append('title',stamp);form.append('resource_type','image');form.append('file',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9x8AAAAASUVORK5CYII=','base64')]),'photo.png');

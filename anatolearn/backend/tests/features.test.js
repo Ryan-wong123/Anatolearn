@@ -59,13 +59,49 @@ test('accounts, CSRF, lockout, profile, announcements, search, dashboard, pagina
 
     await t.test('registration: teacher invite code and email domain allow-list are enforced', async () => {
       process.env.TEACHER_INVITE_CODE = 'invite-123';
-      const register = (extra) => call('/api/auth/register', { body: { name: 'N', password: PASSWORD, program_id: 1, ...extra } });
+      const register = (extra) => call('/api/auth/register', { body: { name: 'N', password: 'Maple9Window', program_id: 1, ...extra } });
       assert.equal((await register({ email: `${stamp}-t@example.test`, role: 'teacher' })).status, 403);
       process.env.ALLOWED_EMAIL_DOMAINS = 'school.edu';
       assert.equal((await register({ email: `${stamp}-s@example.test`, role: 'student' })).status, 400);
       const created = await register({ email: `${stamp}-s@school.edu`, role: 'student' });
       assert.equal(created.status, 201); userIds.push((await created.json()).id);
       delete process.env.ALLOWED_EMAIL_DOMAINS;
+    });
+
+    await t.test('weak passwords are refused wherever a password is set, with staff held to 12 characters', async () => {
+      const register = (extra) => call('/api/auth/register', { body: { name: 'Pat Example', program_id: 1, role: 'student', ...extra } });
+      const email = `${stamp}-policy@school.edu`;
+      for (const password of ['Password1', 'P@ssw0rd!', 'Welcome2024', 'Qwerty123', 'Aaaaaaa1A', 'Short1A', 'alllowercase1', 'NoDigitsHere'])
+        assert.equal((await register({ email, password })).status, 400, password);
+      assert.match((await (await register({ email, password: 'Password1' })).json()).message, /too common/);
+      assert.match((await (await register({ email, password: 'PatExample2024x' })).json()).message, /name or email/);
+      const first = await register({ email, password: 'Maple9Window' });
+      assert.equal(first.status, 201); userIds.push((await first.json()).id);
+
+      // Teachers: 12 characters minimum (Maple9Window is 12, Zebra4Cloud is 11).
+      const teacherRegister = (password) => call('/api/auth/register', { body: { name: 'Pat Teacher', email: `${stamp}-policy-t@school.edu`, password, role: 'teacher', program_id: 1, invite_code: 'invite-123' } });
+      assert.equal((await teacherRegister('Zebra4Cloud')).status, 400);
+      assert.match((await (await teacherRegister('Zebra4Cloud')).json()).message, /at least 12 characters for teachers/);
+      const staff = await teacherRegister('Maple9Window');
+      assert.equal(staff.status, 201); userIds.push((await staff.json()).id);
+
+      // Administrators setting a password for someone else are held to the same rules, using that person's role.
+      const target = await createUser('teacher', 1, 'policy-target');
+      const reset = (password) => call(`/api/users/${target.id}/reset-password`, { token: admin.token, method: 'POST', body: { password } });
+      for (const password of ['Password1234', 'Zebra4Cloud', 'Welcome123456']) assert.equal((await reset(password)).status, 400, password);
+      assert.equal((await reset('Blue-Tractor-Lamp-7')).status, 200);
+      const create = (role, password) => call('/api/users', { token: admin.token, body: { name: 'Sam Created', email: `${stamp}-${role}-created@school.edu`, role, password } });
+      assert.equal((await create('admin', 'Zebra4Cloud')).status, 400);
+      assert.equal((await create('student', 'Password1')).status, 400);
+      const student = await create('student', 'Zebra4Cloud');
+      assert.equal(student.status, 201); userIds.push((await student.json()).user.id);
+
+      // Changing your own password follows the same rules.
+      const change = (token, new_password, current_password) => call('/api/profile/password', { token, method: 'PUT', body: { current_password, new_password } });
+      const own = await login(target.email, 'Blue-Tractor-Lamp-7');
+      assert.equal((await change(own.token, 'Password1234', 'Blue-Tractor-Lamp-7')).status, 400);
+      assert.equal((await change(own.token, 'Zebra4Cloud', 'Blue-Tractor-Lamp-7')).status, 400, 'a teacher needs 12 characters');
+      assert.equal((await change(own.token, 'Maple9Window77', 'Blue-Tractor-Lamp-7')).status, 200);
     });
 
     await t.test('five wrong passwords lock the account until an administrator unlocks it', async () => {
@@ -109,16 +145,16 @@ test('accounts, CSRF, lockout, profile, announcements, search, dashboard, pagina
       const first = await login(mine.email), second = await login(mine.email);
       const updated = await (await call('/api/profile', { token: first.token, method: 'PUT', body: { name: 'New Name', program_id: 2 } })).json();
       assert.equal(updated.name, 'New Name'); assert.equal(updated.program_id, 1);
-      assert.equal((await call('/api/profile/password', { token: first.token, method: 'PUT', body: { current_password: 'nope', new_password: 'Newpass123' } })).status, 403);
+      assert.equal((await call('/api/profile/password', { token: first.token, method: 'PUT', body: { current_password: 'nope', new_password: 'Orange55Pencil' } })).status, 403);
       assert.equal((await call('/api/profile/password', { token: first.token, method: 'PUT', body: { current_password: PASSWORD, new_password: 'weak' } })).status, 400);
-      assert.equal((await call('/api/profile/password', { token: first.token, method: 'PUT', body: { current_password: PASSWORD, new_password: 'Newpass123' } })).status, 200);
+      assert.equal((await call('/api/profile/password', { token: first.token, method: 'PUT', body: { current_password: PASSWORD, new_password: 'Orange55Pencil' } })).status, 200);
       assert.equal((await call('/api/profile', { token: second.token })).status, 401);
       assert.equal((await call('/api/profile', { token: first.token })).status, 200);
       const exported = await call('/api/profile/export', { token: first.token });
       assert.match(exported.headers.get('content-disposition'), /attachment/);
       assert.equal((await exported.json()).account.email, mine.email);
       assert.equal((await call('/api/profile', { token: first.token, method: 'DELETE', body: { password: 'wrong' } })).status, 403);
-      assert.equal((await call('/api/profile', { token: first.token, method: 'DELETE', body: { password: 'Newpass123' } })).status, 200);
+      assert.equal((await call('/api/profile', { token: first.token, method: 'DELETE', body: { password: 'Orange55Pencil' } })).status, 200);
       assert.equal((await login(mine.email, 'Newpass123')).status, 401);
     });
 

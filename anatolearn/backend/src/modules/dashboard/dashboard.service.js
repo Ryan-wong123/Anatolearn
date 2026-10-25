@@ -15,7 +15,7 @@ async function getMyStats(input) {
 async function getDashboard(input) {
     if (input.user.role === 'admin') return { ...meta(), status: 200, kind: 'json', body: { role: 'admin' } };
     if (input.user.role === 'teacher') {
-        return { ...meta(), status: 200, kind: 'json', body: { role: 'teacher', ...(await repository.teacherOverview()),
+        return { ...meta(), status: 200, kind: 'json', body: { role: 'teacher', ...(await repository.teacherOverview([input.user.id])),
             announcements: (await announcements.listAll()).rows.slice(0, 5) } };
     }
     const [recent, counts, news, stats] = await Promise.all([
@@ -25,7 +25,7 @@ async function getDashboard(input) {
     const visible = (await visibleRows({ ...input, headers: {} }, recent.rows)).slice(0, 6).map(({ is_published, program_id, ...rest }) => rest);
     return { ...meta(), status: 200, kind: 'json', body: { role: 'student', recent: visible, counts: counts.rows[0], announcements: news.rows.slice(0, 5), ...stats } };
 }
-async function getTeacherOverview() {
-    return { ...meta(), status: 200, kind: 'json', body: await repository.teacherOverview() };
+async function getTeacherOverview(input) {
+    return { ...meta(), status: 200, kind: 'json', body: await repository.teacherOverview([input.user.id]) };
 }
 module.exports = { getDashboard, getMyStats, getTeacherOverview };

@@ -2,7 +2,7 @@ const repository = require('./publicCatalog.repository');
 async function health(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     try {
-        const result = await repository.checkDatabase();
+        await repository.checkDatabase();
         return ({ ...outcomeMeta, status: 200, kind: 'json', body: { status: "ok" } });
     }
     catch (err) {

@@ -127,7 +127,7 @@ export default function Announcements() {
                     {item.author ? `Posted by ${item.author} · ` : ''}<time dateTime={item.created_at}>{formatDateTime(item.created_at)}</time>
                     {item.expires_at && <> · {expired ? 'Expired' : 'Visible until'} <time dateTime={item.expires_at}>{formatDateTime(item.expires_at)}</time></>}
                   </p>
-                  {isTeacher && (
+                  {isTeacher && item.can_manage !== false && (
                     <div className="flex gap-2">
                       <button type="button" onClick={() => setEditing(item)} aria-label={`Edit ${item.title}`} className={smallButton}><Pencil className="h-3 w-3" aria-hidden="true" />Edit</button>
                       <button type="button" onClick={() => remove(item)} aria-label={`Delete ${item.title}`} className={`${smallButton} !text-red-700 dark:!text-red-300`}><Trash2 className="h-3 w-3" aria-hidden="true" />Delete</button>

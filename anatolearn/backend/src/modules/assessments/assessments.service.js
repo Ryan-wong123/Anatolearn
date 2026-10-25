@@ -94,8 +94,9 @@ async function submitQuiz(input) {
         await repository.commit(client);
         return ({ ...outcomeMeta, status: 200, kind: 'json', body: { attempt, status, score, total: questions.length, correct: openCount ? null : correct,
                 incorrect: openCount ? null : questions.length - correct, mcq_count: questions.length - openCount, open_ended_count: openCount,
+                // The key is withheld while open-ended answers still await marking (see getAttemptAnswers).
                 feedback: answers.filter((a) => a.is_correct !== null).map((a) => ({ ...a,
-                    correct_option: questions.find((q) => q.id === a.question_id).correct_option })) } });
+                    correct_option: openCount ? null : questions.find((q) => q.id === a.question_id).correct_option })) } });
     }
     catch (error) {
         await repository.rollback(client);

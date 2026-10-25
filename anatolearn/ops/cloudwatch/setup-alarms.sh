@@ -31,6 +31,26 @@ aws logs put-metric-filter --log-group-name "$LOG_GROUP" --filter-name app-error
 alarm app-errors --namespace AnatoLearn --metric-name AppErrors --statistic Sum --period 300 --evaluation-periods 1 \
   --threshold 5 --comparison-operator GreaterThanOrEqualToThreshold --treat-missing-data notBreaching
 
+# Security events. The API logs one {"msg":"security_event","action":...} line for each failed sign-in, MFA failure, lockout,
+# recovery-code use and MFA reset (see backend/src/audit.js). Lines hold ids and IPs only. Tune the thresholds to your user base.
+#   event_alarm <name> <metric> <period seconds> <threshold> <description> '<action>' ['<action>' ...]
+event_alarm() {
+  local name="$1" metric="$2" period="$3" threshold="$4" description="$5"; shift 5
+  local pattern="" action
+  for action in "$@"; do pattern="${pattern:+$pattern || }($.action = \"$action\")"; done
+  aws logs put-metric-filter --log-group-name "$LOG_GROUP" --filter-name "$name" \
+    --filter-pattern "{ ($.msg = \"security_event\") && ($pattern) }" \
+    --metric-transformations metricName="$metric",metricNamespace=AnatoLearn,metricValue=1,defaultValue=0 2>/dev/null || return 0
+  alarm "$name" --alarm-description "$description" --namespace AnatoLearn --metric-name "$metric" --statistic Sum --period "$period" \
+    --evaluation-periods 1 --threshold "$threshold" --comparison-operator GreaterThanOrEqualToThreshold --treat-missing-data notBreaching
+}
+event_alarm mfa-failures MfaFailures 300 5 "5 or more wrong two-factor codes in 5 minutes: someone may have a staff password" auth.mfa_failed
+event_alarm account-lockouts AccountLockouts 900 3 "3 or more accounts locked in 15 minutes: password guessing in progress" auth.account_locked
+event_alarm login-failures LoginFailures 300 25 "25 or more failed sign-ins in 5 minutes: credential stuffing or a broken client" auth.login_failed
+event_alarm mfa-reset MfaReset 300 1 "Two-factor authentication was reset or turned off for an account: confirm it was intended" user.reset_mfa profile.mfa_disabled
+event_alarm mfa-recovery-used MfaRecoveryUsed 300 1 "A two-factor recovery code was used to sign in: confirm it was the account owner" auth.mfa_recovery_used
+event_alarm password-reset PasswordReset 300 1 "An administrator reset a user's password: confirm it was intended" user.reset_password
+
 # Backup freshness: the backup container logs {"msg":"backup ok"} once per run
 aws logs put-metric-filter --log-group-name "$LOG_GROUP" --filter-name backup-ok \
   --filter-pattern '{ $.msg = "backup ok" }' --metric-transformations metricName=BackupOk,metricNamespace=AnatoLearn,metricValue=1,defaultValue=0 2>/dev/null || true
