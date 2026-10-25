@@ -196,6 +196,7 @@ chmod 600 .env.production
 | `SITE_DOMAIN` / `FRONTEND_ORIGINS` | `anatolearn.example.com` (no `https://`) and `https://anatolearn.example.com` (no trailing slash; comma-separate several) |
 | `AWS_REGION`, `S3_BUCKET`, `S3_PREFIX` | Storage location (prefix optional) |
 | `CLAMAV_REQUIRED` | `true` (default) rejects uploads while the scanner is down; `false` lets them through with a log warning |
+| `SESSION_IDLE_MINUTES_STAFF` / `SESSION_IDLE_MINUTES_STUDENT` | Minutes without any request after which a session stops working (5 to 1440). Defaults 120 for teachers and administrators and 480 for students; the 24 hour absolute limit always applies. Anyone can also end all their sessions from Profile -> Signed-in devices |
 | `MFA_REQUIRED` | `true` (the default in `docker-compose.prod.yml`) forces every teacher and administrator to set up two-factor authentication before they can use the site, and stops them turning it off. `false` makes it optional |
 | `MFA_ENCRYPTION_KEY` | **Set this before anyone enrols**: `openssl rand -hex 32` (at least 32 characters). It encrypts the stored authenticator secrets. If left empty the key is derived from `JWT_SECRET`. Back it up with the rest of `.env.production`, and never change it afterwards (see "Two-factor authentication" below) |
 | `BACKUP_INTERVAL_HOURS` | Database backup frequency, default 24 |
@@ -321,6 +322,19 @@ cd ops/cloudwatch
 INSTANCE_ID=i-XXXX ALERT_EMAIL=you@example.com DOMAIN=$DOMAIN AWS_REGION=$AWS_REGION ./setup-alarms.sh
 ```
 
+**Security alarms.** The same script also creates alarms from the security events the API writes to the log (one `{"msg":"security_event"}` line per failed sign-in, wrong two-factor code, lockout, recovery-code use, password or two-factor reset, with ids and IPs only, never names or emails). They need the logs to reach CloudWatch (the override file above) and notify the same email topic:
+
+| Alarm | Fires when | What to do |
+|---|---|---|
+| `anatolearn-mfa-failures` | 5 or more wrong two-factor codes in 5 minutes | Someone has a staff password. Find the account in **Users -> Audit log** (`auth.mfa_failed`), contact the owner and reset their password |
+| `anatolearn-account-lockouts` | 3 or more accounts locked in 15 minutes | Password guessing is under way. Check the IPs, and block them at the security group or Caddy if one source dominates |
+| `anatolearn-login-failures` | 25 or more failed sign-ins in 5 minutes | Credential stuffing, or a broken client or script |
+| `anatolearn-mfa-reset` | Two-factor reset by an administrator or turned off by the user | Confirm with the account owner that it was them |
+| `anatolearn-mfa-recovery-used` | A recovery code was used to sign in | Confirm it was the account owner, who should then generate new codes |
+| `anatolearn-password-reset` | An administrator reset someone's password | Confirm it was intended |
+
+The thresholds suit a small school. To change one, edit the numbers on the `event_alarm` lines in `ops/cloudwatch/setup-alarms.sh` and run it again. The script is safe to re-run (it updates existing alarms), but it creates a new Route 53 health check and SNS subscription each time, so only re-run it when you need to. Security event logging is on in production by default; set `LOG_SECURITY_EVENTS=false` to turn it off, or `true` to enable it elsewhere. For a quick look without an alarm use Logs Insights: `filter msg = "security_event" | stats count() by action, bin(1h)`.
+
 Confirm the two SNS subscription emails (one per region). For the memory and disk alarms install the CloudWatch agent on the instance and load the supplied config:
 
 ```bash
@@ -399,6 +413,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 | Browser shows certificate error | DNS not yet pointing at the Elastic IP, or ports 80/443 blocked; see `docker compose logs caddy` |
 | Login works but you are logged out immediately / 403 "Untrusted request origin" | `FRONTEND_ORIGINS` does not exactly match the browser origin (scheme, host, no trailing slash) |
 | Writes return 403 "Invalid or missing CSRF token" | A script uses the session cookie without the `X-CSRF-Token` header; use a Bearer token, or reload the page in the browser |
+| Users are signed out unexpectedly | Expected after the idle limit (2 hours for staff, 8 hours for students by default) or 24 hours after signing in, or after they used "Sign out on all devices", changed their password or enabled two-factor authentication. Raise `SESSION_IDLE_MINUTES_*` if the limit is too short for your classes |
 | A user cannot sign in after a few attempts | Locked for 15 minutes; a teacher can unlock them under Users |
 | Registering, changing a password or creating an account fails with "too common or easy to guess" or "must not contain your name or email" | The password policy (`backend/src/passwords.js`) rejects common passwords, keyboard runs, repeated patterns and passwords that include the person's name or email, even with capitals, digits or symbols added. Choose a few unrelated words instead |
 | Registration says "limited to @school.edu" | `ALLOWED_EMAIL_DOMAINS` is set; use an allowed address, or an administrator can create the account under Users |

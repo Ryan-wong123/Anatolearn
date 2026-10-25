@@ -134,8 +134,19 @@ test('staff two-factor authentication: enrolment, challenge, replay, recovery, l
       const { secret } = await enrol(victim);
       await pool.query('UPDATE users SET mfa_last_step=NULL WHERE id=$1', [victim.id]);
       const token = await challenge(victim);
-      for (let attempt = 0; attempt < 5; attempt += 1)
-        assert.equal((await call('/api/auth/mfa/verify', { body: { mfa_token: token, code: '000000' } })).status, 401);
+      // Security events also go to the log stream (for CloudWatch alarms): ids and IPs only, never names or emails.
+      process.env.LOG_SECURITY_EVENTS = 'true';
+      const lines = [], originalLog = console.log;
+      console.log = (...args) => { lines.push(args.join(' ')); };
+      try {
+        for (let attempt = 0; attempt < 5; attempt += 1)
+          assert.equal((await call('/api/auth/mfa/verify', { body: { mfa_token: token, code: '000000' } })).status, 401);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } finally { console.log = originalLog; delete process.env.LOG_SECURITY_EVENTS; }
+      const events = lines.filter((line) => line.startsWith('{')).map((line) => JSON.parse(line)).filter((event) => event.msg === 'security_event' && event.actor === victim.id);
+      assert.equal(events.filter((event) => event.action === 'auth.mfa_failed').length, 4);
+      assert.equal(events.filter((event) => event.action === 'auth.account_locked').length, 1, 'the fifth failure locks the account');
+      assert.ok(events.every((event) => event.level === 'warn' && !JSON.stringify(event).includes(stamp) && !JSON.stringify(event).includes('example.test')));
       const locked = await call('/api/auth/mfa/verify', { body: { mfa_token: token, code: mfa.codeFor(secret, mfa.currentStep()) } });
       assert.equal(locked.status, 401);
       assert.equal(sessionFrom(locked), undefined);
