@@ -40,7 +40,7 @@ async function registerSuccessfulLogin(parameters) {
     return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1', parameters);
 }
 async function findLockState(parameters) {
-    return pool.query('SELECT (locked_until > NOW()) AS is_locked FROM users WHERE id = $1', parameters);
+    return pool.query('SELECT (locked_until > NOW()) AS is_locked, CEIL(EXTRACT(EPOCH FROM (locked_until - NOW())) / 60)::int AS minutes_left FROM users WHERE id = $1', parameters);
 }
 async function clearFailedLogins(parameters) {
     return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = $1', parameters);

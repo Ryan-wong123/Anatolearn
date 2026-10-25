@@ -38,7 +38,7 @@ async function checkPassword(input, password, wrongMessage = 'Password is incorr
     const state = (await authRepository.findLockState([input.user.id])).rows[0];
     if (state && state.is_locked) {
         await record({ actor: input.user, action: 'auth.password_check_blocked_locked', targetType: 'user', targetId: input.user.id, ip: input.ip });
-        return fail(429, 'Too many incorrect attempts. Try again later.');
+        return fail(429, `Too many incorrect attempts. Try again in ${Math.max(1, state.minutes_left)} minute${state.minutes_left > 1 ? 's' : ''}.`);
     }
     if (!(await passwordMatches(input.user.id, password))) {
         const { rows } = await authRepository.registerFailedLogin([input.user.id, Number(process.env.MAX_FAILED_LOGINS) || 5, Number(process.env.LOCKOUT_MINUTES) || 15]);
