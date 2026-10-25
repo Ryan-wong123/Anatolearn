@@ -375,6 +375,14 @@ Database changes are automatic: every new numbered file in `backend/sql` (e.g. `
 
 ### Upgrading an existing deployment to this version
 
+- **Deleting content now deletes its files.** Files left behind by earlier deletions still sit in storage (and count against nothing, but cost space). After deploying, list them and then remove them from the backend container (a snapshot or S3 versioning keeps a way back):
+
+  ```bash
+  docker compose -f docker-compose.prod.yml exec backend npm run cleanup:orphans                 # dry run: counts and sizes only
+  docker compose -f docker-compose.prod.yml exec backend npm run cleanup:orphans -- --delete     # remove them
+  ```
+  Files newer than 24 hours are skipped (an upload may be in progress); change it with `--min-age-hours N`. Always read the dry-run list before `--delete`.
+
 - **Content ownership (migration `020_content_owner.sql`)** is applied automatically. From now on a teacher can change, delete, publish or grade only what they created, and sees quiz attempts, answer keys and dashboard figures only for their own quizzes. Content that exists today has no recorded owner, so it is **unclaimed**: any teacher can still change it until it is claimed. After the first deploy:
   1. Ask each teacher to open their pages and press **Claim** under the items that are theirs (every unclaimed item shows "No owner yet" with a Claim button), or
   2. As an administrator open **Users -> Assign unclaimed content** and give all of it to one teacher, then use **Transfer content** on that teacher's row to hand parts on if needed (it moves everything one teacher owns to another, so it suits whole handovers rather than splitting).
@@ -417,6 +425,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 
 | Symptom | Cause / fix |
 |---|---|
+| A teacher, or you, gets `429 Too many incorrect attempts` on Profile (password change, delete account, two-factor) | Wrong passwords there count toward the same lockout as login. It clears after `LOCKOUT_MINUTES`, or an administrator can unlock the account from Users |
+| Deleting a quiz returns 409 | The quiz has student attempts or an active session. Unpublish it instead; deleting would erase the results |
 | Compose says a variable is required | A value is missing from `.env.production`; compose names which one |
 | Backend exits: `Invalid configuration:` followed by a list | The startup checks found unsafe values; each line names the variable and what is wrong (step 9). Fix `.env.production` and run `up -d` again |
 | Backend exits: `JWT_SECRET must be set...` | Secret missing or under 32 characters |

@@ -45,7 +45,7 @@ Multipart form: `title` (required), `description?`, `program_id?`, `body_system?
 Body: `{ title, description?, body_system?, body_part? }`. Updates model metadata. 400 if no title, 404 if not found.
 
 ### `DELETE /api/models/:id` (teacher only)
-Deletes the database row. 404 if not found. **Known gap:** does not delete the underlying file from disk, same known gap as video delete.
+Deletes the database row, then the model file and thumbnail from storage (unless another row still uses the same file). 404 if not found. Files that predate this behaviour can be found with `npm run cleanup:orphans`.
 
 ### `PATCH /api/models/:id/publish` (teacher only)
 Body: `{ is_published: boolean }`. Toggles visibility.
@@ -103,7 +103,7 @@ Teacher-only. Removes the track from the video and returns the updated record (`
 Authenticated asset route, not public static hosting. Access follows the owning video’s visibility and programme policy, so students can load tracks only for accessible published videos; teachers can preview draft tracks. Serves private/no-store WebVTT with nosniff protections.
 
 ### `DELETE /api/videos/:id` (added 15 Jul 2026)
-Deletes a video's database row. 404 if not found. As with video/media assets, deleting the row does not currently garbage-collect the underlying files.
+Deletes a video's database row, then its video, captions and thumbnail files from storage (unless another row still uses them). 404 if not found.
 
 ### `PATCH /api/videos/:id/publish` (added 15 Jul 2026)
 Body: `{ is_published: boolean }`. Toggles publish state, same pattern as the quiz equivalent. 404 if not found.
@@ -129,7 +129,7 @@ Returns quizzes. Optional query param `?published=true` filters to `is_published
 Body: `{ title, description?, type: 'MCQ'|'Practical'|'Mixed', category?, program_id? }`. Creates a quiz with `is_published: false`. 400 if `title` or `type` missing. In practice, the frontend always sends `type: 'MCQ'` here as a placeholder and overwrites it later via `PATCH /api/quizzes/:id/type` once the real question formats are known.
 
 ### `DELETE /api/quizzes/:id`
-Deletes a quiz. Cascades to delete its `quiz_questions`, `quiz_attempts`, and (via `quiz_attempts`) `quiz_attempt_answers`. 404 if not found.
+Deletes a quiz and its `quiz_questions`. **409** if any student has attempted it or has an active session, because deleting would erase their results; unpublish the quiz instead. 404 if not found.
 
 ### `PATCH /api/quizzes/:id/publish`
 Body: `{ is_published: boolean }`. Toggles publish state. 404 if not found.
@@ -202,21 +202,23 @@ Hashes the password with bcrypt (10 rounds, via `bcryptjs`) and stores it in the
 **Open registration, confirmed as a deliberate decision (20 Jul 2026):** anyone can self-register as `'teacher'` through the Register page with no invite code, approval step, or other gate — the `role` dropdown just lets them pick it. This matches `tasks.md`/`PRD.md` as written (neither specifies any restriction), so it wasn't a gap, it's what was built as specified. Explicitly confirmed with to leave as-is for now rather than add a gating mechanism. Revisit if teacher-account integrity becomes a concern later — options would include an invite/approval flow or an admin-only role-assignment step.
 
 ### `POST /api/auth/login`
-Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, compares `password` against the stored bcrypt hash. On success, signs a JWT (`HS256`, 24h expiry) with payload `{ id, name, role, program_id }` and returns:
+Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, compares `password` against the stored bcrypt hash. On success, creates a server-side session, signs a JWT (`HS256`, 24h absolute expiry plus an idle timeout) with payload `{ id, name, role, program_id, sid }`, sets it in the HttpOnly `anatolearn_session` cookie (with the readable `anatolearn_csrf` cookie) and returns only:
 
 ```json
 {
- "token": "string",
- "user": { "id", "name", "email", "role", "program_id" }
+ "user": { "id", "name", "email", "role", "program_id" },
+ "mfa_setup_required": false
 }
 ```
+
+The token is not in the body. API clients that cannot use cookies may still send a JWT as a Bearer token.
 
 - If the account has two-factor authentication on, the response is instead `{ "mfa_required": true, "mfa_token": "..." }` (no session cookie yet). Send the token and a code to `POST /api/auth/mfa/verify`. On a normal sign-in the body also contains `mfa_setup_required` (true when the account's role requires two-factor authentication and it is not set up).
 - 401 if the email doesn't exist **or** the password is wrong — deliberately the same generic `"Invalid email or password"` message either way, so a failed login can't be used to check which emails are registered
 - 400 if `email` or `password` is missing
 - 500 if `JWT_SECRET` isn't configured on the server (logged as a startup warning too)
 
-Tested: correct login (200 + token), wrong password (401), non-existent email (401, identical message to wrong password), missing password (400), case-insensitive email match (200). See `testing_log.md`.
+Tested: correct login (200, session cookie), wrong password (401), non-existent email (401, identical message to wrong password), missing password (400), case-insensitive email match (200). See `testing_log.md`.
 
 ### Auth middleware (current implementation, 22 October 2026)
 
@@ -272,7 +274,7 @@ Model upload adds USDZ and validates GLB/glTF/OBJ/USDZ headers/content structure
 
 ## Session lifecycle update — 22 October 2026
 
-Login retains `{token,user}` and the media cookie, adding a UUID `sid` JWT claim backed by auth_sessions. Authenticated API and asset requests require an unrevoked, unexpired stored session; current role/programme are read from users. Tokens without sid require re-login. Logout revokes the presented bearer/cookie session and clears its cookie; repeating logout with an invalid/expired token still clears the cookie. Other sessions remain signed in.
+Login sets the session cookie and returns `{ user }` (no token in the body), adding a UUID `sid` JWT claim backed by auth_sessions. Authenticated API and asset requests require an unrevoked, unexpired stored session; current role/programme are read from users. Tokens without sid require re-login. Logout revokes the presented bearer/cookie session and clears its cookie; repeating logout with an invalid/expired token still clears the cookie. Other sessions remain signed in.
 
 `POST /api/quizzes/:id/start` additionally returns `server_now` and `session_expires_at`. The UI uses server_now to correct clock offset. `expires_at` remains the optional assessment timer; the independent lease prevents abandoned untimed sessions from lasting indefinitely. Submission returns 409 after either the lease or timed deadline plus ten seconds. Question edits stay blocked during this transport grace. Maintenance closes expired sessions and later removes closed session records, without deleting historical attempts/answers.
 
@@ -300,12 +302,14 @@ List endpoints for models, videos, quizzes and resources accept optional `page` 
 - `PUT /api/profile/password` `{ current_password, new_password }` (the password policy: 8 characters, 12 for teachers and administrators, 72 bytes at most, uppercase letter and number, not common, not containing the name or email; a 400 explains which rule failed). Signs out all other sessions. The same policy applies to `POST /api/auth/register` and to passwords an administrator sets in `POST /api/users` and `POST /api/users/:id/reset-password`.
 - `GET /api/favorites` (student) returns `{ videos, quizzes, models, resources }`; `POST /api/favorites` `{ item_type: 'video'|'quiz'|'model'|'resource', item_id }` and `DELETE /api/favorites/:item_type/:item_id` accept the same four types (models and resources added by migration 017). Unpublished or other-programme content is excluded/refused.
 - `GET /api/profile/export` downloads the user's own data as JSON (account, quiz attempts and answers, favourites, activity, downloads).
+- `PUT /api/profile/password`, `DELETE /api/profile`, `POST /api/profile/mfa/setup` and the two-factor disable/recovery-code endpoints count a wrong password toward the account lockout (the same 5 failures / 15 minutes as login); while locked they return **429** even for the correct password.
 - `DELETE /api/profile` `{ password }` deletes the account. The only active teacher cannot delete themselves.
 
 ## Content ownership
 
 Teachers own what they create. Routes that change, delete, publish or grade content (models, videos, quizzes and their questions, resources, annotations, question-bank entries, announcements, attempt grading, program assignment) answer **403** `{ message: "This belongs to another teacher..." }` when the content belongs to another teacher, and **404** when it is another teacher's unpublished draft. `GET /api/quizzes/:id/attempts`, `/attempts/pending`, `/api/attempts/:id` and `/api/attempts/:id/answers` are limited to the quiz owner, and `GET /api/quizzes/:id/questions` returns answer keys only to the owner. `/api/teacher/overview` and `/api/dashboard` count only the teacher's own quizzes' attempts. Content rows returned to teachers carry `can_manage` and `owner_name`; students and administrators get neither (nor `owner_id`).
 
+- Deleting a resource (`DELETE /api/resources/:id`) also removes its stored file unless it is a link; models and videos behave the same, so deleted uploads stop counting toward quotas.
 - `POST /api/:kind/:id/claim` (teacher; kind is `models`, `videos`, `quizzes`, `resources`, `question-bank` or `announcements`) takes ownership of content nobody owns. 409 if another teacher owns it, 404 if it does not exist or is another teacher's draft.
 - `POST /api/users/:id/transfer-content` `{ to_user_id }` (administrator) moves everything the user owns to an active teacher and returns `{ moved, total, to }`.
 - `POST /api/content/assign-unclaimed` `{ to_user_id }` (administrator) gives all unclaimed content to an active teacher.
