@@ -3,6 +3,7 @@ const repository = require('./profile.repository');
 const { record } = require('../../audit');
 const { CSRF_COOKIE } = require('../../csrf');
 const mfa = require('../../mfa');
+const { idleMinutes } = require('../../sessionPolicy');
 const { passwordProblem } = require('../../passwords');
 const { checkSecondFactor } = require('../auth/auth.service');
 const authRepository = require('../auth/auth.repository');
@@ -11,7 +12,9 @@ const fail = (status, message) => ({ ...meta(), status, kind: 'json', body: { me
 
 async function getProfile(input) {
     const profile = (await repository.findProfile([input.user.id])).rows[0];
-    return { ...meta(), status: 200, kind: 'json', body: { ...profile, mfa_required: mfa.mfaRequired(profile.role) } };
+    const idle = idleMinutes(profile.role);
+    const active = (await repository.countActiveSessions([input.user.id, idle])).rows[0].n;
+    return { ...meta(), status: 200, kind: 'json', body: { ...profile, mfa_required: mfa.mfaRequired(profile.role), active_sessions: active, session_idle_minutes: idle } };
 }
 async function updateProfile(input) {
     const { name, program_id } = input.body;
@@ -107,4 +110,11 @@ async function regenerateRecoveryCodes(input) {
     await record({ actor: input.user, action: 'profile.mfa_recovery_regenerated', targetType: 'user', targetId: input.user.id, ip: input.ip });
     return { ...meta(), status: 200, kind: 'json', body: { recovery_codes: codes } };
 }
-module.exports = { setupMfa, enableMfa, disableMfa, regenerateRecoveryCodes, getProfile, updateProfile, changePassword, exportData, deleteAccount };
+// Ends every session of this account, including the one making the request (a stolen cookie stops working too).
+async function signOutEverywhere(input) {
+    await repository.revokeAllSessions([input.user.id]);
+    await record({ actor: input.user, action: 'profile.signout_everywhere', targetType: 'user', targetId: input.user.id, ip: input.ip });
+    return { ...meta(), status: 200, kind: 'json', body: { message: 'Signed out on all devices' },
+        cookies: [{ name: 'anatolearn_session', clear: true, options: { path: '/' } }, { name: CSRF_COOKIE, clear: true, options: { path: '/' } }] };
+}
+module.exports = { signOutEverywhere, setupMfa, enableMfa, disableMfa, regenerateRecoveryCodes, getProfile, updateProfile, changePassword, exportData, deleteAccount };

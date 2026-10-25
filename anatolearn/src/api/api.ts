@@ -176,6 +176,7 @@ export const api = {
         apiFetch('/profile/mfa/disable', { method: 'POST', body: JSON.stringify({ password, code }) }),
     mfaRecoveryCodes: (password: string, code: string): Promise<{ recovery_codes: string[] }> =>
         apiFetch('/profile/mfa/recovery-codes', { method: 'POST', body: JSON.stringify({ password, code }) }),
+    signOutEverywhere: (): Promise<{ message: string }> => apiFetch('/profile/sessions', { method: 'DELETE' }),
     exportMyData: () => downloadFile('/profile/export'),
     deleteMyAccount: (password: string) => apiFetch('/profile', { method: 'DELETE', body: JSON.stringify({ password }) }),
 
