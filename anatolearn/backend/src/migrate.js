@@ -29,7 +29,7 @@ async function migrate(pool, { log = console.log } = {}) {
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
-        throw new Error(`Migration ${name} failed: ${error.message}`);
+        throw new Error(`Migration ${name} failed: ${error.message}`, { cause: error });
       }
       ran.push(name);
       log('Applied migration', name);

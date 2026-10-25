@@ -42,6 +42,8 @@ jobs:
           cache: npm
           cache-dependency-path: anatolearn/backend/package-lock.json
       - run: npm ci
+      # Includes eslint-plugin-security: eval, child_process, non-literal require/fs paths and unsafe regexes fail the build.
+      - run: npm run lint
       - run: mkdir -p "$PUBLIC_DIR/models/anatomy"
       - run: npm run migrate
       - run: npm test

@@ -6,6 +6,7 @@
     "dev": "node --watch src/server.js",
     "maintenance": "node src/maintenance.js",
     "start": "node src/server.js",
+    "lint": "eslint . --max-warnings 0",
     "test": "node --test tests/access.test.js tests/layers.test.js tests/mfa.test.js tests/config.test.js tests/passwords.test.js",
     "test:integration": "node --test tests/integration.test.js tests/features.test.js tests/mfa.integration.test.js",
     "migrate": "node src/migrate.js",
@@ -22,5 +23,11 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-security": "^4.2.0",
+    "globals": "^17.13.0"
   }
 }
