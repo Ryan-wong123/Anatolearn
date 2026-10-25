@@ -318,6 +318,7 @@ Schema changes are numbered files in `anatolearn/backend/sql`, applied once each
 | Table / columns | Purpose |
 |---|---|
 | `users.is_active`, `failed_login_count`, `locked_until`, `last_login_at`, `password_changed_at` | Account disabling, per-account lockout, sign-in history |
+| `users.mfa_secret`, `mfa_pending_secret`, `mfa_enabled_at`, `mfa_last_step`, `mfa_recovery_hashes` | Two-factor authentication (migration `018_mfa.sql`). Secrets are stored AES-256-GCM encrypted, `mfa_last_step` blocks code replay, recovery codes are stored as keyed hashes |
 | `audit_log` (actor, action, target, detail JSON, ip, created_at) | Who did what: authentication events, user management, every successful state-changing API call |
 | `announcements` (title, body, program_id, expires_at, created_by) | Teacher notices shown to a programme or everyone |
 | `user_activity` (user_id, item_type, item_id, view_count, last_viewed_at, position_seconds) | `position_seconds` (migration `016_video_progress.sql`) stores the last video playback position. Powers "continue where you left off" on the student dashboard |
