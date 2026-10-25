@@ -522,19 +522,19 @@ Real Postgres + backend, tested via `curl` with real teacher and student JWTs (t
 
 ---
 
-## Known Issues Found — 20 Jul 2026 (logged, not yet fixed)
+## Known Issues Found — 20 Jul 2026 (logged; both resolved later, see notes below)
 Date: 20 Jul 2026
 Tester: 
 
 ### Issue 1: Teachers can submit and grade their own quiz
 `POST /api/quizzes/:id/submit` requires `authenticate` only — no check that the caller is a student. Found this by logging in as a teacher, using the dev-mode role toggle to display the Student view of a quiz she created, and successfully submitting an attempt. Confirmed at the code level: the route has no `requireStudent`-style guard (only `requireTeacher` exists as a role-check middleware; there's no equivalent for restricting *to* students). Per `PRD.md`'s role table (FR-15/section 6), only students should be able to take quizzes — teachers are explicitly excluded. This is a real RBAC gap, not just a dev-toggle quirk: even without the dev toggle, nothing stops a teacher's real JWT from calling this endpoint directly.
 
-**Not yet fixed.** Options to consider: add a `requireStudent` middleware (mirroring `requireTeacher`) and apply it to `POST /api/quizzes/:id/submit`, or decide this is acceptable (e.g. if teachers previewing/testing their own quiz is considered a feature, not a bug) — worth a deliberate decision either way rather than defaulting to "fix it," since PRD doesn't explain *why* teachers are excluded.
+**Resolved (later work, 2026):** starting and submitting a quiz now require the student role, so a teacher's token is refused. Original note: **Not yet fixed.** Options to consider: add a `requireStudent` middleware (mirroring `requireTeacher`) and apply it to `POST /api/quizzes/:id/submit`, or decide this is acceptable (e.g. if teachers previewing/testing their own quiz is considered a feature, not a bug) — worth a deliberate decision either way rather than defaulting to "fix it," since PRD doesn't explain *why* teachers are excluded.
 
 ### Issue 2: Quizzes auto-publish immediately on creation
  noticed a newly created quiz already shows "Unpublish" (i.e. is published) right after finishing creation, with no separate manual publish step. **This is not a new bug** — it's documented, intentional behavior from 15 Jul 2026 (see Task 8.3's note in `tasks.md`): quizzes are created unpublished, but auto-publish once the teacher clicks "Done" after adding questions. Flagging here because Found it surprising when encountering it fresh — worth a deliberate decision on whether this is the desired UX (matches how a teacher might expect to "finish creating" to mean "ready for students") or whether quiz creation should leave quizzes unpublished by default, matching how model/video upload work (both start unpublished, requiring an explicit separate publish action).
 
-**Not yet changed** — no action taken tonight, pending the decision on which behavior is actually wanted.
+**Resolved (later work, 2026):** new quizzes are now created unpublished and stay hidden from students until the teacher publishes them. Original note: **Not yet changed** — no action taken tonight, pending the decision on which behavior is actually wanted.
 
 ---
 
@@ -842,3 +842,11 @@ Video resume: migration 016 applied on backend restart; frontend `tsc -b` and es
 Favourites/downloads dropdown: migration 017 applied; frontend `tsc -b` and eslint clean. In the browser a temporary student favourited a model (card heart, dashboard lists it) and a library item (heart on and off, `/api/favorites` reflected both), and the dashboard no longer shows "Available for you". A temporary teacher saw one Downloads select per model and no Enable/Disable buttons; changing it updated `is_downloadable` (restored afterwards). Temporary accounts deleted. Integration suites: see below if recorded; otherwise not run.
 
 Dashboard unfavourite: `tsc -b` and eslint clean. In the browser a temporary student with a favourite model, video and library item clicked the first heart; that card disappeared without navigating and `/api/favorites` no longer listed it. Temporary account deleted. Not run: automated suites, undoing an unfavourite from the dashboard.
+
+## Stored-file cleanup, password-check lockout and quiz delete protection — 25 October 2026
+
+Changes: deleting a model, video or resource now removes its stored files (unless another row uses them); `npm run cleanup:orphans` lists/removes files nothing refers to; wrong passwords on change-password, delete-account and the two-factor password checks count toward the account lockout and return 429 while locked; deleting a quiz with attempts or an active session returns 409.
+
+Checks actually run in this pass (local Postgres 16, local file storage, `DISABLE_RATE_LIMIT=true`): backend `npm run lint` clean (`--max-warnings 0`); `npm test` 40/40; `npm run test:integration` 83/83, including two new files. `fileCleanup.integration.test.js` uploads a model and a video through the API and confirms both files exist and are gone after delete; confirms a file shared by two rows survives the first delete and is removed with the second; confirms paths outside the upload folders, `..` paths, URLs and null are never removed; confirms deleting a link resource touches no file; and confirms the orphan finder skips referenced and recent files and `deleteOrphans` removes only the old orphan. `passwordLockout.integration.test.js` confirms four wrong current passwords are counted, the fifth locks the account, the right password and delete-account are then refused with 429 and the account survives; a correct password clears earlier failures; wrong passwords on delete-account and MFA setup are each counted; a quiz without attempts deletes (200) while one with an attempt or an active session returns 409 and keeps the attempt.
+
+Not run: the S3 branch of file removal and of `listAssets` (only the local driver was exercised), resource file (non-link) upload-then-delete through the API, glTF-companion handling in the orphan finder, the frontend and Playwright suites, and a production-compose deployment. The first test run failed only because the test used an administrator account on teacher-only routes; the test was corrected, no product code changed for that. The frontend was not changed and does not yet show a special message for the 409 and 429 responses beyond the server's text.
