@@ -236,7 +236,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.production exec \
   node scripts/create-admin.js "Admin Name" admin@example.com
 ```
 
-The password needs 8-72 characters with an uppercase letter and a number. **Do not skip the next part.**
+The administrator password must be **at least 12 characters** (up to 72 bytes) with an uppercase letter and a number, must not be a common password (`Password1`, `Welcome2024`, `P@ssw0rd!` and similar are refused) and must not contain the name or email address. Four unrelated words and a number, such as `Blue-Tractor-Lamp-7`, work well. The script prints the reason if it refuses. The same rules apply to every password set in the app: students need 8 characters, teachers and administrators 12. Existing accounts are not forced to change a password that was set before this rule, so ask staff to update short ones from their Profile page. **Do not skip the next part.**
 
 ### Two-factor authentication
 
@@ -400,6 +400,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 | Login works but you are logged out immediately / 403 "Untrusted request origin" | `FRONTEND_ORIGINS` does not exactly match the browser origin (scheme, host, no trailing slash) |
 | Writes return 403 "Invalid or missing CSRF token" | A script uses the session cookie without the `X-CSRF-Token` header; use a Bearer token, or reload the page in the browser |
 | A user cannot sign in after a few attempts | Locked for 15 minutes; a teacher can unlock them under Users |
+| Registering, changing a password or creating an account fails with "too common or easy to guess" or "must not contain your name or email" | The password policy (`backend/src/passwords.js`) rejects common passwords, keyboard runs, repeated patterns and passwords that include the person's name or email, even with capitals, digits or symbols added. Choose a few unrelated words instead |
 | Registration says "limited to @school.edu" | `ALLOWED_EMAIL_DOMAINS` is set; use an allowed address, or an administrator can create the account under Users |
 | 429 Too many requests | Rate limits (10 logins / 15 min per IP). If every user is limited together, `TRUST_PROXY` does not match the proxy chain (default 2: Caddy + nginx) |
 | A staff member sees the Profile page and nothing else | `MFA_REQUIRED=true` and they have not set up two-factor authentication yet. This is expected: they set it up there |

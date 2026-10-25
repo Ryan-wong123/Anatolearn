@@ -8,9 +8,17 @@ export const cardClass = 'rounded-xl border border-slate-200 bg-white p-6 shadow
 export const errorBox = 'rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300';
 export const successBox = 'rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300';
 
-// Same rule as the Register page and the server: 8+ characters, max 72 bytes, an uppercase letter and a number.
-export function passwordProblem(password: string): string | null {
-  if (password.length < 8) return 'Password must be at least 8 characters';
+const isStaff = (role?: string) => role === 'teacher' || role === 'admin';
+const minLength = (role?: string) => (isStaff(role) ? 12 : 8);
+
+// The hint shown next to every new-password field. The server also rejects common passwords and ones containing the
+// person's name or email, so it is the authority; these checks just catch the obvious cases without a round trip.
+export const passwordRules = (role?: string) =>
+  `Use at least ${minLength(role)} characters${isStaff(role) ? ' (teachers and administrators)' : ''}, including one uppercase letter and one number. Avoid common passwords and your name or email; three or four unrelated words work well.`;
+
+// Mirrors the server: 8+ characters (12 for staff), max 72 bytes, an uppercase letter and a number.
+export function passwordProblem(password: string, role?: string): string | null {
+  if (password.length < minLength(role)) return `Password must be at least ${minLength(role)} characters${isStaff(role) ? ' for teachers and administrators' : ''}`;
   if (new TextEncoder().encode(password).length > 72) return 'Password must be 72 bytes or fewer';
   if (!/[A-Z]/.test(password) || !/[0-9]/.test(password)) return 'Password must contain at least one uppercase letter and one number';
   return null;

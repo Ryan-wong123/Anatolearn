@@ -102,7 +102,15 @@ async function listMyAttempts(input) {
 async function getAttemptAnswers(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     const result = await repository.listAttemptAnswers([input.params.id]);
-    return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows });
+    if (input.user.role === 'teacher')
+        return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows });
+    // Students see what they chose and whether it was right straight away, but the answer key (correct option and model
+    // answer) only once the whole attempt is marked. Until then a student on a mixed quiz could read the key and retake
+    // the quiz with perfect answers before the teacher has reviewed the open-ended questions.
+    const attempt = (await repository.findAttempt([input.params.id])).rows[0];
+    const marked = attempt?.status === 'graded';
+    const rows = result.rows.map((row) => marked ? row : { ...row, correct_option: null, model_answer: null });
+    return ({ ...outcomeMeta, status: 200, kind: 'json', body: rows });
 }
 async function getAttempt(input) {
     const outcomeMeta = { headers: {}, cookies: [] };

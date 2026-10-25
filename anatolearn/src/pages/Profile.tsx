@@ -6,7 +6,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RequestState from '../components/RequestState';
 import Modal from '../components/account/Modal';
 import MfaCard from '../components/account/MfaCard';
-import { cardClass, dangerButton, errorBox, inputClass, labelClass, passwordProblem, primaryButton, secondaryButton, successBox } from '../components/account/styles';
+import { cardClass, dangerButton, errorBox, inputClass, labelClass, passwordProblem, passwordRules, primaryButton, secondaryButton, successBox } from '../components/account/styles';
 import { formatDate, formatDateTime } from '../components/account/time';
 import { useResource } from '../hooks/useResource';
 import { useAppContext } from '../context/AppContextState';
@@ -86,7 +86,7 @@ function DetailsCard({ profile, programmes, onSaved }: { profile: ProfileRecord;
   );
 }
 
-function PasswordCard() {
+function PasswordCard({ role }: { role: ProfileRecord['role'] }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -97,7 +97,7 @@ function PasswordCard() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null); setDone(null);
-    const problem = passwordProblem(next);
+    const problem = passwordProblem(next, role);
     if (problem) { setError(problem); return; }
     if (next !== confirm) { setError('New passwords do not match'); return; }
     if (next === current) { setError('Choose a password different from your current one'); return; }
@@ -121,7 +121,7 @@ function PasswordCard() {
         <div>
           <label htmlFor="new-password" className={labelClass}>New password</label>
           <input id="new-password" type="password" autoComplete="new-password" required aria-describedby="new-password-rules" value={next} onChange={(e) => setNext(e.target.value)} className={inputClass} />
-          <p id="new-password-rules" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Use at least 8 characters, including one uppercase letter and one number.</p>
+          <p id="new-password-rules" className="mt-1 text-xs text-slate-600 dark:text-slate-400">{passwordRules(role)}</p>
         </div>
         <div>
           <label htmlFor="confirm-password" className={labelClass}>Confirm new password</label>
@@ -213,7 +213,7 @@ export default function Profile() {
             </button>
           </section>
 
-          <PasswordCard />
+          <PasswordCard role={profile.role} />
 
           {profile.role !== 'student' && <MfaCard profile={profile} onChanged={(patch) => setOverride({ ...profile, ...patch })} />}
 

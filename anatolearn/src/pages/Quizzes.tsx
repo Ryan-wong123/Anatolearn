@@ -1093,7 +1093,9 @@ export default function Quizzes() {
                         >
                           {isCorrect
                             ? '✓ Correct'
-                            : `✗ Incorrect — Correct answer: ${correctText}`}
+                            : correctLetter
+                              ? `✗ Incorrect — Correct answer: ${correctText}`
+                              : '✗ Incorrect — the correct answer will be shown once your teacher has finished marking this attempt'}
                         </p>
                       </div>
                     );

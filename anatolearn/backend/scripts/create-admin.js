@@ -3,13 +3,14 @@
 // appears in shell history or process lists. If the account already exists and ADMIN_PASSWORD is unset, only its role changes.
 const bcrypt = require('bcryptjs');
 const pool = require('../src/db');
+const { passwordProblem } = require('../src/passwords');
 
 (async () => {
   const [name, email] = process.argv.slice(2);
   const password = process.env.ADMIN_PASSWORD;
-  const weak = (value) => value.length < 8 || Buffer.byteLength(value) > 72 || !/[A-Z]/.test(value) || !/[0-9]/.test(value);
-  if (!email || (password && weak(password)))
-    throw new Error('Usage: ADMIN_PASSWORD=... node scripts/create-admin.js "Name" email (password 8-72 bytes with an uppercase letter and a number)');
+  if (!email) throw new Error('Usage: ADMIN_PASSWORD=... node scripts/create-admin.js "Name" email');
+  const problem = password && passwordProblem(password, { role: 'admin', email, name });
+  if (problem) throw new Error(problem);
   const normalized = email.trim().toLowerCase();
   const existing = (await pool.query('SELECT id FROM users WHERE email = $1', [normalized])).rows[0];
   if (existing) {
