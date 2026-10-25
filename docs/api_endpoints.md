@@ -211,6 +211,7 @@ Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, co
 }
 ```
 
+- If the account has two-factor authentication on, the response is instead `{ "mfa_required": true, "mfa_token": "..." }` (no session cookie yet). Send the token and a code to `POST /api/auth/mfa/verify`. On a normal sign-in the body also contains `mfa_setup_required` (true when the account's role requires two-factor authentication and it is not set up).
 - 401 if the email doesn't exist **or** the password is wrong — deliberately the same generic `"Invalid email or password"` message either way, so a failed login can't be used to check which emails are registered
 - 400 if `email` or `password` is missing
 - 500 if `JWT_SECRET` isn't configured on the server (logged as a startup warning too)
@@ -246,6 +247,7 @@ This section supersedes older submission/download/result behavior in historical 
 
 | Endpoint | Access | Request / result |
 |---|---|---|
+| POST /api/auth/mfa/verify | public, origin checked, rate limited | body `{ mfa_token, code }`; `code` is a 6-digit authenticator code or a recovery code. Success sets the session cookies and returns `{ user }` (plus `recovery_codes_remaining` if a recovery code was used); 401 otherwise. Wrong codes count towards the account lockout |
 | POST /api/auth/logout | public, origin checked | clears media cookie; frontend then clears sessionStorage |
 | PATCH /api/models/:id/download-permission | teacher | `{is_downloadable: boolean}` -> model; default false; downloads require read access and this flag for both roles |
 | PATCH /api/:kind/:id/program | teacher | kind=models/videos/quizzes/resources; `{program_id: positive integer or null}` -> updated record; null means shared |
@@ -291,6 +293,8 @@ List endpoints for models, videos, quizzes and resources accept optional `page` 
 
 - `GET /api/profile` returns name, email, role, programme and last sign-in.
 - `PUT /api/profile` `{ name, program_id? }`. Students keep their registered programme (it controls content access); teachers may change theirs.
+- `GET /api/profile` also returns `mfa_enabled`, `mfa_required` and `mfa_recovery_codes_left`.
+- Two-factor authentication (teachers and administrators): `POST /api/profile/mfa/setup` `{ password }` returns `{ secret, otpauth_uri }`; `POST /api/profile/mfa/enable` `{ code }` turns it on and returns the one-time `recovery_codes`; `POST /api/profile/mfa/disable` `{ password, code }` (403 when `MFA_REQUIRED` applies to the role); `POST /api/profile/mfa/recovery-codes` `{ password, code }` replaces the recovery codes. When `MFA_REQUIRED=true`, a staff account that has not enrolled gets `403 { code: 'mfa_setup_required' }` from every endpoint except `GET /api/profile` and the setup/enable calls.
 - `PUT /api/profile/password` `{ current_password, new_password }` (8-72 bytes, uppercase letter and number). Signs out all other sessions.
 - `GET /api/favorites` (student) returns `{ videos, quizzes, models, resources }`; `POST /api/favorites` `{ item_type: 'video'|'quiz'|'model'|'resource', item_id }` and `DELETE /api/favorites/:item_type/:item_id` accept the same four types (models and resources added by migration 017). Unpublished or other-programme content is excluded/refused.
 - `GET /api/profile/export` downloads the user's own data as JSON (account, quiz attempts and answers, favourites, activity, downloads).
@@ -304,6 +308,7 @@ These routes require the `admin` role (`403 Administrator access required` for e
 - `POST /api/users` `{ name, email, role, program_id?, password? }`. Without a password a temporary one is generated and returned once as `temporary_password`.
 - `PATCH /api/users/:id` `{ name?, role?, program_id?, is_active?, unlock? }`. Disabling or changing role revokes the user's sessions. `role` may be `student`, `teacher` or `admin`. Administrators cannot demote or disable themselves, and at least one active administrator must remain. Public registration still accepts only `student` and `teacher`.
 - `POST /api/users/:id/reset-password` `{ password? }` generates or sets a password and signs the user out everywhere.
+- `POST /api/users/:id/reset-mfa` clears the user's two-factor authentication and signs them out everywhere (for a lost device). Not allowed on yourself. `GET /api/users` rows include `mfa_enabled`.
 - `DELETE /api/users/:id`
 - `GET /api/audit-log?action=<prefix>&actor=<id>&page=&page_size=` lists authentication events, user management and every successful state-changing API call (who, what, record id, IP; no request bodies).
 

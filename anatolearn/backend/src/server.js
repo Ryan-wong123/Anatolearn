@@ -1,15 +1,13 @@
 const app = require('./app');
+const { checkConfig, checkDatabaseRole } = require('./config');
 
 function assertProductionConfig() {
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)
-    throw new Error('JWT_SECRET must be set to a random value of at least 32 characters');
-  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL must be set');
-  if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_ORIGINS)
-    throw new Error('FRONTEND_ORIGINS must list the public site origin(s) in production');
-  if (process.env.NODE_ENV === 'production' && !process.env.CLAMAV_HOST)
-    console.warn('WARNING: CLAMAV_HOST is not set, so uploads are not virus scanned.');
-  else if (process.env.NODE_ENV === 'production' && process.env.CLAMAV_REQUIRED !== 'true')
-    console.warn('WARNING: CLAMAV_REQUIRED is not true, so uploads are accepted unscanned whenever the scanner is down.');
+  const { errors, warnings } = checkConfig();
+  for (const warning of warnings) console.warn(`WARNING: ${warning}`);
+  if (errors.length) {
+    console.error(`Invalid configuration:\n - ${errors.join('\n - ')}`);
+    process.exit(1);
+  }
 }
 
 if (require.main === module) {
@@ -21,6 +19,8 @@ if (require.main === module) {
       const owner = new Pool({ connectionString: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL });
       try { await require('./migrate').migrate(owner); } finally { await owner.end(); }
     }
+    if (process.env.NODE_ENV === 'production')
+      for (const warning of await checkDatabaseRole(pool)) console.warn(`WARNING: ${warning}`);
     require('./maintenance').startMaintenance(pool);
     const port = process.env.PORT || 5000;
     const server = app.listen(port, () => console.log(`AnatoLearn backend running on port ${port}`));

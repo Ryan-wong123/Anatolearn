@@ -105,3 +105,16 @@ jobs:
           POSTGRES_PASSWORD=x APP_DB_PASSWORD=x JWT_SECRET=0123456789abcdef0123456789abcdef FRONTEND_ORIGINS=https://example.com \
           TEACHER_INVITE_CODE=x S3_BUCKET=x AWS_REGION=us-east-1 SITE_DOMAIN=example.com \
           docker compose -f docker-compose.prod.yml config --quiet
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # scan the whole history, not just the latest commit
+      # Run the pinned CLI directly: the gitleaks GitHub Action needs a paid licence for organisation repositories.
+      - name: Scan for committed secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" --entrypoint sh ghcr.io/gitleaks/gitleaks:v8.21.2 -c \
+            'git config --global --add safe.directory /repo && gitleaks detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner --verbose'

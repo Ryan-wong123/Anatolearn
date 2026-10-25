@@ -266,6 +266,12 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal(legacy.status,201);const created=await legacy.json();resourceIds.push(created.id);
       assert.match(created.file_path,/\.doc$/);refactorPaths.push(created.file_path);
     });
+    await t.test('responses carry the one-year HSTS policy without includeSubDomains',async()=>{
+      for(const path of ['/api/health','/api/models']){
+        const header=(await call(path,teacher.token)).headers.get('strict-transport-security');
+        assert.equal(header,'max-age=31536000',path);
+      }
+    });
     await t.test('photo materials upload, authenticated delivery and logout cookie clearing',async()=>{
       const form=new FormData();form.append('title',stamp);form.append('resource_type','image');form.append('file',new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9x8AAAAASUVORK5CYII=','base64')]),'photo.png');
       const upload=await fetch(base+'/api/resources/upload',{method:'POST',headers:{Authorization:`Bearer ${teacher.token}`},body:form});assert.equal(upload.status,201);const resource=await upload.json();resourceIds.push(resource.id);

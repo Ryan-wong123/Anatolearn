@@ -14,7 +14,8 @@ app.disable('x-powered-by');
 app.use(requestLog);
 // Routes match exactly ("/api/Models/1" is a different path), so the access middleware sees the same path the handler does.
 app.set('case sensitive routing', true);
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false }));
+// Same HSTS policy as ops/Caddyfile (no includeSubDomains), so the proxy and the API never disagree.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false, strictTransportSecurity: { maxAge: 31536000, includeSubDomains: false } }));
 const limiter = (windowMs, limit) => rateLimit({ windowMs, limit, standardHeaders: 'draft-7', legacyHeaders: false,
   skip: () => process.env.DISABLE_RATE_LIMIT === 'true', message: { message: 'Too many requests. Please try again later.' } });
 app.use('/api/auth/login', limiter(15 * 60 * 1000, 10));
