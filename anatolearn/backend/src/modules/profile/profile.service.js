@@ -31,14 +31,31 @@ async function updateProfile(input) {
     await repository.updateProfile([input.user.id, name.trim(), program]);
     return { ...meta(), status: 200, kind: 'json', body: (await repository.findProfile([input.user.id])).rows[0] };
 }
+// Checks the account password for a sensitive action. Wrong guesses count toward the same lockout as login, and while the account
+// is locked even the right password is refused. Returns null when the password is right (and, with reset, clears the failure count),
+// otherwise the refusal to send.
+async function checkPassword(input, password, wrongMessage = 'Password is incorrect', { reset = true } = {}) {
+    const state = (await authRepository.findLockState([input.user.id])).rows[0];
+    if (state && state.is_locked) {
+        await record({ actor: input.user, action: 'auth.password_check_blocked_locked', targetType: 'user', targetId: input.user.id, ip: input.ip });
+        return fail(429, 'Too many incorrect attempts. Try again later.');
+    }
+    if (!(await passwordMatches(input.user.id, password))) {
+        const { rows } = await authRepository.registerFailedLogin([input.user.id, Number(process.env.MAX_FAILED_LOGINS) || 5, Number(process.env.LOCKOUT_MINUTES) || 15]);
+        await record({ actor: input.user, action: 'auth.password_check_failed', targetType: 'user', targetId: input.user.id, ip: input.ip, detail: { attempts: rows[0]?.failed_login_count } });
+        return fail(403, wrongMessage);
+    }
+    if (reset) await authRepository.clearFailedLogins([input.user.id]);
+    return null;
+}
 async function changePassword(input) {
     const { current_password, new_password } = input.body;
     if (typeof current_password !== 'string') return fail(400, 'Your current password is required');
     const account = (await repository.findProfile([input.user.id])).rows[0];
     const weakness = passwordProblem(new_password, { role: account.role, email: account.email, name: account.name });
     if (weakness) return fail(400, weakness);
-    const stored = (await repository.findPasswordHash([input.user.id])).rows[0];
-    if (!stored || !(await bcrypt.compare(current_password, stored.password_hash))) return fail(403, 'Current password is incorrect');
+    const denied = await checkPassword(input, current_password, 'Current password is incorrect');
+    if (denied) return denied;
     await repository.setPassword([input.user.id, await bcrypt.hash(new_password, 12)]);
     await repository.revokeOtherSessions([input.user.id, input.user.sid]);
     await record({ actor: input.user, action: 'profile.change_password', targetType: 'user', targetId: input.user.id, ip: input.ip });
@@ -50,8 +67,8 @@ async function exportData(input) {
         body: JSON.stringify({ exported_at: new Date().toISOString(), account: profile, ...(await repository.exportData(input.user.id)) }, null, 2) };
 }
 async function deleteAccount(input) {
-    const stored = (await repository.findPasswordHash([input.user.id])).rows[0];
-    if (typeof input.body.password !== 'string' || !stored || !(await bcrypt.compare(input.body.password, stored.password_hash))) return fail(403, 'Password is incorrect');
+    const denied = await checkPassword(input, input.body.password);
+    if (denied) return denied;
     if (input.user.role === 'teacher' && !(await repository.countOtherActiveTeachers([input.user.id])).rows[0].n)
         return fail(400, 'You are the only active teacher. Promote another teacher before deleting your account.');
     if (input.user.role === 'admin' && !(await repository.countOtherActiveAdmins([input.user.id])).rows[0].n)
@@ -67,17 +84,20 @@ async function passwordMatches(userId, password) {
 }
 // Re-authenticates with the password and a current code. Wrong attempts feed the account lockout like a bad login.
 async function confirmWithSecondFactor(input) {
-    if (!(await passwordMatches(input.user.id, input.body.password))) return fail(403, 'Password is incorrect');
+    const denied = await checkPassword(input, input.body.password, 'Password is incorrect', { reset: false });
+    if (denied) return denied;
     const user = (await authRepository.findUserForMfa([input.user.id])).rows[0];
     const code = typeof input.body.code === 'string' && input.body.code.length <= 32 ? input.body.code : '';
     if (!user || !(await checkSecondFactor(user, code)).ok) {
         await authRepository.registerFailedLogin([input.user.id, Number(process.env.MAX_FAILED_LOGINS) || 5, Number(process.env.LOCKOUT_MINUTES) || 15]);
         return fail(403, 'Invalid verification code');
     }
+    await authRepository.clearFailedLogins([input.user.id]);
     return null;
 }
 async function setupMfa(input) {
-    if (!(await passwordMatches(input.user.id, input.body.password))) return fail(403, 'Password is incorrect');
+    const denied = await checkPassword(input, input.body.password);
+    if (denied) return denied;
     const state = (await repository.findMfaState([input.user.id])).rows[0];
     if (state.mfa_enabled_at) return fail(409, 'Two-factor authentication is already enabled');
     const secret = mfa.generateSecret();

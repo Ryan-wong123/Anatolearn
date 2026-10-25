@@ -39,6 +39,12 @@ async function registerFailedLogin(parameters) {
 async function registerSuccessfulLogin(parameters) {
     return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1', parameters);
 }
+async function findLockState(parameters) {
+    return pool.query('SELECT (locked_until > NOW()) AS is_locked FROM users WHERE id = $1', parameters);
+}
+async function clearFailedLogins(parameters) {
+    return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = $1', parameters);
+}
 async function findUserForMfa(parameters) {
     return pool.query(`SELECT id, name, email, role, program_id, is_active, (locked_until > NOW()) AS is_locked,
       mfa_secret, mfa_last_step FROM users WHERE id = $1 AND mfa_enabled_at IS NOT NULL`, parameters);
@@ -51,4 +57,4 @@ async function consumeRecoveryCode(parameters) {
     return pool.query(`UPDATE users SET mfa_recovery_hashes = array_remove(mfa_recovery_hashes, $2)
       WHERE id = $1 AND $2 = ANY(mfa_recovery_hashes) RETURNING cardinality(mfa_recovery_hashes) AS remaining`, parameters);
 }
-module.exports = { touchSession, findUserForMfa, claimTotpStep, consumeRecoveryCode, registerFailedLogin, registerSuccessfulLogin, findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };
+module.exports = { findLockState, clearFailedLogins, touchSession, findUserForMfa, claimTotpStep, consumeRecoveryCode, registerFailedLogin, registerSuccessfulLogin, findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };
