@@ -6,6 +6,7 @@ const { sessionToken } = require('../../access');
 const { record } = require('../../audit');
 const { newCsrfToken, CSRF_COOKIE } = require('../../csrf');
 const mfa = require('../../mfa');
+const { passwordProblem } = require('../../passwords');
 const MFA_CHALLENGE_MINUTES = 5;
 const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS) || 5;
 const LOCKOUT_MINUTES = Number(process.env.LOCKOUT_MINUTES) || 15;
@@ -39,8 +40,9 @@ async function register(input) {
         if (domains.length && !domains.includes(email.trim().toLowerCase().split('@').pop())) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: `Registration is limited to ${domains.map((domain) => '@' + domain).join(', ')} email addresses` } });
         }
-        if (password.length < 8 || Buffer.byteLength(password) > 72) {
-            return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "password must be 8 to 72 bytes long" } });
+        const weakness = passwordProblem(password, { role, email, name });
+        if (weakness) {
+            return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: weakness } });
         }
         if (role === 'teacher' && !inviteCodeMatches(invite_code)) {
             return ({ ...outcomeMeta, status: 403, kind: 'json', body: { message: "A valid teacher invite code is required" } });

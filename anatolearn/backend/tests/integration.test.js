@@ -108,8 +108,20 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       const bad=await call(`/api/quizzes/${quiz.id}/submit`,student.token,{session_id:session.session_id,answers:[{question_id:q1.id,selected_option:'B'},{question_id:q1.id,selected_option:'B'}]});assert.equal(bad.status,400);
       assert.equal(Number((await pool.query('SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id=$1',[quiz.id])).rows[0].count),0);
       const body={session_id:session.session_id,answers:[{question_id:q1.id,selected_option:'B'},{question_id:q2.id,answer_text:'Femur'}]};
-      const response=await call(`/api/quizzes/${quiz.id}/submit`,student.token,body);assert.equal(response.status,200);attempt=(await response.json()).attempt;
+      const response=await call(`/api/quizzes/${quiz.id}/submit`,student.token,body);assert.equal(response.status,200);const submitted=await response.json();attempt=submitted.attempt;
+      assert.equal(submitted.status,'pending_review');
+      assert.ok(submitted.feedback.length===1&&submitted.feedback.every((item)=>item.correct_option===null&&item.is_correct===true),'the key is withheld at submit while open-ended answers await marking, but correctness is shown');
       assert.equal((await call(`/api/quizzes/${quiz.id}/submit`,student.token,body)).status,409);
+    });
+    await t.test('answer keys reach students only once the whole attempt is marked',async()=>{
+      const asStudent=await(await call(`/api/attempts/${attempt.id}/answers`,student.token)).json();
+      assert.equal(asStudent.length,2);
+      for(const row of asStudent){assert.equal(row.correct_option,null);assert.equal(row.model_answer,null);}
+      assert.equal(asStudent.find(row=>row.question_id===q1.id).is_correct,true,'whether an MCQ answer was right is still shown');
+      assert.equal(asStudent.find(row=>row.question_id===q1.id).selected_option,'B','their own selection is still shown');
+      const asTeacher=await(await call(`/api/attempts/${attempt.id}/answers`,teacher.token)).json();
+      assert.equal(asTeacher.find(row=>row.question_id===q1.id).correct_option,'B');
+      assert.equal(asTeacher.find(row=>row.question_id===q2.id).model_answer,'Femur');
     });
     await t.test('attempt ownership and transactional grading preserve complete results',async()=>{
       assert.equal((await call(`/api/attempts/${attempt.id}`,other.token)).status,404);
@@ -118,6 +130,9 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       const answers=await(await call(`/api/attempts/${attempt.id}/answers`,teacher.token)).json();
       assert.equal((await call(`/api/attempt-answers/${answers.find(a=>a.question_id===q2.id).id}/grade`,teacher.token,{teacher_score:80},'PATCH')).status,200);
       const result=await(await call(`/api/attempts/${attempt.id}`,student.token)).json();assert.equal(result.score,90);assert.equal(result.status,'graded');
+      const marked=await(await call(`/api/attempts/${attempt.id}/answers`,student.token)).json();
+      assert.equal(marked.find(row=>row.question_id===q1.id).correct_option,'B','once marked the student can review the key');
+      assert.equal(marked.find(row=>row.question_id===q2.id).model_answer,'Femur');
       const all=await(await call(`/api/quizzes/${quiz.id}/attempts`,teacher.token)).json();assert.ok(all.some(a=>a.id===attempt.id&&a.status==='graded'));
     });
     await t.test('access checks cannot be bypassed by path case, percent-encoded ids or HEAD requests',async()=>{
@@ -135,6 +150,15 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call(`/api/attempts/${encode(attempt.id)}`,student.token)).status,200);
       assert.equal((await call('/api/attempts/not-a-number',student.token)).status,404);
       assert.equal((await call('/api/models/%E0%A4%A',student.token)).status,400);
+    });
+    await t.test('an all-multiple-choice quiz is marked at once, so its review shows the key immediately',async()=>{
+      const mcq=(await pool.query("INSERT INTO quizzes(title,type,is_published,program_id) VALUES($1,'MCQ',true,1) RETURNING *",[stamp+'-mcq'])).rows[0];quizIds.push(mcq.id);
+      const only=(await pool.query("INSERT INTO quiz_questions(quiz_id,question,option_a,option_b,option_c,option_d,correct_option) VALUES($1,'Pick C','A','B','C','D','C') RETURNING *",[mcq.id])).rows[0];
+      const started=await(await call(`/api/quizzes/${mcq.id}/start`,student.token,{})).json();
+      const done=await(await call(`/api/quizzes/${mcq.id}/submit`,student.token,{session_id:started.session_id,answers:[{question_id:only.id,selected_option:'A'}]})).json();
+      assert.equal(done.status,'graded');assert.equal(done.feedback[0].correct_option,'C');assert.equal(done.feedback[0].is_correct,false);
+      const review=await(await call(`/api/attempts/${done.attempt.id}/answers`,student.token)).json();
+      assert.equal(review[0].correct_option,'C');
     });
     await t.test('expired sessions reject late answers',async()=>{
       const expired=await(await call(`/api/quizzes/${quiz.id}/start`,student.token,{})).json();
@@ -191,12 +215,12 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call('/api/health')).status,200);
       assert.equal((await call('/api/programs')).status,200);
       const email=`${stamp}-registration@example.test`;
-      const registered=await call('/api/auth/register',null,{name:stamp,email,password:'Testing123',role:'student',program_id:1});
+      const registered=await call('/api/auth/register',null,{name:stamp,email,password:'Maple9Window',role:'student',program_id:1});
       assert.equal(registered.status,201);
       const account=await registered.json();userIds.push(account.id);
       assert.equal(account.email,email);
       assert.equal('password_hash' in account,false);
-      assert.equal((await call('/api/auth/register',null,{name:stamp,email,password:'Testing123',role:'student'})).status,409);
+      assert.equal((await call('/api/auth/register',null,{name:stamp,email,password:'Maple9Window',role:'student'})).status,409);
       assert.equal((await call('/api/auth/login',null,{email,password:'incorrect'})).status,401);
       assert.equal((await call('/api/auth/logout',null,{})).status,200);
       const untrusted=await fetch(base+'/api/auth/login',{method:'POST',headers:{Origin:'https://untrusted.example','Content-Type':'application/json'},body:'{}'});

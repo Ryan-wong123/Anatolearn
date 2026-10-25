@@ -3,11 +3,11 @@ const repository = require('./profile.repository');
 const { record } = require('../../audit');
 const { CSRF_COOKIE } = require('../../csrf');
 const mfa = require('../../mfa');
+const { passwordProblem } = require('../../passwords');
 const { checkSecondFactor } = require('../auth/auth.service');
 const authRepository = require('../auth/auth.repository');
 const meta = () => ({ headers: { 'Cache-Control': 'no-store' }, cookies: [] });
 const fail = (status, message) => ({ ...meta(), status, kind: 'json', body: { message } });
-const strongPassword = (password) => typeof password === 'string' && password.length >= 8 && Buffer.byteLength(password) <= 72 && /[A-Z]/.test(password) && /[0-9]/.test(password);
 
 async function getProfile(input) {
     const profile = (await repository.findProfile([input.user.id])).rows[0];
@@ -27,7 +27,10 @@ async function updateProfile(input) {
 }
 async function changePassword(input) {
     const { current_password, new_password } = input.body;
-    if (typeof current_password !== 'string' || !strongPassword(new_password)) return fail(400, 'New password must be 8-72 characters with an uppercase letter and a number');
+    if (typeof current_password !== 'string') return fail(400, 'Your current password is required');
+    const account = (await repository.findProfile([input.user.id])).rows[0];
+    const weakness = passwordProblem(new_password, { role: account.role, email: account.email, name: account.name });
+    if (weakness) return fail(400, weakness);
     const stored = (await repository.findPasswordHash([input.user.id])).rows[0];
     if (!stored || !(await bcrypt.compare(current_password, stored.password_hash))) return fail(403, 'Current password is incorrect');
     await repository.setPassword([input.user.id, await bcrypt.hash(new_password, 12)]);

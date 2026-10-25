@@ -7,7 +7,7 @@ import Pagination from '../components/Pagination';
 import RequestState from '../components/RequestState';
 import Modal from '../components/account/Modal';
 import TemporaryPasswordDialog from '../components/account/TemporaryPasswordDialog';
-import { cardClass, errorBox, inputClass, labelClass, passwordProblem, primaryButton, secondaryButton } from '../components/account/styles';
+import { cardClass, errorBox, inputClass, labelClass, passwordProblem, passwordRules, primaryButton, secondaryButton } from '../components/account/styles';
 import { formatDateTime, relativeTime } from '../components/account/time';
 import { useResource } from '../hooks/useResource';
 import { useAppContext } from '../context/AppContextState';
@@ -62,7 +62,7 @@ function CreateDialog({ programmes, onClose, onCreated }: { programmes: Programm
     event.preventDefault();
     setError(null);
     if (!name.trim() || !email.trim()) { setError('Name and email are required'); return; }
-    if (password) { const problem = passwordProblem(password); if (problem) { setError(problem); return; } }
+    if (password) { const problem = passwordProblem(password, role); if (problem) { setError(problem); return; } }
     setBusy(true);
     try {
       const result = await api.createUser({ name: name.trim(), email: email.trim(), role, program_id: programId ? Number(programId) : null, ...(password ? { password } : {}) });
@@ -101,7 +101,7 @@ function CreateDialog({ programmes, onClose, onCreated }: { programmes: Programm
         <div>
           <label htmlFor="new-user-password" className={labelClass}>Password (optional)</label>
           <input id="new-user-password" type="password" autoComplete="new-password" aria-describedby="new-user-password-note" value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} />
-          <p id="new-user-password-note" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Leave empty to generate a temporary password that you can share once.</p>
+          <p id="new-user-password-note" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Leave empty to generate a temporary password that you can share once. If you choose one, {passwordRules(role)}</p>
         </div>
         {error && <p role="alert" className={errorBox}>{error}</p>}
         <div className="flex justify-end gap-3">
