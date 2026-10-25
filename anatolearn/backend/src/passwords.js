@@ -31,7 +31,7 @@ const LEET = { 0: 'o', 1: 'l', 3: 'e', 4: 'a', 5: 's', 7: 't', 8: 'b', 9: 'g', '
 // Lowercase, undo common character swaps and drop trailing digits or symbols ("Summer2024!" -> "summer").
 function normalise(password) {
   const lower = password.toLowerCase();
-  const stripped = lower.replace(/[\d\s!@#$%^&*()_+=.,?\-]+$/, '').replace(/^[\d\s!@#$%^&*()_+=.,?\-]+/, '');
+  const stripped = lower.replace(/[\d\s!@#$%^&*()_+=.,?-]+$/, '').replace(/^[\d\s!@#$%^&*()_+=.,?-]+/, '');
   return {
     exact: lower.replace(/[\s\-_.]/g, ''),
     stripped: stripped.replace(/[\s\-_.]/g, ''),

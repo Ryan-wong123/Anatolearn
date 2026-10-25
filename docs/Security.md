@@ -28,7 +28,7 @@ Controls implemented in AnatoLearn and where to find them. See `Deployment.md` f
 - Containers drop all capabilities, run read-only with `no-new-privileges`, and have memory and process limits. Only Caddy (80/443) is published; Postgres, ClamAV, the API and nginx are internal.
 - Caddy and the API send `Strict-Transport-Security` (one year, no `includeSubDomains`).
 - The API validates its configuration at startup and refuses to run with a placeholder `JWT_SECRET`, non-https or wildcard `FRONTEND_ORIGINS`, or a short MFA key; it warns about risky settings and an over-privileged database role (`src/config.js`).
-- Dependabot and CI (`npm audit`, tests, image builds, gitleaks secret scan, CodeQL static analysis) run on every change.
+- Dependabot and CI run on every change: `npm audit`, tests, ESLint with `eslint-plugin-security` for the backend (`npm run lint`), a gitleaks secret scan, CodeQL static analysis and a Trivy scan that fails on fixable HIGH or CRITICAL vulnerabilities in the production images (also weekly, so new CVEs in base images are caught without a code change).
 
 ## Known limitations
 - Direct-to-S3 browser uploads are intentionally not used: files pass through the API so they can be validated and virus-scanned before storage.

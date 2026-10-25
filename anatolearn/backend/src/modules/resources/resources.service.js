@@ -44,6 +44,7 @@ async function uploadResource(input) {
                 await storage.validateResource(input.file, resource_type);
             }
             catch (error) {
+                // eslint-disable-next-line security/detect-non-literal-fs-filename -- multer's own temp file, named by randomUUID()
                 await fs.unlink(input.file.path).catch(() => { });
                 return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: error.message } });
             }

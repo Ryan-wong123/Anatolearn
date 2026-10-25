@@ -10,23 +10,24 @@ function recordView(user, kind, id) {
 }
 // Match against the decoded path: Express decodes route params, so "/quizzes/%35" reaches the same handler as "/quizzes/5".
 function decodedPath(req) {
-    try { return decodeURIComponent(req.path); } catch { return null; }
+    // Repeated slashes are collapsed once here so the patterns below can stay simple (and linear-time).
+    try { return decodeURIComponent(req.path).replace(/\/+/g, '/'); } catch { return null; }
 }
 module.exports = (req, res, next) => {
     (async () => {
         const path = decodedPath(req);
         if (path === null) return res.status(400).json({ message: 'Malformed request path' });
         const reads = ['GET', 'HEAD'].includes(req.method);
-        const content = path.match(/^\/+(models|videos|quizzes|resources)\/+([^/]+)(?:\/|$)/i);
-        if (content && (reads || /\/(submit|start|progress)\/*$/i.test(path))) {
+        const content = path.match(/^\/(models|videos|quizzes|resources)\/([^/]+)(?:\/|$)/i);
+        if (content && (reads || /\/(submit|start|progress)\/?$/i.test(path))) {
             const kind = content[1].toLowerCase();
             const row = /^\d+$/.test(content[2]) ? (await repository.findContent([content[2]], kind)).rows[0] : null;
             if (!row || !canRead(req.user, row))
                 return res.status(404).json({ message: 'Content not found or unavailable' });
-            if (req.user.role === 'student' && ((req.method === 'GET' && /^\/+[a-z]+\/+\d+(?:\/+questions)?\/*$/i.test(path)) || /\/start\/*$/i.test(path)))
+            if (req.user.role === 'student' && ((req.method === 'GET' && /^\/[a-z]+\/\d+(?:\/questions)?\/?$/i.test(path)) || /\/start\/?$/i.test(path)))
                 recordView(req.user, kind, content[2]);
         }
-        const attempt = path.match(/^\/+attempts\/+([^/]+)(?:\/|$)/i);
+        const attempt = path.match(/^\/attempts\/([^/]+)(?:\/|$)/i);
         if (attempt) {
             const row = /^\d+$/.test(attempt[1]) ? (await repository.findAttemptOwner([attempt[1]])).rows[0] : null;
             if (!row || (req.user.role !== 'teacher' && row.student_id !== req.user.id))

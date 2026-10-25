@@ -131,7 +131,7 @@ async function validateCaptions(file) {
   if (file.size > 2 * 1024 * 1024) throw Object.assign(new Error('Caption files must be 2 MiB or smaller'),{status:400});
   const bytes=await fs.readFile(file.path);
   const text=bytes.toString('utf8').replace(/^\uFEFF/, '');
-  if (text.includes('\u0000') || !/^WEBVTT(?:[ \t].*)?(?:\r?\n|$)(?:[\s\S]*)$/.test(text))
+  if (text.includes('\u0000') || !/^WEBVTT(?:[ \t]|\r?\n|$)/.test(text))
     throw Object.assign(new Error('Caption file must be a UTF-8 WebVTT (.vtt) file starting with WEBVTT'),{status:400});
 }
 module.exports={ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateVideo,validateCaptions};

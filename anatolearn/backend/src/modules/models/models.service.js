@@ -38,6 +38,7 @@ async function uploadModel(input) {
             await storage.validateModel(input.file);
         }
         catch (error) {
+            // eslint-disable-next-line security/detect-non-literal-fs-filename -- multer's own temp file, named by randomUUID()
             await fs.unlink(input.file.path).catch(() => { });
             throw error;
         }
