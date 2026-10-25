@@ -6,7 +6,7 @@ async function listForStudent(parameters) {
       ORDER BY a.created_at DESC LIMIT 50`, parameters);
 }
 async function listAll() {
-    return pool.query(`SELECT a.id, a.title, a.body, a.program_id, a.created_at, a.expires_at, u.name AS author FROM announcements a
+    return pool.query(`SELECT a.id, a.title, a.body, a.program_id, a.created_at, a.expires_at, a.created_by, u.name AS author FROM announcements a
       LEFT JOIN users u ON u.id = a.created_by ORDER BY a.created_at DESC LIMIT 200`);
 }
 async function insert(parameters) {

@@ -1,0 +1,3 @@
+# Vulnerabilities we have reviewed and accept, one CVE id per line, each with a reason and a review date. For example:
+#   CVE-2025-12345   # only reachable via a code path the image never executes; revisit 2026-12-01
+# Prefer fixing: rebuild (the CI build uses --pull) or bump the base image. Do not add entries without a comment.

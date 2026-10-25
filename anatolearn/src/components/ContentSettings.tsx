@@ -10,8 +10,10 @@ interface ContentSettingsProps {
   programId?: number | null;
   timer?: number | null;
   downloadable?: boolean;
+  // false hides the settings for content another teacher owns
+  canManage?: boolean;
 }
-export default function ContentSettings({ kind, id, onSaved, programId, timer, downloadable }: ContentSettingsProps) {
+export default function ContentSettings({ kind, id, onSaved, programId, timer, downloadable, canManage }: ContentSettingsProps) {
   const { role } = useAppContext();
   const {data:programs,loading,error:programsError,reload} = useResource<{id:number;name:string}[]>(api.getPrograms,[]);
   const [value, setValue] = useState(programId ? String(programId) : '');
@@ -24,7 +26,7 @@ export default function ContentSettings({ kind, id, onSaved, programId, timer, d
     try { await action(); onSaved(); } catch (e) { setError(e instanceof Error ? e.message : 'Update failed'); }
     finally { setBusy(false); }
   }
-  return role === 'teacher' && <details onClick={(e) => e.stopPropagation()} onKeyDown={(e)=>e.stopPropagation()} className="mt-3 w-full text-sm text-slate-700 dark:text-slate-300">
+  return role === 'teacher' && canManage !== false && <details onClick={(e) => e.stopPropagation()} onKeyDown={(e)=>e.stopPropagation()} className="mt-3 w-full text-sm text-slate-700 dark:text-slate-300">
     <summary className="cursor-pointer rounded p-1 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">Content permissions and settings</summary>
     <RequestState loading={loading} error={programsError} onRetry={reload} label="programme choices" />
     <div className="flex flex-wrap gap-2 py-2">

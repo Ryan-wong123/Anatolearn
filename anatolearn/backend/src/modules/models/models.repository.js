@@ -25,8 +25,8 @@ async function findModel(parameters) {
     return pool.query("SELECT * FROM models WHERE id = $1", parameters);
 }
 async function insertModel(parameters) {
-    return pool.query(`INSERT INTO models (title, description, file_path, program_id, body_system, body_part, is_published)
-       VALUES ($1, $2, $3, $4, $5, $6, false)
+    return pool.query(`INSERT INTO models (title, description, file_path, program_id, body_system, body_part, is_published, owner_id, file_size)
+       VALUES ($1, $2, $3, $4, $5, $6, false, $7, $8)
        RETURNING *`, parameters);
 }
 async function deleteModel(parameters) {

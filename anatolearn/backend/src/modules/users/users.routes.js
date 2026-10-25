@@ -6,6 +6,7 @@ module.exports = function registerRoutes(app) {
     app.post('/api/users', authenticate, requireAdmin, controller.createUser);
     app.patch('/api/users/:id', authenticate, requireAdmin, controller.updateUser);
     app.post('/api/users/:id/reset-password', authenticate, requireAdmin, controller.resetPassword);
+    app.post('/api/users/:id/reset-mfa', authenticate, requireAdmin, controller.resetMfa);
     app.delete('/api/users/:id', authenticate, requireAdmin, controller.deleteUser);
     app.get('/api/audit-log', authenticate, requireAdmin, controller.listAuditLog);
 };

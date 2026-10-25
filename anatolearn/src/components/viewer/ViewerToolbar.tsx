@@ -1,6 +1,6 @@
-import { useAppContext } from '../../context/AppContextState';
-
 interface ViewerToolbarProps {
+  // Show the annotation tools (teachers, on models they manage).
+  canEdit: boolean;
   disabled: boolean;
   addMode: boolean;
   drawMode: boolean;
@@ -18,6 +18,7 @@ interface ViewerToolbarProps {
 }
 
 export default function ViewerToolbar({
+  canEdit,
   disabled,
   addMode,
   drawMode,
@@ -33,14 +34,13 @@ export default function ViewerToolbar({
   onSaveNeutralView,
   onReturnToNeutralView,
 }: ViewerToolbarProps) {
-  const { role } = useAppContext();
   return (
     <div
       className="absolute left-4 md:left-auto right-4 top-4 z-20 flex max-h-40 overflow-y-auto max-w-[calc(100%-2rem)] flex-wrap items-center justify-end gap-2"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      {role === 'teacher' && (
+      {canEdit && (
         <>
           <button
             disabled={disabled}

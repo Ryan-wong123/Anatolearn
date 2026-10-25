@@ -13,6 +13,7 @@ Browser --HTTPS--> Caddy (80/443, auto certificate)
 backup container --> nightly pg_dump --> S3 backups/        CloudWatch: logs, alarms, uptime check
 ```
 
+- Teacher and administrator accounts sign in with a password **and** a code from an authenticator app (two-factor authentication, enforced by `MFA_REQUIRED`; see step 11).
 - Only Caddy is exposed to the internet. Postgres, ClamAV, the API and nginx are internal to the Docker network.
 - The S3 bucket is private. The API checks login, role, programme and publish state, then streams the file to the user. No CORS or presigned URLs are needed.
 - AWS credentials come from the EC2 **instance role**. Never put access keys in files.
@@ -30,11 +31,11 @@ backup container --> nightly pg_dump --> S3 backups/        CloudWatch: logs, al
 - [ ] 8. Install Docker on the instance
 - [ ] 9. Clone the repo and create `.env.production`
 - [ ] 10. Start the stack
-- [ ] 11. Create the first administrator account
+- [ ] 11. Create the first administrator account and enrol it in two-factor authentication
 - [ ] 12. Verify content, uploads and the virus scanner
 - [ ] 13. Check backups and run a restore test
 - [ ] 14. Set up CloudWatch logs and alarms
-- [ ] 15. Complete the privacy notice and terms
+- [ ] 15. Complete the privacy notice and terms, and switch on the GitHub security features
 
 Commands below use the AWS CLI. Everything can also be done in the AWS console. Replace the placeholders in `UPPER_CASE`.
 
@@ -51,6 +52,7 @@ export DOMAIN=anatolearn.example.com
 - An AWS account and the AWS CLI configured (`aws configure`) with permission to manage S3, IAM, EC2, CloudWatch, SNS and Route 53.
 - A domain name you can edit DNS for (Route 53 or any registrar).
 - Decide a **teacher invite code** and the email domains allowed to register (step 9).
+- Every teacher and administrator needs a phone with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Authy or similar). The instance clock must be correct: codes are time-based, so keep NTP on (Ubuntu 24.04 and Amazon Linux 2023 do by default).
 
 ## 2. S3 bucket
 
@@ -194,9 +196,24 @@ chmod 600 .env.production
 | `SITE_DOMAIN` / `FRONTEND_ORIGINS` | `anatolearn.example.com` (no `https://`) and `https://anatolearn.example.com` (no trailing slash; comma-separate several) |
 | `AWS_REGION`, `S3_BUCKET`, `S3_PREFIX` | Storage location (prefix optional) |
 | `CLAMAV_REQUIRED` | `true` (default) rejects uploads while the scanner is down; `false` lets them through with a log warning |
+| `UPLOAD_QUOTA_MB_PER_USER` / `UPLOAD_QUOTA_MB_TOTAL` | Storage limits in megabytes for uploaded models, videos and resources: per teacher (default 5120, 5 GB) and for the whole site (default 51200, 50 GB). `0` means unlimited. Size the site limit to your S3 budget and the teacher limit to how much one person needs. A teacher over their limit gets a clear message and can free space by deleting content. Teachers see their usage on their Profile page |
+| `UPLOAD_DOCX_MAX_UNCOMPRESSED_MB` / `UPLOAD_USDZ_MAX_UNCOMPRESSED_MB` | Optional. The most a `.docx` (default 300) or `.usdz` (default 1024) archive may expand to when opened. Larger files are rejected as possible zip bombs |
+| `SESSION_IDLE_MINUTES_STAFF` / `SESSION_IDLE_MINUTES_STUDENT` | Minutes without any request after which a session stops working (5 to 1440). Defaults 120 for teachers and administrators and 480 for students; the 24 hour absolute limit always applies. Anyone can also end all their sessions from Profile -> Signed-in devices |
+| `MFA_REQUIRED` | `true` (the default in `docker-compose.prod.yml`) forces every teacher and administrator to set up two-factor authentication before they can use the site, and stops them turning it off. `false` makes it optional |
+| `MFA_ENCRYPTION_KEY` | **Set this before anyone enrols**: `openssl rand -hex 32` (at least 32 characters). It encrypts the stored authenticator secrets. If left empty the key is derived from `JWT_SECRET`. Back it up with the rest of `.env.production`, and never change it afterwards (see "Two-factor authentication" below) |
 | `BACKUP_INTERVAL_HOURS` | Database backup frequency, default 24 |
 
-Keep `.env.production` out of git (it is already ignored).
+Keep `.env.production` out of git (it is already ignored). CI scans the whole git history for committed secrets.
+
+**Startup checks.** The API validates its configuration when it starts and refuses to run if something is unsafe. It prints every problem at once, for example:
+
+```
+Invalid configuration:
+ - JWT_SECRET looks like a placeholder or has too little variety; generate one with: openssl rand -base64 48
+ - FRONTEND_ORIGINS "http://anatolearn.example.com" must use https in production
+```
+
+It stops for: a `JWT_SECRET` that is under 32 characters, a placeholder (`changeme`, `secret`, `dev-only...`) or has fewer than 10 distinct characters; `FRONTEND_ORIGINS` that is not a bare `https://` origin (no path, no trailing slash, no wildcard, not localhost); and a `MFA_ENCRYPTION_KEY` under 32 characters. It only warns (look for `WARNING:` in `docker compose logs backend`) when `MFA_REQUIRED` is not `true`, `MFA_ENCRYPTION_KEY` is empty, `ALLOWED_EMAIL_DOMAINS` is empty, the invite code is under 12 characters, ClamAV is off or not required, `TRUST_PROXY` is missing, rate limiting or audit logging is disabled, or the API connects to Postgres as a superuser. Treat warnings as a to-do list.
 
 ## 10. Start the stack
 
@@ -211,6 +228,8 @@ On first start:
 - The API applies any pending database migrations (`backend/sql/*.sql`, tracked in `schema_migrations`) before it starts listening. A failed migration stops startup with the file name in the log, so a broken deploy never serves half-migrated data.
 - ClamAV downloads its virus signatures, which takes 2-5 minutes; the API waits for it to report healthy.
 - Visit `https://$DOMAIN`. The first load may take a minute while Caddy obtains the certificate.
+- Check `docker compose -f docker-compose.prod.yml logs backend | grep WARNING`. A clean production setup prints no warnings.
+- Caddy sends `Strict-Transport-Security: max-age=31536000` (one year). Once a browser has visited, it refuses plain HTTP for this domain for that long, so only use a domain you will serve over HTTPS. It deliberately omits `includeSubDomains` and `preload`; add them to `ops/Caddyfile` only if every subdomain of the parent domain is HTTPS-only. Check it with `curl -sI https://$DOMAIN | grep -i strict-transport`.
 
 ## 11. Create the first administrator account
 
@@ -220,7 +239,23 @@ docker compose -f docker-compose.prod.yml --env-file .env.production exec \
   node scripts/create-admin.js "Admin Name" admin@example.com
 ```
 
-The password needs 8-72 characters with an uppercase letter and a number. Running the script for an existing email promotes that account to administrator (and signs it out everywhere); leave `ADMIN_PASSWORD` unset to keep its current password. Administrators have no learning pages: they only manage accounts and read the audit log. Teachers register themselves with the invite code, or an administrator creates them under **Users**. From then on administrators manage accounts (disable, unlock, reset passwords, change roles) in the app; teachers cannot.
+The administrator password must be **at least 12 characters** (up to 72 bytes) with an uppercase letter and a number, must not be a common password (`Password1`, `Welcome2024`, `P@ssw0rd!` and similar are refused) and must not contain the name or email address. Four unrelated words and a number, such as `Blue-Tractor-Lamp-7`, work well. The script prints the reason if it refuses. The same rules apply to every password set in the app: students need 8 characters, teachers and administrators 12. Existing accounts are not forced to change a password that was set before this rule, so ask staff to update short ones from their Profile page. **Do not skip the next part.**
+
+### Two-factor authentication
+
+With `MFA_REQUIRED=true` the first administrator is sent to the **Profile** page straight after signing in and cannot use anything else until two-factor authentication is set up:
+
+1. Under *Two-factor authentication* choose **Set up**, enter the password, and scan the QR code with an authenticator app (or type the key in manually).
+2. Enter the 6-digit code to turn it on.
+3. Save the **10 recovery codes** shown (a password manager is ideal). Each works once, they are shown only now, and they are the way back in if the phone is lost.
+
+From then on every sign-in asks for a code (or a recovery code). Wrong codes count towards the same 5-attempt lockout as wrong passwords, and a code can only be used once.
+
+- **Create a second administrator now and enrol it.** An administrator who loses their phone and recovery codes can only be reset by *another* administrator (**Users -> Reset 2FA**). Administrators cannot reset themselves. If you have only one, use the database fix under Troubleshooting.
+- **Teachers** are enrolled the same way: the first time they sign in after `MFA_REQUIRED` is on, they are taken to their Profile to set it up. Students are never asked.
+- **Lost phone:** an administrator opens **Users**, clicks **Reset 2FA** on that person (this signs them out everywhere), and the person signs in with their password and enrols again. Recovery codes can be regenerated on the Profile page (password and a current code needed).
+- **Never change `MFA_ENCRYPTION_KEY`** (or, if it is empty, `JWT_SECRET`) after people have enrolled. Their stored secrets can no longer be decrypted and every one of them has to be reset. If you must rotate it, plan to reset everyone.
+- Scripts and integrations that sign in as a teacher or administrator cannot use the two-step sign-in. Use a student-level account, or enrol the account first and use its session. Running the script for an existing email promotes that account to administrator (and signs it out everywhere); leave `ADMIN_PASSWORD` unset to keep its current password. Administrators have no learning pages: they only manage accounts and read the audit log. Teachers register themselves with the invite code, or an administrator creates them under **Users**. From then on administrators manage accounts (disable, unlock, reset passwords, change roles) in the app; teachers cannot.
 
 ## 12. Content and verification
 
@@ -242,6 +277,10 @@ Smoke test:
    `X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`
 5. Register a student (the email domain must be allowed). Confirm they see only published content for their programme, that video seeking works, and that `curl -I https://$DOMAIN/videos/FILE.mp4` without a session returns 401.
 6. Post an announcement as a teacher and check the student sees the bell badge.
+7. Two-factor authentication: sign out and back in as the administrator. After the password you must get the *Two-step verification* prompt. A wrong code is refused, a correct one signs you in, and the same code is refused if you try to reuse it on a second sign-in within 30 seconds.
+8. Sign in as a new teacher who has not enrolled: they must land on the Profile page and every other page must send them back until they finish setup. A student must go straight to the dashboard.
+9. Upload checks: rename a text file to `video.mp4` and try to upload it as a video. It must be rejected with "The file contents do not match an MP4 or WebM video".
+10. `curl -sI https://$DOMAIN | grep -i strict-transport` shows `max-age=31536000`.
 
 ## 13. Backups and restore test
 
@@ -285,6 +324,19 @@ cd ops/cloudwatch
 INSTANCE_ID=i-XXXX ALERT_EMAIL=you@example.com DOMAIN=$DOMAIN AWS_REGION=$AWS_REGION ./setup-alarms.sh
 ```
 
+**Security alarms.** The same script also creates alarms from the security events the API writes to the log (one `{"msg":"security_event"}` line per failed sign-in, wrong two-factor code, lockout, recovery-code use, password or two-factor reset, with ids and IPs only, never names or emails). They need the logs to reach CloudWatch (the override file above) and notify the same email topic:
+
+| Alarm | Fires when | What to do |
+|---|---|---|
+| `anatolearn-mfa-failures` | 5 or more wrong two-factor codes in 5 minutes | Someone has a staff password. Find the account in **Users -> Audit log** (`auth.mfa_failed`), contact the owner and reset their password |
+| `anatolearn-account-lockouts` | 3 or more accounts locked in 15 minutes | Password guessing is under way. Check the IPs, and block them at the security group or Caddy if one source dominates |
+| `anatolearn-login-failures` | 25 or more failed sign-ins in 5 minutes | Credential stuffing, or a broken client or script |
+| `anatolearn-mfa-reset` | Two-factor reset by an administrator or turned off by the user | Confirm with the account owner that it was them |
+| `anatolearn-mfa-recovery-used` | A recovery code was used to sign in | Confirm it was the account owner, who should then generate new codes |
+| `anatolearn-password-reset` | An administrator reset someone's password | Confirm it was intended |
+
+The thresholds suit a small school. To change one, edit the numbers on the `event_alarm` lines in `ops/cloudwatch/setup-alarms.sh` and run it again. The script is safe to re-run (alarms and metric filters are updated in place), but it creates another Route 53 health check each time, so delete the old one in the Route 53 console afterwards, and only re-run it when you need to. Security event logging is on in production by default; set `LOG_SECURITY_EVENTS=false` to turn it off, or `true` to enable it elsewhere. For a quick look without an alarm use Logs Insights: `filter msg = "security_event" | stats count() by action, bin(1h)`.
+
 Confirm the two SNS subscription emails (one per region). For the memory and disk alarms install the CloudWatch agent on the instance and load the supplied config:
 
 ```bash
@@ -301,7 +353,13 @@ The in-app audit trail (Users -> Audit log) covers who did what; the log group c
 ## 15. Before launch
 
 - Complete the **Privacy notice** and **Terms of use** pages (`anatolearn/src/pages/Privacy.tsx`, `Terms.tsx`) with your institution's contact details and policies, and have them reviewed. Registration requires consent to both.
-- Decide who the administrators are (keep at least two), remove unused teacher accounts, and agree how often the audit log is reviewed.
+- Decide who the administrators are (keep at least two, both enrolled in two-factor authentication), remove unused teacher accounts, and agree how often the audit log is reviewed. Tell staff before enabling `MFA_REQUIRED`: on their next page load they are held on the Profile page until they set up.
+- Turn on the GitHub security features for the repository (Settings):
+  - **Code security -> Code scanning**: the workflow `.github/workflows/codeql.yml` runs CodeQL on every pull request, on `main` and weekly, and reports to the Security tab. On a **private** repository this needs GitHub Advanced Security; without it the upload step fails. On a public repository it is free.
+  - **Code security -> Secret scanning and push protection**: blocks pushes that contain known token formats. The CI job `Secret scan` (gitleaks, config in `.gitleaks.toml`) scans the full history on every pull request as a second layer.
+  - **Dependabot alerts** (already configured for weekly updates in `.github/dependabot.yml`).
+  - **Branches -> Branch protection for `main`**: require pull requests and the checks `Backend tests`, `Frontend lint, tests and build`, `Dependency audit`, `Secret scan`, `Image vulnerability scan` and `Analyze JavaScript and TypeScript` before merging. (The third-party image report is informational and should not be required.)
+- If CodeQL or the secret scan reports a real secret, treat it as leaked: rotate it first (see Security notes), then remove it from the code. Deleting it from a later commit does not remove it from history.
 
 ---
 
@@ -316,6 +374,24 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d --bui
 Database changes are automatic: every new numbered file in `backend/sql` (e.g. `015_something.sql`) is applied once, inside a transaction, when the API starts, and recorded in `schema_migrations`. Never edit a file that has already been applied; add a new one. The runner needs the owner role, so keep `MIGRATION_DATABASE_URL` set. Run migrations manually with `docker compose -f docker-compose.prod.yml exec backend node src/migrate.js`. While the API restarts users see a friendly "being updated" page.
 
 ### Upgrading an existing deployment to this version
+
+- **Content ownership (migration `020_content_owner.sql`)** is applied automatically. From now on a teacher can change, delete, publish or grade only what they created, and sees quiz attempts, answer keys and dashboard figures only for their own quizzes. Content that exists today has no recorded owner, so it is **unclaimed**: any teacher can still change it until it is claimed. After the first deploy:
+  1. Ask each teacher to open their pages and press **Claim** under the items that are theirs (every unclaimed item shows "No owner yet" with a Claim button), or
+  2. As an administrator open **Users -> Assign unclaimed content** and give all of it to one teacher, then use **Transfer content** on that teacher's row to hand parts on if needed (it moves everything one teacher owns to another, so it suits whole handovers rather than splitting).
+  Check afterwards that nothing is left: in the database `SELECT count(*) FROM quizzes WHERE owner_id IS NULL;` (and the same for `models`, `videos`, `resources`, `question_bank`).
+- **Upload limits (migration `021_upload_sizes.sql`)** add storage quotas (defaults 5 GB per teacher, 50 GB for the site) and a zip-expansion check for `.docx` and `.usdz` uploads. Existing files have no recorded size, so they count as 0 until you run the backfill once after deploying, otherwise the limits ignore everything uploaded before the upgrade:
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.production exec backend npm run backfill:sizes
+  ```
+  It measures every stored file (local disk or S3), only touches rows still at 0, can be re-run safely, and prints how many rows it updated or could not find. Check the result against reality: a teacher who already uses more than the per-teacher limit will be unable to upload until they delete something or you raise `UPLOAD_QUOTA_MB_PER_USER`.
+- Teachers' draft (unpublished) content is now private to its owner; other teachers can still see published content but cannot change it. Dashboards and the quiz results lists are limited to the teacher's own quizzes.
+- When you delete a teacher, their content is kept but becomes unclaimed. **Transfer their content first** (Users -> Transfer content) if it should stay protected.
+- Session idle timeout (migration `019_session_idle.sql`): everyone signed in at deploy time keeps their session, which then ends after 2 hours (staff) or 8 hours (students) of inactivity. Set `SESSION_IDLE_MINUTES_STAFF` and `_STUDENT` to change that.
+- CloudWatch security alarms are new: re-run `ops/cloudwatch/setup-alarms.sh` once to create them (see step 14).
+
+- **Two-factor authentication (migration `018_mfa.sql`)** is applied automatically. The compose file now defaults `MFA_REQUIRED` to `true`, so as soon as the new version starts, every teacher and administrator, **including those already signed in**, is held on the Profile page until they enrol. To give staff a grace period, set `MFA_REQUIRED=false` in `.env.production` for the first deploy (enrolment stays available on the Profile page), then switch it to `true` once they have enrolled. Set `MFA_ENCRYPTION_KEY` before the first person enrols.
+- The startup checks above are stricter than before. A weak or placeholder `JWT_SECRET`, or `FRONTEND_ORIGINS` with a trailing slash or `http://`, now stops the API from starting; fix `.env.production` and run `up -d` again.
+- Caddy now sends HSTS (see step 10), and upload endpoints are limited to 60 uploads per hour per IP. Uploaded videos must be genuine MP4 or WebM files, and `.doc` uploads, which were previously always rejected, now work.
 
 - Take a backup first.
 - Databases created before migrations existed are detected: `001_schema.sql` and `002_seed.sql` are marked as applied (they would otherwise wipe data) and the rest run normally.
@@ -342,6 +418,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 | Symptom | Cause / fix |
 |---|---|
 | Compose says a variable is required | A value is missing from `.env.production`; compose names which one |
+| Backend exits: `Invalid configuration:` followed by a list | The startup checks found unsafe values; each line names the variable and what is wrong (step 9). Fix `.env.production` and run `up -d` again |
 | Backend exits: `JWT_SECRET must be set...` | Secret missing or under 32 characters |
 | Backend exits: `FRONTEND_ORIGINS must list...` | Set it to `https://your-domain` |
 | Backend exits: `Migration NNN failed` | Read the error in `docker compose logs backend`; fix it in a new migration file. The failed migration was rolled back |
@@ -352,9 +429,32 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 | Browser shows certificate error | DNS not yet pointing at the Elastic IP, or ports 80/443 blocked; see `docker compose logs caddy` |
 | Login works but you are logged out immediately / 403 "Untrusted request origin" | `FRONTEND_ORIGINS` does not exactly match the browser origin (scheme, host, no trailing slash) |
 | Writes return 403 "Invalid or missing CSRF token" | A script uses the session cookie without the `X-CSRF-Token` header; use a Bearer token, or reload the page in the browser |
+| A teacher sees "By <name>. View only" and no Edit button | The content belongs to another teacher. Only its owner can change it. To change ownership an administrator uses **Users -> Transfer content** on the owner |
+| A teacher cannot find a colleague's quiz, model or video | It is an unpublished draft. Drafts are private to their owner until published |
+| A teacher's quiz results or dashboard are empty after upgrading | Attempts are shown only for quizzes the teacher owns or that are unclaimed. Claim the quiz (Claim button) or have an administrator assign or transfer it |
+| "This belongs to another teacher" (403) from the API | A script or integration is changing content its account does not own. Use the owner's account, or transfer the content to the account the script uses |
+| Users are signed out unexpectedly | Expected after the idle limit (2 hours for staff, 8 hours for students by default) or 24 hours after signing in, or after they used "Sign out on all devices", changed their password or enabled two-factor authentication. Raise `SESSION_IDLE_MINUTES_*` if the limit is too short for your classes |
 | A user cannot sign in after a few attempts | Locked for 15 minutes; a teacher can unlock them under Users |
+| Registering, changing a password or creating an account fails with "too common or easy to guess" or "must not contain your name or email" | The password policy (`backend/src/passwords.js`) rejects common passwords, keyboard runs, repeated patterns and passwords that include the person's name or email, even with capitals, digits or symbols added. Choose a few unrelated words instead |
 | Registration says "limited to @school.edu" | `ALLOWED_EMAIL_DOMAINS` is set; use an allowed address, or an administrator can create the account under Users |
 | 429 Too many requests | Rate limits (10 logins / 15 min per IP). If every user is limited together, `TRUST_PROXY` does not match the proxy chain (default 2: Caddy + nginx) |
+| A staff member sees the Profile page and nothing else | `MFA_REQUIRED=true` and they have not set up two-factor authentication yet. This is expected: they set it up there |
+| "Invalid or expired verification code" at sign-in | Wrong or already-used code, or the 5-minute window after the password expired (click *Back to sign in*). If codes are always rejected, check the phone's time is automatic and the server clock is right (`timedatectl`). Five wrong attempts lock the account for 15 minutes; an administrator can unlock it under Users |
+| A staff member lost their phone | An administrator uses **Users -> Reset 2FA** on them. For the only administrator see the database fix below |
+| Everyone's codes are rejected, or the API logs `Failed to verify MFA code` after a deploy | `MFA_ENCRYPTION_KEY` (or `JWT_SECRET`, if the key is empty) changed since people enrolled. Restore the old value, or reset two-factor for everyone who had enrolled |
+| A script or integration gets 403 `mfa_setup_required` | It signs in as a teacher or administrator who has not enrolled. Enrol that account first, or use a different account |
+| Upload rejected: "file contents do not match" | The file is not really what its extension says (a renamed file, a corrupt export, an SVG renamed to `.png`). Re-export it from the original program |
+| Uploads return 429 | More than 60 uploads from one IP in an hour |
+| Upload refused: "over your storage limit" (413) | The teacher has used their allowance (`UPLOAD_QUOTA_MB_PER_USER`). They can delete content they no longer need; deleting frees the space at once. Or raise the limit and run `up -d`. Check usage on their Profile page |
+| Upload refused: "The site has run out of storage space" (413) | The site total (`UPLOAD_QUOTA_MB_TOTAL`) is reached. Review what is stored in S3, delete old content, or raise the limit |
+| Storage use looks far too low after upgrading | The sizes of files uploaded before the upgrade were never recorded. Run `npm run backfill:sizes` (see "Upgrading an existing deployment") |
+| Upload rejected: "expands to far more data than it contains" or "unsafe" | A `.docx` or `.usdz` is a possible zip bomb, is damaged, is encrypted, or contains paths that escape its folder. Re-export the file from the original program. A genuine very large model may need a higher `UPLOAD_USDZ_MAX_UNCOMPRESSED_MB`. A `.usdz` with compressed entries is invalid by definition (the format requires them stored uncompressed) |
+| Browser insists on HTTPS and will not load the site over HTTP | HSTS (one year). Expected; use HTTPS |
+| GitHub Action `Image vulnerability scan` fails | A HIGH or CRITICAL vulnerability with an available fix is in one of our images. The log names the package and the fixed version. For an operating-system package, re-run the job (the build uses `--pull` for fresh base images) or bump the base image tag in the Dockerfile; for an npm package run `npm audit fix` in the folder named in the log. A reviewed, accepted exception goes in `.trivyignore` with a comment and a review date |
+| `Backend tests` fails at the lint step | `eslint-plugin-security` or a general lint rule found something; the log gives file and line. Fix it, or if the code is safe add `// eslint-disable-next-line <rule> -- <why it is safe>`. Do not add paths to the rule overrides in `backend/eslint.config.js` without reviewing every file path the code can build |
+| GitHub Action `Secret scan` fails | Read the log for the file and rule. Real secret: rotate it, then clean the code. Test value: add the file's path to `.gitleaks.toml` |
+| GitHub Action `Third-party image report` shows vulnerabilities | Informational. Check whether a newer tag of `postgres`, `clamav/clamav` or `caddy` fixes them, update the tag in `docker-compose.prod.yml`, test on staging and redeploy |
+| GitHub Action `Analyze JavaScript and TypeScript` fails to upload results | Code scanning is not enabled for the repository, or the repository is private without GitHub Advanced Security (step 15) |
 | Large upload fails | nginx allows 210 MB; check backend logs and that ClamAV `StreamMaxLength` (250 MB) is unchanged |
 | Backup container unhealthy | `docker compose logs backup`; usually missing `s3:PutObject` permission, wrong region or the hop limit |
 
@@ -362,13 +462,28 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 
 See `docs/Security.md` for the full list of controls.
 
-- Rotate `JWT_SECRET` or the invite code by editing `.env.production` and re-running `up -d` (rotating the JWT secret logs everyone out).
+- Rotate `JWT_SECRET` or the invite code by editing `.env.production` and re-running `up -d` (rotating the JWT secret logs everyone out, and also breaks stored two-factor secrets if `MFA_ENCRYPTION_KEY` is empty; set it first).
+- Keep `MFA_ENCRYPTION_KEY` with the other secrets and out of git. A database backup alone cannot be used to generate codes without it.
 - Keep SSH restricted to your IP, apply OS updates regularly (`unattended-upgrades`), and keep IMDSv2 required (`--http-tokens required`, step 6).
 - Never open the database port. Keep the bucket private.
-- Review the audit log regularly and after any staff change; disable accounts instead of sharing passwords.
+- Review the audit log regularly and after any staff change; disable accounts instead of sharing passwords. Events worth watching: `auth.mfa_failed`, `auth.account_locked`, `auth.mfa_recovery_used` (a recovery code was spent, so check it was the person), `user.reset_mfa` and `profile.mfa_disabled`.
+
+### Database fix: the only administrator lost their phone and recovery codes
+
+```bash
+docker compose -f docker-compose.prod.yml exec postgres psql -U anatolearn -d anatolearn
+```
+
+```sql
+UPDATE users SET mfa_secret = NULL, mfa_pending_secret = NULL, mfa_enabled_at = NULL, mfa_last_step = NULL,
+  mfa_recovery_hashes = '{}' WHERE email = 'admin@example.com';
+UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = (SELECT id FROM users WHERE email = 'admin@example.com');
+```
+
+They then sign in with the password and enrol again. Do this only after confirming the person's identity out of band.
 
 ## Local development
 
 `docker-compose.yml` is dev-only (Vite dev server, local disk storage, ports bound to 127.0.0.1). Without `STORAGE_DRIVER=s3` the API stores files under `PUBLIC_DIR` on disk, and ClamAV and backups are off. The API applies migrations on start. Load sample content with `docker compose exec backend npm run seed:demo` (wipes content tables; refuses in production). Do not expose the dev stack publicly.
 
-CI (`.github/workflows/ci.yml`) runs backend unit and integration tests against Postgres, frontend lint, tests and build, `npm audit`, and production image builds on every pull request. Dependabot opens weekly update PRs.
+CI (`.github/workflows/ci.yml`) runs backend unit and integration tests against Postgres, frontend lint, tests and build, `npm audit`, production image builds and a gitleaks secret scan of the full history on every pull request. `.github/workflows/codeql.yml` runs CodeQL static analysis. `.github/workflows/trivy.yml` builds the two production images and fails on fixable HIGH or CRITICAL vulnerabilities in them (on every pull request, on `main` and weekly), and reports on the postgres, clamav and caddy images the stack pulls. The `Backend tests` job also runs `npm run lint` in `anatolearn/backend`, which includes `eslint-plugin-security` (it fails on `eval`, shell commands built from variables, non-literal `require` and file paths, and unsafe regular expressions). Run it locally with `cd anatolearn/backend && npm run lint`. Dependabot opens weekly update PRs. Without `MFA_REQUIRED` set, local development and CI do not require two-factor authentication; to try it locally run the stack with `MFA_REQUIRED=true`.

@@ -1,4 +1,7 @@
 {$SITE_DOMAIN} {
 	encode zstd gzip
+	# Browsers refuse plain HTTP for a year after a first visit. Deliberately without includeSubDomains/preload so other
+	# subdomains of the parent domain are not affected; see docs/Deployment.md before changing it.
+	header Strict-Transport-Security "max-age=31536000"
 	reverse_proxy web:8080
 }

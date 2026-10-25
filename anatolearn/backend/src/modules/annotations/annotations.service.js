@@ -75,7 +75,7 @@ async function updateAnnotation(input) {
 }
 async function listAll(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
-    const result = await repository.listWithModelTitles();
+    const result = await repository.listWithModelTitles([input.user.id]);
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows });
 }
 module.exports = { listForModel, exportAnnotations, createAnnotation, deleteAnnotation, updateAnnotation, listAll };

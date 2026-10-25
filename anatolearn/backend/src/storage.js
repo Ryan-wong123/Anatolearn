@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const os = require('os');
+const { inspectZip, STORED } = require('./zipGuard');
 const ROOT = path.resolve(process.env.PUBLIC_DIR || path.join(__dirname,'../../public'));
 // STORAGE_DRIVER=s3 keeps every teaching asset in S3 (instance role credentials). Uploads are staged
 // on local disk only long enough to be validated and copied across.
@@ -37,6 +38,14 @@ async function persist(file, folder) {
     ContentLength: size, ContentType: CONTENT_TYPES[path.extname(file.filename).toLowerCase()] || 'application/octet-stream' }));
   await fs.unlink(file.path).catch(() => {});
   return assetPath;
+}
+// Size in bytes of a stored file, or null if it cannot be found.
+async function statAsset(assetPath) {
+  try {
+    if (!REMOTE) return (await fs.stat(resolveAsset(assetPath))).size;
+    const { HeadObjectCommand } = require('@aws-sdk/client-s3');
+    return (await s3().send(new HeadObjectCommand({ Bucket: BUCKET, Key: objectKey(assetPath) }))).ContentLength ?? null;
+  } catch { return null; }
 }
 async function writeAsset(assetPath, bytes) {
   if (!REMOTE) { const target = resolveAsset(assetPath); await fs.mkdir(path.dirname(target), { recursive: true }); return fs.writeFile(target, bytes); }
@@ -82,6 +91,11 @@ async function readAsset(assetPath) {
   const object = await s3().send(new GetObjectCommand({ Bucket: BUCKET, Key: objectKey(assetPath) }));
   return Buffer.from(await object.Body.transformToByteArray());
 }
+// How far a document or model archive may expand once opened. A .docx is mostly XML; a USDZ holds textures, so it gets more room.
+const MB = 1024 * 1024;
+const archiveLimit = (name, fallbackMb) => { const parsed = Number(process.env[name]); return (Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMb) * MB; };
+const docxLimit = () => archiveLimit('UPLOAD_DOCX_MAX_UNCOMPRESSED_MB', 300);
+const usdzLimit = () => archiveLimit('UPLOAD_USDZ_MAX_UNCOMPRESSED_MB', 1024);
 async function validateModel(file) {
   const extension = path.extname(file.originalname).toLowerCase();
   const bytes = await fs.readFile(file.path);
@@ -96,6 +110,8 @@ async function validateModel(file) {
       throw Object.assign(new Error('Upload self-contained glTF with embedded buffers/textures, or convert the complete model to GLB before uploading'),{status:400});
   } else if(extension === '.usdz') {
     if (bytes.length<30 || bytes.readUInt32LE(0)!==0x04034b50) throw Object.assign(new Error('USDZ must be a valid ZIP container'),{status:400});
+    // The USDZ format requires every entry to be stored uncompressed, so a compressed entry is invalid, and nothing needs inflating.
+    await inspectZip(file.path,{ maxUncompressedBytes: usdzLimit(), maxEntries: 5000, methods: [STORED] });
   } else if(extension === '.obj' && (!/^v\s+[-\d.]/m.test(bytes.toString('utf8')) || !/^f\s+\d/m.test(bytes.toString('utf8')))) {
     throw Object.assign(new Error('OBJ must contain vertices and faces'),{status:400});
   }
@@ -113,16 +129,32 @@ async function referencesAsset(model, assetPath) {
 async function validateResource(file,type) {
   const bytes=await fs.readFile(file.path);
   const ext=path.extname(file.originalname).toLowerCase();
+  // A .docx is a ZIP: check it cannot expand into something enormous, and that it holds the parts Word needs.
+  const isZip = bytes.length>=4 && bytes.readUInt32LE(0)===0x04034b50;
+  const docxOk = async () => {
+    if (ext!=='.docx' || !isZip) return false;
+    const { names } = await inspectZip(file.path,{ maxUncompressedBytes: docxLimit() });
+    return names.includes('[Content_Types].xml') && names.some((name)=>name.startsWith('word/'));
+  };
   const matches = type==='pdf' ? ext==='.pdf' && bytes.subarray(0,5).toString()==='%PDF-'
-    : type==='document' ? (ext==='.docx' && bytes.length>=4 && bytes.readUInt32LE(0)===0x04034b50) || (ext==='.doc' && bytes.subarray(0,8).equals(Buffer.from('d0cf11e0a1b11e1','hex')))
+    : type==='document' ? await docxOk() || (ext==='.doc' && bytes.subarray(0,8).equals(Buffer.from('d0cf11e0a1b11ae1','hex')))
     : type==='image' && ((ext==='.png' && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'))) || (['.jpg','.jpeg'].includes(ext) && bytes.subarray(0,3).equals(Buffer.from('ffd8ff','hex'))) || (ext==='.webp' && bytes.subarray(0,4).toString()==='RIFF' && bytes.subarray(8,12).toString()==='WEBP'));
   if (!matches) throw Object.assign(new Error('The file contents do not match the selected PDF, document or photo format'),{status:400});
+}
+// Checks the container signature against the claimed extension so a renamed executable or script is not stored as video.
+async function validateVideo(file) {
+  const extension=path.extname(file.originalname).toLowerCase();
+  const handle=await fs.open(file.path,'r');
+  const head=Buffer.alloc(12);
+  try { await handle.read(head,0,12,0); } finally { await handle.close(); }
+  const valid=extension==='.mp4' ? head.subarray(4,8).toString('latin1')==='ftyp' : extension==='.webm' && head.subarray(0,4).equals(Buffer.from('1a45dfa3','hex'));
+  if (!valid) throw Object.assign(new Error('The file contents do not match an MP4 or WebM video'),{status:400});
 }
 async function validateCaptions(file) {
   if (file.size > 2 * 1024 * 1024) throw Object.assign(new Error('Caption files must be 2 MiB or smaller'),{status:400});
   const bytes=await fs.readFile(file.path);
   const text=bytes.toString('utf8').replace(/^\uFEFF/, '');
-  if (text.includes('\u0000') || !/^WEBVTT(?:[ \t].*)?(?:\r?\n|$)(?:[\s\S]*)$/.test(text))
+  if (text.includes('\u0000') || !/^WEBVTT(?:[ \t]|\r?\n|$)/.test(text))
     throw Object.assign(new Error('Caption file must be a UTF-8 WebVTT (.vtt) file starting with WEBVTT'),{status:400});
 }
-module.exports={ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateCaptions};
+module.exports={statAsset,ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateVideo,validateCaptions};

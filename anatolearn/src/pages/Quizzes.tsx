@@ -3,6 +3,7 @@ import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import QuestionBank from '../components/QuestionBank';
 import ContentSettings from '../components/ContentSettings';
+import OwnerNote from '../components/OwnerNote';
 import Pagination from '../components/Pagination';
 import BarList from '../components/dashboard/BarList';
 import Sparkline from '../components/dashboard/Sparkline';
@@ -15,6 +16,8 @@ import { api } from '../api/api';
 
 interface Quiz {
   id: number;
+  can_manage?: boolean;
+  owner_name?: string | null;
   program_id: number | null;
   time_limit_seconds?: number | null;
   title: string;
@@ -786,8 +789,9 @@ export default function Quizzes() {
                 </div>
               )}
 
-              <ContentSettings kind="quizzes" id={quiz.id} programId={quiz.program_id} timer={quiz.time_limit_seconds} onSaved={() => api.getQuizzes().then(setQuizzes)} />
-              {role === 'teacher' && (
+              <ContentSettings kind="quizzes" id={quiz.id} programId={quiz.program_id} timer={quiz.time_limit_seconds} canManage={quiz.can_manage} onSaved={() => api.getQuizzes().then(setQuizzes)} />
+              <OwnerNote kind="quizzes" item={quiz} onChanged={() => api.getQuizzes().then(setQuizzes)} />
+              {role === 'teacher' && quiz.can_manage !== false && (
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => openEditQuiz(quiz)}
@@ -1093,7 +1097,9 @@ export default function Quizzes() {
                         >
                           {isCorrect
                             ? '✓ Correct'
-                            : `✗ Incorrect — Correct answer: ${correctText}`}
+                            : correctLetter
+                              ? `✗ Incorrect — Correct answer: ${correctText}`
+                              : '✗ Incorrect — the correct answer will be shown once your teacher has finished marking this attempt'}
                         </p>
                       </div>
                     );

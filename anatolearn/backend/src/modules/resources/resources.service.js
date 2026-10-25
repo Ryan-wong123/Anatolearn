@@ -1,6 +1,7 @@
 const repository = require('./resources.repository');
 const fs = require('fs/promises');
 const storage = require('../../storage');
+const quota = require('../../quota');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listResources(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -22,7 +23,7 @@ async function uploadResource(input) {
         if (!resource_type || !["pdf", "document", "link", "image"].includes(resource_type)) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "resource_type must be pdf, document, image, or link" } });
         }
-        let filePath;
+        let filePath, fileSize = 0;
         if (resource_type === "link") {
             if (!url) {
                 return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "url is required for link resources" } });
@@ -44,17 +45,20 @@ async function uploadResource(input) {
                 await storage.validateResource(input.file, resource_type);
             }
             catch (error) {
+                // eslint-disable-next-line security/detect-non-literal-fs-filename -- multer's own temp file, named by randomUUID()
                 await fs.unlink(input.file.path).catch(() => { });
                 return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: error.message } });
             }
+            await quota.assertWithin(input.user.id, input.file.size);
             filePath = await storage.persist(input.file, 'resources');
+            fileSize = input.file.size;
         }
-        const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null]);
+        const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null, input.user.id, fileSize]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {
         console.error("Failed to upload resource:", err);
-        return ({ ...outcomeMeta, status: 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload resource" } });
+        return ({ ...outcomeMeta, status: err.status || 500, kind: 'json', body: { message: err.status && err.status < 500 ? err.message : "Failed to upload resource" } });
     }
 }
 async function deleteResource(input) {

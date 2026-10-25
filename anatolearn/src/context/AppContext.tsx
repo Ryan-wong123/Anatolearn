@@ -39,15 +39,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isDevMode = import.meta.env.DEV;
   useEffect(() => {
     const expire = () => { sessionStorage.setItem('anatolearn_session_expired', '1'); setUser(null); setRole('student'); };
+    const needsMfa = () => setUser((current) => current && { ...current, mfa_setup_required: true });
     window.addEventListener('anatolearn-session-expired',expire);
-    return () => window.removeEventListener('anatolearn-session-expired',expire);
+    window.addEventListener('anatolearn-mfa-required',needsMfa);
+    return () => { window.removeEventListener('anatolearn-session-expired',expire); window.removeEventListener('anatolearn-mfa-required',needsMfa); };
   }, []);
 
   // A remembered user is only trusted once the cookie session is confirmed (it may have expired or been revoked).
   useEffect(() => {
     if (!storedUser) return;
     api.getProfile().then((profile) => {
-      const fresh = { id: profile.id, name: profile.name, email: profile.email, role: profile.role, program_id: profile.program_id };
+      const fresh = { id: profile.id, name: profile.name, email: profile.email, role: profile.role, program_id: profile.program_id, mfa_setup_required: profile.mfa_required && !profile.mfa_enabled };
       sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(fresh));
       setUser(fresh);
       setRole(fresh.role);

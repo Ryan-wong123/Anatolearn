@@ -12,17 +12,28 @@ const app = express();
 if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
 app.disable('x-powered-by');
 app.use(requestLog);
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false }));
+// Routes match exactly ("/api/Models/1" is a different path), so the access middleware sees the same path the handler does.
+app.set('case sensitive routing', true);
+// Same HSTS policy as ops/Caddyfile (no includeSubDomains), so the proxy and the API never disagree.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false, strictTransportSecurity: { maxAge: 31536000, includeSubDomains: false } }));
 const limiter = (windowMs, limit) => rateLimit({ windowMs, limit, standardHeaders: 'draft-7', legacyHeaders: false,
   skip: () => process.env.DISABLE_RATE_LIMIT === 'true', message: { message: 'Too many requests. Please try again later.' } });
 app.use('/api/auth/login', limiter(15 * 60 * 1000, 10));
+app.use(['/api/auth/mfa/verify', '/api/profile/mfa'], limiter(15 * 60 * 1000, 20));
 app.use('/api/auth/register', limiter(60 * 60 * 1000, 10));
+const uploadLimiter = limiter(60 * 60 * 1000, 60);
+app.use(['/api/models/upload', '/api/resources/upload', '/api/videos/upload', '/api/videos/:id/captions'], (req, res, next) => req.method === 'POST' ? uploadLimiter(req, res, next) : next());
 app.use('/api', limiter(60 * 1000, 600));
 // Express 4 does not forward rejected async handlers by default.
 for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
   const register = app[method].bind(app);
-  app[method] = (route, ...handlers) => register(route, ...handlers.map((handler) =>
-    (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)));
+  app[method] = (route, ...handlers) => register(route, ...handlers.map((handler) => {
+    const wrapped = (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+    // Keep the handler's name and ownership marker visible, so tests can check which guards each route has.
+    Object.defineProperty(wrapped, 'name', { value: handler.name });
+    wrapped.ownership = handler.ownership;
+    return wrapped;
+  }));
 }
 
 
@@ -61,6 +72,7 @@ require('./modules/profile/profile.routes')(app);
 require('./modules/announcements/announcements.routes')(app);
 require('./modules/search/search.routes')(app);
 require('./modules/dashboard/dashboard.routes')(app);
+require('./modules/ownership/ownership.routes')(app);
 app.use((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return next(err);

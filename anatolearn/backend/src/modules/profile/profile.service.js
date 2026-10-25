@@ -2,12 +2,22 @@ const bcrypt = require('bcryptjs');
 const repository = require('./profile.repository');
 const { record } = require('../../audit');
 const { CSRF_COOKIE } = require('../../csrf');
+const mfa = require('../../mfa');
+const { idleMinutes } = require('../../sessionPolicy');
+const quota = require('../../quota');
+const { passwordProblem } = require('../../passwords');
+const { checkSecondFactor } = require('../auth/auth.service');
+const authRepository = require('../auth/auth.repository');
 const meta = () => ({ headers: { 'Cache-Control': 'no-store' }, cookies: [] });
 const fail = (status, message) => ({ ...meta(), status, kind: 'json', body: { message } });
-const strongPassword = (password) => typeof password === 'string' && password.length >= 8 && Buffer.byteLength(password) <= 72 && /[A-Z]/.test(password) && /[0-9]/.test(password);
 
 async function getProfile(input) {
-    return { ...meta(), status: 200, kind: 'json', body: (await repository.findProfile([input.user.id])).rows[0] };
+    const profile = (await repository.findProfile([input.user.id])).rows[0];
+    const idle = idleMinutes(profile.role);
+    const active = (await repository.countActiveSessions([input.user.id, idle])).rows[0].n;
+    // Teachers also see how much of their upload allowance is used (limit 0 = unlimited).
+    const storage = profile.role === 'teacher' ? { storage_used_bytes: (await quota.usage(input.user.id)).mine, storage_limit_bytes: quota.limits().perUser } : {};
+    return { ...meta(), status: 200, kind: 'json', body: { ...profile, mfa_required: mfa.mfaRequired(profile.role), active_sessions: active, session_idle_minutes: idle, ...storage } };
 }
 async function updateProfile(input) {
     const { name, program_id } = input.body;
@@ -23,7 +33,10 @@ async function updateProfile(input) {
 }
 async function changePassword(input) {
     const { current_password, new_password } = input.body;
-    if (typeof current_password !== 'string' || !strongPassword(new_password)) return fail(400, 'New password must be 8-72 characters with an uppercase letter and a number');
+    if (typeof current_password !== 'string') return fail(400, 'Your current password is required');
+    const account = (await repository.findProfile([input.user.id])).rows[0];
+    const weakness = passwordProblem(new_password, { role: account.role, email: account.email, name: account.name });
+    if (weakness) return fail(400, weakness);
     const stored = (await repository.findPasswordHash([input.user.id])).rows[0];
     if (!stored || !(await bcrypt.compare(current_password, stored.password_hash))) return fail(403, 'Current password is incorrect');
     await repository.setPassword([input.user.id, await bcrypt.hash(new_password, 12)]);
@@ -48,4 +61,63 @@ async function deleteAccount(input) {
     await repository.deleteUser([input.user.id]);
     return { ...meta(), status: 200, kind: 'json', cookies: [{ name: 'anatolearn_session', clear: true, options: { path: '/' } }, { name: CSRF_COOKIE, clear: true, options: { path: '/' } }], body: { message: 'Account deleted' } };
 }
-module.exports = { getProfile, updateProfile, changePassword, exportData, deleteAccount };
+async function passwordMatches(userId, password) {
+    const stored = (await repository.findPasswordHash([userId])).rows[0];
+    return typeof password === 'string' && Boolean(stored) && await bcrypt.compare(password, stored.password_hash);
+}
+// Re-authenticates with the password and a current code. Wrong attempts feed the account lockout like a bad login.
+async function confirmWithSecondFactor(input) {
+    if (!(await passwordMatches(input.user.id, input.body.password))) return fail(403, 'Password is incorrect');
+    const user = (await authRepository.findUserForMfa([input.user.id])).rows[0];
+    const code = typeof input.body.code === 'string' && input.body.code.length <= 32 ? input.body.code : '';
+    if (!user || !(await checkSecondFactor(user, code)).ok) {
+        await authRepository.registerFailedLogin([input.user.id, Number(process.env.MAX_FAILED_LOGINS) || 5, Number(process.env.LOCKOUT_MINUTES) || 15]);
+        return fail(403, 'Invalid verification code');
+    }
+    return null;
+}
+async function setupMfa(input) {
+    if (!(await passwordMatches(input.user.id, input.body.password))) return fail(403, 'Password is incorrect');
+    const state = (await repository.findMfaState([input.user.id])).rows[0];
+    if (state.mfa_enabled_at) return fail(409, 'Two-factor authentication is already enabled');
+    const secret = mfa.generateSecret();
+    await repository.setPendingMfaSecret([input.user.id, mfa.encryptSecret(secret)]);
+    return { ...meta(), status: 200, kind: 'json', body: { secret, otpauth_uri: mfa.otpauthUri(state.email, secret) } };
+}
+async function enableMfa(input) {
+    const state = (await repository.findMfaState([input.user.id])).rows[0];
+    if (state.mfa_enabled_at) return fail(409, 'Two-factor authentication is already enabled');
+    if (!state.mfa_pending_secret) return fail(400, 'Start setup first');
+    const step = mfa.verifyTotp(mfa.decryptSecret(state.mfa_pending_secret), input.body.code);
+    if (step == null) return fail(400, 'That code is not valid. Check the time on your phone and try again.');
+    const codes = mfa.generateRecoveryCodes();
+    if (!(await repository.enableMfa([input.user.id, step, codes.map(mfa.hashRecoveryCode)])).rows.length) return fail(409, 'Setup is no longer pending');
+    await repository.revokeOtherSessions([input.user.id, input.user.sid]);
+    await record({ actor: input.user, action: 'profile.mfa_enabled', targetType: 'user', targetId: input.user.id, ip: input.ip });
+    return { ...meta(), status: 200, kind: 'json', body: { recovery_codes: codes } };
+}
+async function disableMfa(input) {
+    if (mfa.mfaRequired(input.user.role)) return fail(403, 'Two-factor authentication is required for your role and cannot be turned off');
+    const denied = await confirmWithSecondFactor(input);
+    if (denied) return denied;
+    await repository.disableMfa([input.user.id]);
+    await repository.revokeOtherSessions([input.user.id, input.user.sid]);
+    await record({ actor: input.user, action: 'profile.mfa_disabled', targetType: 'user', targetId: input.user.id, ip: input.ip });
+    return { ...meta(), status: 200, kind: 'json', body: { message: 'Two-factor authentication turned off' } };
+}
+async function regenerateRecoveryCodes(input) {
+    const denied = await confirmWithSecondFactor(input);
+    if (denied) return denied;
+    const codes = mfa.generateRecoveryCodes();
+    await repository.replaceRecoveryCodes([input.user.id, codes.map(mfa.hashRecoveryCode)]);
+    await record({ actor: input.user, action: 'profile.mfa_recovery_regenerated', targetType: 'user', targetId: input.user.id, ip: input.ip });
+    return { ...meta(), status: 200, kind: 'json', body: { recovery_codes: codes } };
+}
+// Ends every session of this account, including the one making the request (a stolen cookie stops working too).
+async function signOutEverywhere(input) {
+    await repository.revokeAllSessions([input.user.id]);
+    await record({ actor: input.user, action: 'profile.signout_everywhere', targetType: 'user', targetId: input.user.id, ip: input.ip });
+    return { ...meta(), status: 200, kind: 'json', body: { message: 'Signed out on all devices' },
+        cookies: [{ name: 'anatolearn_session', clear: true, options: { path: '/' } }, { name: CSRF_COOKIE, clear: true, options: { path: '/' } }] };
+}
+module.exports = { signOutEverywhere, setupMfa, enableMfa, disableMfa, regenerateRecoveryCodes, getProfile, updateProfile, changePassword, exportData, deleteAccount };
