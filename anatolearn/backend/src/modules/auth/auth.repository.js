@@ -1,7 +1,7 @@
 const pool = require('../../db');
 // parameters: [sessionId, userId, staffIdleMinutes, studentIdleMinutes]. A session idle for longer than its role allows is rejected.
 async function findSessionUser(parameters) {
-    return pool.query(`SELECT u.id, u.name, u.role, u.program_id, (u.mfa_enabled_at IS NOT NULL) AS mfa_enabled,
+    return pool.query(`SELECT u.id, u.name, u.role, u.program_id, (u.mfa_enabled_at IS NOT NULL OR EXISTS (SELECT 1 FROM passkeys k WHERE k.user_id = u.id)) AS mfa_enabled,
       (s.last_seen_at < NOW() - INTERVAL '1 minute') AS stale FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2
       AND s.revoked_at IS NULL AND s.expires_at > NOW() AND u.is_active
@@ -20,7 +20,7 @@ async function insertUser(parameters) {
        RETURNING id, name, email, role, program_id, created_at`, parameters);
 }
 async function findUserByEmail(parameters) {
-    return pool.query("SELECT id, name, email, password_hash, role, program_id, is_active, locked_until, (locked_until > NOW()) AS is_locked, (mfa_enabled_at IS NOT NULL) AS mfa_enabled FROM users WHERE email = $1", parameters);
+    return pool.query("SELECT id, name, email, password_hash, role, program_id, is_active, locked_until, (locked_until > NOW()) AS is_locked, (mfa_enabled_at IS NOT NULL OR EXISTS (SELECT 1 FROM passkeys k WHERE k.user_id = users.id)) AS mfa_enabled, (mfa_enabled_at IS NOT NULL) AS has_totp, EXISTS (SELECT 1 FROM passkeys k WHERE k.user_id = users.id) AS has_passkey FROM users WHERE email = $1", parameters);
 }
 async function insertSession(parameters) {
     return pool.query("INSERT INTO auth_sessions(id,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '24 hours')", parameters);

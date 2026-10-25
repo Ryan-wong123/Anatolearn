@@ -140,4 +140,4 @@ async function signOutEverywhere(input) {
     return { ...meta(), status: 200, kind: 'json', body: { message: 'Signed out on all devices' },
         cookies: [{ name: 'anatolearn_session', clear: true, options: { path: '/' } }, { name: CSRF_COOKIE, clear: true, options: { path: '/' } }] };
 }
-module.exports = { signOutEverywhere, setupMfa, enableMfa, disableMfa, regenerateRecoveryCodes, getProfile, updateProfile, changePassword, exportData, deleteAccount };
+module.exports = { checkPassword, signOutEverywhere, setupMfa, enableMfa, disableMfa, regenerateRecoveryCodes, getProfile, updateProfile, changePassword, exportData, deleteAccount };
