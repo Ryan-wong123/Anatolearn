@@ -45,4 +45,8 @@ async function disableMfa(parameters) {
       mfa_recovery_hashes = '{}' WHERE id = $1`, parameters);
 }
 async function replaceRecoveryCodes(parameters) { return pool.query('UPDATE users SET mfa_recovery_hashes = $2 WHERE id = $1', parameters); }
-module.exports = { findMfaState, setPendingMfaSecret, enableMfa, disableMfa, replaceRecoveryCodes, findProfile, findPasswordHash, updateProfile, findProgram, setPassword, revokeOtherSessions, revokeAllSessions, countOtherActiveTeachers, countOtherActiveAdmins, deleteUser, exportData };
+async function countActiveSessions(parameters) {
+    return pool.query(`SELECT count(*)::int AS n FROM auth_sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+      AND last_seen_at > NOW() - $2::int * INTERVAL '1 minute'`, parameters);
+}
+module.exports = { countActiveSessions, findMfaState, setPendingMfaSecret, enableMfa, disableMfa, replaceRecoveryCodes, findProfile, findPasswordHash, updateProfile, findProgram, setPassword, revokeOtherSessions, revokeAllSessions, countOtherActiveTeachers, countOtherActiveAdmins, deleteUser, exportData };

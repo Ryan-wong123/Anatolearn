@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Moon, Sun, Trash2 } from 'lucide-react';
+import { Download, LogOut, Moon, Sun, Trash2 } from 'lucide-react';
 import Breadcrumbs from '../components/Breadcrumbs';
 import RequestState from '../components/RequestState';
 import Modal from '../components/account/Modal';
@@ -10,6 +10,7 @@ import { cardClass, dangerButton, errorBox, inputClass, labelClass, passwordProb
 import { formatDate, formatDateTime } from '../components/account/time';
 import { useResource } from '../hooks/useResource';
 import { useAppContext } from '../context/AppContextState';
+import { useConfirm } from '../context/ConfirmContextState';
 import { useToast } from '../context/ToastContextState';
 import { api } from '../api/api';
 import type { Profile as ProfileRecord } from '../types/portal';
@@ -135,6 +136,39 @@ function PasswordCard({ role }: { role: ProfileRecord['role'] }) {
   );
 }
 
+function SessionsCard({ profile }: { profile: ProfileRecord }) {
+  const navigate = useNavigate();
+  const { logout } = useAppContext();
+  const { confirm } = useConfirm();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const hours = profile.session_idle_minutes / 60;
+  const idle = hours >= 1 && Number.isInteger(hours) ? `${hours} hour${hours === 1 ? '' : 's'}` : `${profile.session_idle_minutes} minutes`;
+
+  async function signOutEverywhere() {
+    if (!(await confirm({ title: 'Sign out on all devices?', message: 'Every browser and device where you are signed in, including this one, will be signed out. Use this if you lost a device or used a shared computer.', confirmLabel: 'Sign out everywhere', danger: true }))) return;
+    setBusy(true); setError(null);
+    try { await api.signOutEverywhere(); }
+    catch (err) { setError(message(err, 'Could not sign you out everywhere')); setBusy(false); return; }
+    // The server already revoked every session and cleared the cookies; this just resets local state.
+    try { await logout(); } catch { sessionStorage.removeItem('anatolearn_user'); }
+    navigate('/login', { replace: true });
+  }
+
+  return (
+    <section aria-labelledby="sessions-heading" className={cardClass}>
+      <h2 id="sessions-heading" className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Signed-in devices</h2>
+      <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+        You are signed in on {profile.active_sessions} device{profile.active_sessions === 1 ? '' : 's'}. For your security, a session ends after {idle} without activity, and always after 24 hours.
+      </p>
+      {error && <p role="alert" className={`${errorBox} mb-4`}>{error}</p>}
+      <button type="button" onClick={signOutEverywhere} disabled={busy} className={secondaryButton}>
+        <LogOut className="h-4 w-4" aria-hidden="true" />{busy ? 'Signing out…' : 'Sign out on all devices…'}
+      </button>
+    </section>
+  );
+}
+
 function DeleteAccountDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { logout } = useAppContext();
@@ -214,6 +248,8 @@ export default function Profile() {
           </section>
 
           <PasswordCard role={profile.role} />
+
+          <SessionsCard profile={profile} />
 
           {profile.role !== 'student' && <MfaCard profile={profile} onChanged={(patch) => setOverride({ ...profile, ...patch })} />}
 
