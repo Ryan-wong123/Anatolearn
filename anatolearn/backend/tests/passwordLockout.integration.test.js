@@ -31,6 +31,7 @@ test('password re-checks share the login lockout, and quizzes with attempts cann
       assert.equal((await call('/api/profile/password', user.token, { current_password: 'wrong', new_password: 'Violet7Harbour' }, 'PUT')).status, 403);
       assert.equal((await state(user.id)).locked, true);
       assert.equal((await call('/api/profile/password', user.token, { current_password: PASSWORD, new_password: 'Violet7Harbour' }, 'PUT')).status, 429);
+      assert.match((await (await call('/api/profile', user.token, { password: PASSWORD }, 'DELETE')).json()).message, /Try again in \d+ minutes?/);
       assert.equal((await call('/api/profile', user.token, { password: PASSWORD }, 'DELETE')).status, 429);
       assert.equal((await pool.query('SELECT 1 FROM users WHERE id=$1', [user.id])).rows.length, 1);
     });
