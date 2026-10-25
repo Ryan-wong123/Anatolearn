@@ -1,5 +1,7 @@
 const repository = require('./quizzes.repository');
 const { visibleRows, paged } = require('../catalog/catalog.service');
+const catalog = require('../catalog/catalog.repository');
+const { canManage } = require('../../ownership');
 async function setTimer(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     const seconds = input.body.time_limit_seconds;
@@ -22,10 +24,10 @@ async function listQuizzes(input) {
 }
 async function listQuestions(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
-    // Students must never receive the answer key while attempting a quiz.
-    // Teachers need it to prefill the question editor with the existing
-    // correct answer / model answer.
-    const result = await repository.listQuestions([input.params.id], input.user.role === 'teacher');
+    // Students must never receive the answer key while attempting a quiz. The key goes only to the teacher who manages the
+    // quiz (to prefill the question editor), not to other teachers who can merely read a published quiz.
+    const quiz = (await catalog.findContent([input.params.id], 'quizzes')).rows[0];
+    const result = await repository.listQuestions([input.params.id], canManage(input.user, quiz));
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows });
 }
 async function createQuiz(input) {
@@ -35,7 +37,7 @@ async function createQuiz(input) {
         return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "title and type are required" } });
     }
     try {
-        const result = await repository.insertQuiz([title, description || null, type, category || null, program_id || null]);
+        const result = await repository.insertQuiz([title, description || null, type, category || null, program_id || null, input.user.id]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {

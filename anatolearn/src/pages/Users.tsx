@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import { KeyRound, Lock, ShieldOff, Pencil, Plus, Power, Trash2, Unlock } from 'lucide-react';
+import { ArrowRightLeft, KeyRound, Lock, ShieldOff, Pencil, Plus, Power, Trash2, Unlock } from 'lucide-react';
 import Breadcrumbs from '../components/Breadcrumbs';
 import EmptyState from '../components/EmptyState';
 import Pagination from '../components/Pagination';
@@ -113,6 +113,53 @@ function CreateDialog({ programmes, onClose, onCreated }: { programmes: Programm
   );
 }
 
+// Module-level so useResource sees the same function and default value on every render (new ones would refetch in a loop).
+const NO_TEACHERS: Paged<UserSummary> = { items: [], total: 0 };
+const loadTeachers = () => api.getUsers({ page: 1, pageSize: 100, role: 'teacher', status: 'active' });
+
+// Moves everything one teacher owns to another teacher, or (with no source) gives all unclaimed content to a teacher.
+function TransferDialog({ from, onClose, onDone }: { from: UserSummary | null; onClose: () => void; onDone: (summary: string) => void }) {
+  const teachers = useResource<Paged<UserSummary>>(loadTeachers, NO_TEACHERS);
+  const [target, setTarget] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const options = teachers.data.items.filter((teacher) => teacher.id !== from?.id);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!target) { setError('Choose a teacher'); return; }
+    setBusy(true); setError(null);
+    try {
+      const result = await (from ? api.transferContent(from.id, Number(target)) : api.assignUnclaimedContent(Number(target)));
+      onDone(`Moved ${result.total} item${result.total === 1 ? '' : 's'} to ${result.to}`);
+    } catch (err) { setError(errorMessage(err, 'Could not move the content')); setBusy(false); }
+  }
+  return (
+    <Modal title={from ? `Transfer ${from.name}'s content` : 'Assign unclaimed content'} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-slate-700 dark:text-slate-300">
+          {from
+            ? 'Every model, video, quiz, resource, question-bank entry and announcement they own moves to the teacher you choose, who then controls it and sees its quiz attempts. Use this when a teacher leaves or changes role.'
+            : 'Content created before ownership was tracked, or left behind by a deleted teacher, has no owner and can be changed by any teacher. Give all of it to one teacher, who then controls it and sees its quiz attempts.'}
+        </p>
+        <RequestState loading={teachers.loading} error={teachers.error} onRetry={teachers.reload} label="teachers" />
+        <div>
+          <label htmlFor="transfer-target" className={labelClass}>New owner</label>
+          <select id="transfer-target" value={target} onChange={(e) => setTarget(e.target.value)} className={inputClass} disabled={teachers.loading}>
+            <option value="">Choose a teacher…</option>
+            {options.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name} ({teacher.email})</option>)}
+          </select>
+        </div>
+        {error && <p role="alert" className={errorBox}>{error}</p>}
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={onClose} disabled={busy} className={secondaryButton}>Cancel</button>
+          <button type="submit" disabled={busy || !target} className={primaryButton}>{busy ? 'Moving…' : 'Move content'}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function EditDialog({ user, programmes, isSelf, onClose, onSaved }: { user: UserSummary; programmes: Programme[]; isSelf: boolean; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(user.name);
   const [role, setRole] = useState(user.role);
@@ -176,6 +223,8 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
   const [page, setPage] = useState(1);
   const q = useDebounced(search.trim());
   const [creating, setCreating] = useState(false);
+  // `null` = assign unclaimed content; a user = transfer that teacher's content; undefined = dialog closed.
+  const [transferFrom, setTransferFrom] = useState<UserSummary | null | undefined>(undefined);
   const [editing, setEditing] = useState<UserSummary | null>(null);
   const [shown, setShown] = useState<{ account: string; password: string } | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -213,7 +262,7 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
   }
 
   async function remove(user: UserSummary) {
-    if (!(await confirm({ title: `Delete ${user.name}?`, message: 'The account, favourites and activity are permanently removed. Past quiz attempts are kept without a name.', confirmLabel: 'Delete account', danger: true }))) return;
+    if (!(await confirm({ title: `Delete ${user.name}?`, message: 'The account, favourites and activity are permanently removed. Past quiz attempts are kept without a name. Content they own is kept but becomes unclaimed; transfer it to another teacher first if it should stay protected.', confirmLabel: 'Delete account', danger: true }))) return;
     await run(user, () => api.deleteUser(user.id), 'Account deleted');
   }
 
@@ -244,6 +293,7 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
             <option value="locked">Locked</option>
           </select>
         </div>
+        <button type="button" onClick={() => setTransferFrom(null)} className={secondaryButton}><ArrowRightLeft className="h-4 w-4" aria-hidden="true" />Assign unclaimed content…</button>
         <button type="button" onClick={() => setCreating(true)} className={primaryButton}><Plus className="h-4 w-4" aria-hidden="true" />Create account</button>
       </div>
 
@@ -287,6 +337,7 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
                           {user.is_active ? <Lock className="h-3 w-3" aria-hidden="true" /> : <Power className="h-3 w-3" aria-hidden="true" />}{user.is_active ? 'Disable' : 'Enable'}
                         </button>
                         <button type="button" disabled={busy} onClick={() => resetPassword(user)} aria-label={`Reset password for ${user.name}`} className={smallButton}><KeyRound className="h-3 w-3" aria-hidden="true" />Reset password</button>
+                        {user.role === 'teacher' && <button type="button" disabled={busy} onClick={() => setTransferFrom(user)} aria-label={`Transfer content of ${user.name}`} className={smallButton}><ArrowRightLeft className="h-3 w-3" aria-hidden="true" />Transfer content</button>}
                         {user.mfa_enabled && !isSelf && <button type="button" disabled={busy} onClick={() => resetMfa(user)} aria-label={`Reset two-factor authentication for ${user.name}`} className={smallButton}><ShieldOff className="h-3 w-3" aria-hidden="true" />Reset 2FA</button>}
                         <button type="button" disabled={busy || isSelf} title={isSelf ? 'Use your profile page to delete your own account' : undefined} onClick={() => remove(user)} aria-label={`Delete ${user.name}`} className={`${smallButton} !text-red-700 dark:!text-red-300`}><Trash2 className="h-3 w-3" aria-hidden="true" />Delete</button>
                       </div>
@@ -300,6 +351,7 @@ function AccountsTab({ programmes }: { programmes: Programme[] }) {
       )}
       <Pagination page={page} pageSize={USERS_PAGE_SIZE} total={data.total} onPageChange={setPage} label="Accounts pagination" />
 
+      {transferFrom !== undefined && <TransferDialog from={transferFrom} onClose={() => setTransferFrom(undefined)} onDone={(summary) => { setTransferFrom(undefined); toast(summary); }} />}
       {creating && <CreateDialog programmes={programmes} onClose={() => setCreating(false)} onCreated={(user, temporary) => {
         setCreating(false); reload(); toast('Account created');
         if (temporary) setShown({ account: user.name, password: temporary });

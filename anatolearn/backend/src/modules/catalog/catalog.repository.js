@@ -16,6 +16,7 @@ async function findContent(parameters, kind) {
     return pool.query(`SELECT * FROM ${contentTable(kind)} WHERE id = $1`, parameters);
 }
 async function findAttemptOwner(parameters) {
-    return pool.query('SELECT student_id FROM quiz_attempts WHERE id = $1', parameters);
+    // owner_id is the owner of the quiz the attempt belongs to: teachers may only open attempts on quizzes they manage.
+    return pool.query('SELECT a.student_id, q.owner_id FROM quiz_attempts a JOIN quizzes q ON q.id = a.quiz_id WHERE a.id = $1', parameters);
 }
 module.exports = { findProgram, updateContentProgram, findProgramByName, findContent, findAttemptOwner };

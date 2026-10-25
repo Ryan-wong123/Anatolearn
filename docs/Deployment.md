@@ -333,7 +333,7 @@ INSTANCE_ID=i-XXXX ALERT_EMAIL=you@example.com DOMAIN=$DOMAIN AWS_REGION=$AWS_RE
 | `anatolearn-mfa-recovery-used` | A recovery code was used to sign in | Confirm it was the account owner, who should then generate new codes |
 | `anatolearn-password-reset` | An administrator reset someone's password | Confirm it was intended |
 
-The thresholds suit a small school. To change one, edit the numbers on the `event_alarm` lines in `ops/cloudwatch/setup-alarms.sh` and run it again. The script is safe to re-run (it updates existing alarms), but it creates a new Route 53 health check and SNS subscription each time, so only re-run it when you need to. Security event logging is on in production by default; set `LOG_SECURITY_EVENTS=false` to turn it off, or `true` to enable it elsewhere. For a quick look without an alarm use Logs Insights: `filter msg = "security_event" | stats count() by action, bin(1h)`.
+The thresholds suit a small school. To change one, edit the numbers on the `event_alarm` lines in `ops/cloudwatch/setup-alarms.sh` and run it again. The script is safe to re-run (alarms and metric filters are updated in place), but it creates another Route 53 health check each time, so delete the old one in the Route 53 console afterwards, and only re-run it when you need to. Security event logging is on in production by default; set `LOG_SECURITY_EVENTS=false` to turn it off, or `true` to enable it elsewhere. For a quick look without an alarm use Logs Insights: `filter msg = "security_event" | stats count() by action, bin(1h)`.
 
 Confirm the two SNS subscription emails (one per region). For the memory and disk alarms install the CloudWatch agent on the instance and load the supplied config:
 
@@ -372,6 +372,15 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d --bui
 Database changes are automatic: every new numbered file in `backend/sql` (e.g. `015_something.sql`) is applied once, inside a transaction, when the API starts, and recorded in `schema_migrations`. Never edit a file that has already been applied; add a new one. The runner needs the owner role, so keep `MIGRATION_DATABASE_URL` set. Run migrations manually with `docker compose -f docker-compose.prod.yml exec backend node src/migrate.js`. While the API restarts users see a friendly "being updated" page.
 
 ### Upgrading an existing deployment to this version
+
+- **Content ownership (migration `020_content_owner.sql`)** is applied automatically. From now on a teacher can change, delete, publish or grade only what they created, and sees quiz attempts, answer keys and dashboard figures only for their own quizzes. Content that exists today has no recorded owner, so it is **unclaimed**: any teacher can still change it until it is claimed. After the first deploy:
+  1. Ask each teacher to open their pages and press **Claim** under the items that are theirs (every unclaimed item shows "No owner yet" with a Claim button), or
+  2. As an administrator open **Users -> Assign unclaimed content** and give all of it to one teacher, then use **Transfer content** on that teacher's row to hand parts on if needed (it moves everything one teacher owns to another, so it suits whole handovers rather than splitting).
+  Check afterwards that nothing is left: in the database `SELECT count(*) FROM quizzes WHERE owner_id IS NULL;` (and the same for `models`, `videos`, `resources`, `question_bank`).
+- Teachers' draft (unpublished) content is now private to its owner; other teachers can still see published content but cannot change it. Dashboards and the quiz results lists are limited to the teacher's own quizzes.
+- When you delete a teacher, their content is kept but becomes unclaimed. **Transfer their content first** (Users -> Transfer content) if it should stay protected.
+- Session idle timeout (migration `019_session_idle.sql`): everyone signed in at deploy time keeps their session, which then ends after 2 hours (staff) or 8 hours (students) of inactivity. Set `SESSION_IDLE_MINUTES_STAFF` and `_STUDENT` to change that.
+- CloudWatch security alarms are new: re-run `ops/cloudwatch/setup-alarms.sh` once to create them (see step 14).
 
 - **Two-factor authentication (migration `018_mfa.sql`)** is applied automatically. The compose file now defaults `MFA_REQUIRED` to `true`, so as soon as the new version starts, every teacher and administrator, **including those already signed in**, is held on the Profile page until they enrol. To give staff a grace period, set `MFA_REQUIRED=false` in `.env.production` for the first deploy (enrolment stays available on the Profile page), then switch it to `true` once they have enrolled. Set `MFA_ENCRYPTION_KEY` before the first person enrols.
 - The startup checks above are stricter than before. A weak or placeholder `JWT_SECRET`, or `FRONTEND_ORIGINS` with a trailing slash or `http://`, now stops the API from starting; fix `.env.production` and run `up -d` again.
@@ -413,6 +422,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 | Browser shows certificate error | DNS not yet pointing at the Elastic IP, or ports 80/443 blocked; see `docker compose logs caddy` |
 | Login works but you are logged out immediately / 403 "Untrusted request origin" | `FRONTEND_ORIGINS` does not exactly match the browser origin (scheme, host, no trailing slash) |
 | Writes return 403 "Invalid or missing CSRF token" | A script uses the session cookie without the `X-CSRF-Token` header; use a Bearer token, or reload the page in the browser |
+| A teacher sees "By <name>. View only" and no Edit button | The content belongs to another teacher. Only its owner can change it. To change ownership an administrator uses **Users -> Transfer content** on the owner |
+| A teacher cannot find a colleague's quiz, model or video | It is an unpublished draft. Drafts are private to their owner until published |
+| A teacher's quiz results or dashboard are empty after upgrading | Attempts are shown only for quizzes the teacher owns or that are unclaimed. Claim the quiz (Claim button) or have an administrator assign or transfer it |
+| "This belongs to another teacher" (403) from the API | A script or integration is changing content its account does not own. Use the owner's account, or transfer the content to the account the script uses |
 | Users are signed out unexpectedly | Expected after the idle limit (2 hours for staff, 8 hours for students by default) or 24 hours after signing in, or after they used "Sign out on all devices", changed their password or enabled two-factor authentication. Raise `SESSION_IDLE_MINUTES_*` if the limit is too short for your classes |
 | A user cannot sign in after a few attempts | Locked for 15 minutes; a teacher can unlock them under Users |
 | Registering, changing a password or creating an account fails with "too common or easy to guess" or "must not contain your name or email" | The password policy (`backend/src/passwords.js`) rejects common passwords, keyboard runs, repeated patterns and passwords that include the person's name or email, even with capitals, digits or symbols added. Choose a few unrelated words instead |

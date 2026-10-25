@@ -8,7 +8,7 @@ async function search(input) {
     const found = await repository.search(term);
     const body = { query: term };
     for (const [group, rows] of Object.entries(found)) {
-        body[group] = (await visibleRows(input, rows)).slice(0, MAX_PER_GROUP).map(({ is_published, program_id, ...rest }) => rest);
+        body[group] = (await visibleRows(input, rows)).slice(0, MAX_PER_GROUP).map(({ is_published, program_id, owner_id, ...rest }) => rest);
     }
     return { ...outcomeMeta, status: 200, kind: 'json', body };
 }

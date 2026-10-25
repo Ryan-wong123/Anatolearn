@@ -50,7 +50,7 @@ async function uploadResource(input) {
             }
             filePath = await storage.persist(input.file, 'resources');
         }
-        const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null]);
+        const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null, input.user.id]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {

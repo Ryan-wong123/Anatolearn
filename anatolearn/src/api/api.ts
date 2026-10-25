@@ -189,6 +189,12 @@ export const api = {
         apiFetch(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     resetUserPassword: (id: number, password?: string): Promise<{ temporary_password?: string; message?: string }> =>
         apiFetch(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify(password ? { password } : {}) }),
+    // Teachers: take ownership of content nobody owns. Administrators: move content between teachers.
+    claimContent: (kind: string, id: number): Promise<{ message: string }> => apiFetch(`/${kind}/${id}/claim`, { method: 'POST' }),
+    transferContent: (fromUserId: number, toUserId: number): Promise<{ total: number; to: string }> =>
+        apiFetch(`/users/${fromUserId}/transfer-content`, { method: 'POST', body: JSON.stringify({ to_user_id: toUserId }) }),
+    assignUnclaimedContent: (toUserId: number): Promise<{ total: number; to: string }> =>
+        apiFetch('/content/assign-unclaimed', { method: 'POST', body: JSON.stringify({ to_user_id: toUserId }) }),
     resetUserMfa: (id: number): Promise<{ message: string }> => apiFetch(`/users/${id}/reset-mfa`, { method: 'POST' }),
     deleteUser: (id: number) => apiFetch(`/users/${id}`, { method: 'DELETE' }),
     getAuditLog: (opts: { page: number; pageSize: number; action?: string; actor?: number }) =>

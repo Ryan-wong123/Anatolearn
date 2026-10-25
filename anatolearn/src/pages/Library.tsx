@@ -2,6 +2,7 @@ import RequestState from '../components/RequestState';
 import { useResource } from '../hooks/useResource';
 import Dialog from '../components/Dialog';
 import ContentSettings from '../components/ContentSettings';
+import OwnerNote from '../components/OwnerNote';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { FileText, ExternalLink, Upload, X, Search } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
@@ -29,6 +30,8 @@ interface Resource {
   file_path: string;
   is_published: boolean;
   created_at: string;
+  can_manage?: boolean;
+  owner_name?: string | null;
 }
 
 function ResourceIcon({ type }: { type: ResourceType }) {
@@ -313,8 +316,9 @@ export default function Library() {
                 <ExternalLink className="w-4 h-4" />
               </a>
 
-              <ContentSettings kind="resources" id={resource.id} programId={resource.program_id} onSaved={loadResources} />
-              {role === 'teacher' && (
+              <ContentSettings kind="resources" id={resource.id} programId={resource.program_id} canManage={resource.can_manage} onSaved={loadResources} />
+              <OwnerNote kind="resources" item={resource} onChanged={loadResources} />
+              {role === 'teacher' && resource.can_manage !== false && (
                 <div className="flex items-center gap-3 flex-shrink-0 pl-4 border-l border-slate-100 dark:border-slate-800">
                   <button
                     onClick={() => openEditResource(resource)}

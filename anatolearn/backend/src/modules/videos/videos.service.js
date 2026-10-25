@@ -53,7 +53,7 @@ async function uploadVideo(input) {
             await storage.validateCaptions(captionFile);
         const videoPath = await storage.persist(videoFile, 'videos');
         const captionsPath = captionFile ? await storage.persist(captionFile, 'captions') : null;
-        const result = await repository.insertVideo([title, description || null, videoPath, captionsPath, program_id || null]);
+        const result = await repository.insertVideo([title, description || null, videoPath, captionsPath, program_id || null, input.user.id]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {

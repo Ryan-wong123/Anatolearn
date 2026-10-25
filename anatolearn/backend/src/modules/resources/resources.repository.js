@@ -6,8 +6,8 @@ async function listAll() {
     return pool.query("SELECT * FROM resources ORDER BY id");
 }
 async function insertResource(parameters) {
-    return pool.query(`INSERT INTO resources (title, description, resource_type, file_path, program_id, is_published)
-   VALUES ($1, $2, $3, $4, $5, false)
+    return pool.query(`INSERT INTO resources (title, description, resource_type, file_path, program_id, is_published, owner_id)
+   VALUES ($1, $2, $3, $4, $5, false, $6)
    RETURNING *`, parameters);
 }
 async function deleteResource(parameters) {
