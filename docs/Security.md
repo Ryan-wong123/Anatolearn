@@ -4,7 +4,7 @@ Controls implemented in AnatoLearn and where to find them. See `Deployment.md` f
 
 ## Authentication and sessions
 - bcrypt (cost 12) password hashes. One server-side policy (`src/passwords.js`) applies to registration, password change, administrator-created and administrator-reset passwords and the admin scripts: 8 characters for students and 12 for teachers and administrators, at most 72 bytes, an uppercase letter and a number, not a common password (including capital, digit and symbol variations such as `P@ssw0rd!`), not a keyboard run or repeated pattern, and not containing the person's name or email. The browser mirrors the cheap rules for instant feedback; teacher registration needs `TEACHER_INVITE_CODE`; optional `ALLOWED_EMAIL_DOMAINS` restricts who can register.
-- Session = signed JWT in an `HttpOnly`, `SameSite=Strict`, `Secure` (production) cookie. The token is never returned to or stored by page scripts. Each session has a server-side record, so logout, password change, disabling an account or changing a role revokes it immediately.
+- Session = signed JWT in an `HttpOnly`, `SameSite=Strict`, `Secure` (production) cookie. The token is never returned to or stored by page scripts. Each session has a server-side record, so logout, password change, disabling an account or changing a role revokes it immediately. A session also ends after 24 hours and after an idle period (120 minutes for teachers and administrators, 480 for students; `SESSION_IDLE_MINUTES_STAFF` / `_STUDENT`), so a stolen cookie stops working once the real user is away. Users can end every session of their account from Profile.
 - Per-account lockout after 5 failed logins (15 minutes) plus per-IP rate limits on login, register and the API. Locked, disabled and unknown accounts get the same generic error and similar timing.
 - **Two-factor authentication (TOTP)** for teachers and administrators, enforced with `MFA_REQUIRED=true`. Sign-in returns a 5-minute challenge token and no session until a valid code is entered; codes are single-use (replay-proof) and wrong codes feed the account lockout. Authenticator secrets are AES-256-GCM encrypted at rest (`MFA_ENCRYPTION_KEY`); 10 single-use recovery codes are stored hashed. Staff who have not enrolled can reach only the profile and enrolment endpoints, and cannot turn it off. Administrators can reset a lost device; every reset, failure and recovery-code use is audited.
 - CSRF: double-submit token (`anatolearn_csrf` cookie echoed in `X-CSRF-Token`) required on cookie-authenticated unsafe requests, in addition to the origin check and SameSite=Strict.
@@ -21,6 +21,7 @@ Controls implemented in AnatoLearn and where to find them. See `Deployment.md` f
 - Users can export their data and delete their account from the Profile page.
 
 ## Accountability
+- Security-relevant audit events (failed sign-ins, wrong two-factor codes, lockouts, recovery-code use, password and two-factor resets) are also written to the log as `security_event` lines without personal data, and CloudWatch alarms notify by email (`ops/cloudwatch/setup-alarms.sh`).
 - `audit_log` records sign-ins, failures, lockouts, user management and every successful state-changing API call (actor, action, record, IP). Administrators (not teachers) can review it under Users -> Audit log. Rotate or archive old rows as policy requires.
 
 ## Infrastructure
