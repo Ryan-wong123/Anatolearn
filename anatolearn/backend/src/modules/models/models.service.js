@@ -4,6 +4,7 @@ const path = require('path');
 const { canDownload } = require('../../access');
 const storage = require('../../storage');
 const quota = require('../../quota');
+const { removeFiles } = require('../../assetCleanup');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function setDownloadPermission(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -63,6 +64,8 @@ async function deleteModel(input) {
     if (result.rows.length === 0) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Model not found" } });
     }
+    // The row is gone; now free the storage it used, so deleting content really releases space (and quota).
+    await removeFiles([result.rows[0].file_path, result.rows[0].thumbnail_path]);
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: { message: "Model deleted" } });
 }
 async function setPublication(input) {
