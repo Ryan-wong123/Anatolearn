@@ -327,3 +327,6 @@ Schema changes are numbered files in `anatolearn/backend/sql`, applied once each
 | `user_activity` (user_id, item_type, item_id, view_count, last_viewed_at, position_seconds) | `position_seconds` (migration `016_video_progress.sql`) stores the last video playback position. Powers "continue where you left off" on the student dashboard |
 
 The API connects at runtime as `anatolearn_app` (SELECT/INSERT/UPDATE/DELETE only); migrations and backups use the owner role.
+
+## `passkeys` and `webauthn_challenges` (migration `022_passkeys.sql`)
+`passkeys`: `id`, `user_id` (references users, cascade), `credential_id` (unique, base64url), `public_key` (bytea), `counter` (bigint, the signature counter used to detect cloned keys), `transports`, `name` (at most 60 characters), `device_type`, `backed_up`, `created_at`, `last_used_at`. No private key is ever stored. `webauthn_challenges`: `id` (uuid), `user_id` (cascade), `purpose` (`register` or `authenticate`), `challenge`, `expires_at`; a user has at most one pending challenge per purpose, which is deleted when it is used. The API's runtime database role receives access to both tables through the default privileges set at initialisation.
