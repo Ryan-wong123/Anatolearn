@@ -1,6 +1,7 @@
 const repository = require('./resources.repository');
 const fs = require('fs/promises');
 const storage = require('../../storage');
+const quota = require('../../quota');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listResources(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -22,7 +23,7 @@ async function uploadResource(input) {
         if (!resource_type || !["pdf", "document", "link", "image"].includes(resource_type)) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "resource_type must be pdf, document, image, or link" } });
         }
-        let filePath;
+        let filePath, fileSize = 0;
         if (resource_type === "link") {
             if (!url) {
                 return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "url is required for link resources" } });
@@ -48,9 +49,11 @@ async function uploadResource(input) {
                 await fs.unlink(input.file.path).catch(() => { });
                 return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: error.message } });
             }
+            await quota.assertWithin(input.user.id, input.file.size);
             filePath = await storage.persist(input.file, 'resources');
+            fileSize = input.file.size;
         }
-        const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null, input.user.id]);
+        const result = await repository.insertResource([title, description || null, resource_type, filePath, program_id || null, input.user.id, fileSize]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {

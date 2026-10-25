@@ -7,10 +7,11 @@
     "maintenance": "node src/maintenance.js",
     "start": "node src/server.js",
     "lint": "eslint . --max-warnings 0",
-    "test": "node --test tests/access.test.js tests/layers.test.js tests/mfa.test.js tests/config.test.js tests/passwords.test.js tests/securityLog.test.js",
-    "test:integration": "node --test tests/integration.test.js tests/features.test.js tests/mfa.integration.test.js tests/sessions.integration.test.js tests/ownership.integration.test.js",
+    "test": "node --test tests/access.test.js tests/layers.test.js tests/mfa.test.js tests/config.test.js tests/passwords.test.js tests/securityLog.test.js tests/zipGuard.test.js",
+    "test:integration": "node --test tests/integration.test.js tests/features.test.js tests/mfa.integration.test.js tests/sessions.integration.test.js tests/ownership.integration.test.js tests/uploadLimits.integration.test.js",
     "migrate": "node src/migrate.js",
-    "seed:demo": "node scripts/seed-demo.js"
+    "seed:demo": "node scripts/seed-demo.js",
+    "backfill:sizes": "node scripts/backfill-file-sizes.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1156.0",

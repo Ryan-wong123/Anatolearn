@@ -15,8 +15,8 @@ async function savePosition(parameters) {
     return pool.query("UPDATE user_activity SET position_seconds = $3 WHERE user_id = $1 AND item_type = 'video' AND item_id = $2", parameters);
 }
 async function insertVideo(parameters) {
-    return pool.query(`INSERT INTO videos (title, description, video_path, captions_path, program_id, is_published, owner_id)
-       VALUES ($1, $2, $3, $4, $5, false, $6)
+    return pool.query(`INSERT INTO videos (title, description, video_path, captions_path, program_id, is_published, owner_id, file_size)
+       VALUES ($1, $2, $3, $4, $5, false, $6, $7)
        RETURNING *`, parameters);
 }
 async function findCaptions(parameters) {

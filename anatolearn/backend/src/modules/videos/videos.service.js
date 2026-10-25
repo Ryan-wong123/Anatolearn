@@ -1,5 +1,6 @@
 const repository = require('./videos.repository');
 const storage = require('../../storage');
+const quota = require('../../quota');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listVideos(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -51,9 +52,11 @@ async function uploadVideo(input) {
         await storage.validateVideo(videoFile);
         if (captionFile)
             await storage.validateCaptions(captionFile);
+        const bytes = videoFile.size + (captionFile?.size ?? 0);
+        await quota.assertWithin(input.user.id, bytes);
         const videoPath = await storage.persist(videoFile, 'videos');
         const captionsPath = captionFile ? await storage.persist(captionFile, 'captions') : null;
-        const result = await repository.insertVideo([title, description || null, videoPath, captionsPath, program_id || null, input.user.id]);
+        const result = await repository.insertVideo([title, description || null, videoPath, captionsPath, program_id || null, input.user.id, bytes]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {

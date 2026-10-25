@@ -15,6 +15,8 @@ export interface Profile {
   created_at: string; last_login_at: string | null;
   mfa_enabled: boolean; mfa_required: boolean; mfa_recovery_codes_left: number;
   active_sessions: number; session_idle_minutes: number;
+  // Teachers only; a limit of 0 means unlimited
+  storage_used_bytes?: number; storage_limit_bytes?: number;
 }
 export interface SearchHit { id: number; title: string; description: string | null; [key: string]: unknown }
 export interface SearchResults {
