@@ -3,7 +3,7 @@ const pool = require('./db');
 // Audit actions that should also reach the log stream, so CloudWatch metric filters and alarms can watch them
 // (ops/cloudwatch/setup-alarms.sh). Lines carry ids and IPs only, never names or email addresses.
 const SECURITY_ACTIONS = new Set(['auth.login_failed', 'auth.account_locked', 'auth.login_blocked_locked', 'auth.login_blocked_disabled',
-  'auth.mfa_failed', 'auth.password_check_failed', 'auth.password_check_blocked_locked', 'auth.mfa_recovery_used', 'user.reset_mfa', 'user.reset_password', 'profile.mfa_disabled',
+  'auth.mfa_failed', 'auth.passkey_failed', 'profile.passkey_removed', 'auth.password_check_failed', 'auth.password_check_blocked_locked', 'auth.mfa_recovery_used', 'user.reset_mfa', 'user.reset_password', 'profile.mfa_disabled',
   'profile.mfa_recovery_regenerated', 'profile.signout_everywhere']);
 
 // Returns the structured log entry for a security-relevant audit action, or null when it should not be logged.

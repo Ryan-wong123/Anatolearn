@@ -3,7 +3,7 @@ const { findSessionUser, touchSession } = require('./modules/auth/auth.repositor
 const { idleMinutes } = require('./sessionPolicy');
 const { mfaRequired } = require('./mfa');
 // Staff who have not enrolled yet may reach only what they need to enrol.
-const MFA_ENROLMENT_PATHS = ['/api/profile', '/api/profile/mfa/setup', '/api/profile/mfa/enable'];
+const MFA_ENROLMENT_PATHS = ['/api/profile', '/api/profile/mfa/setup', '/api/profile/mfa/enable', '/api/profile/passkeys', '/api/profile/passkeys/options'];
 
 function readCookie(req, name) {
   const prefix = `${name}=`;
