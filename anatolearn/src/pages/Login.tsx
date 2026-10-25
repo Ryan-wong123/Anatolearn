@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { GraduationCap } from 'lucide-react';
+import { startAuthentication } from '@simplewebauthn/browser';
 import { useAppContext } from '../context/AppContextState';
 import { ApiError, api } from '../api/api';
 import type { LoginResult } from '../api/api';
@@ -19,12 +20,28 @@ export default function Login() {
   // Set once the password is accepted for an account that has two-factor authentication.
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  const [methods, setMethods] = useState<('totp' | 'passkey')[]>([]);
 
   function finish(result: LoginResult) {
     if (!result.user) throw new Error('Could not sign in. Please try again.');
     login({ ...result.user, mfa_setup_required: result.mfa_setup_required });
     const from = (location.state as { from?: string } | null)?.from;
     navigate(result.mfa_setup_required ? '/profile' : from && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard', { replace: true });
+  }
+
+  async function handlePasskey() {
+    if (!mfaToken) return;
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const options = await api.passkeySignInOptions(mfaToken);
+      finish(await api.passkeySignInVerify(mfaToken, await startAuthentication({ optionsJSON: options })));
+    } catch (error) {
+      const cancelled = error instanceof Error && (error.name === 'NotAllowedError' || error.name === 'AbortError');
+      setError(cancelled ? 'The passkey prompt was cancelled or timed out. Try again.' : error instanceof Error ? error.message : 'Could not use the passkey. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function handleVerify(e: FormEvent) {
@@ -48,7 +65,7 @@ export default function Login() {
 
     try {
       const result = await api.login(email, password);
-      if (result.mfa_required && result.mfa_token) { setMfaToken(result.mfa_token); setCode(''); return; }
+      if (result.mfa_required && result.mfa_token) { setMfaToken(result.mfa_token); setMethods(result.methods ?? ['totp']); setCode(''); return; }
       finish(result);
     } catch (error) {
       // Deliberately generic — matches the backend's own generic message,
@@ -82,7 +99,15 @@ export default function Login() {
 
         {mfaToken ? (
           <form onSubmit={handleVerify} className="space-y-4">
-            <div>
+            {methods.includes('passkey') && (
+              <>
+                <button type="button" onClick={handlePasskey} disabled={isSubmitting} className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                  {isSubmitting ? 'Waiting for your passkey…' : 'Use a passkey'}
+                </button>
+                {methods.includes('totp') && <p className="text-center text-xs text-slate-600 dark:text-slate-400">or enter a code instead</p>}
+              </>
+            )}
+            {methods.includes('totp') && <div>
               <label htmlFor="mfa-code" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Authentication code</label>
               <input
                 id="mfa-code" type="text" inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={32}
@@ -91,14 +116,16 @@ export default function Login() {
                 placeholder="123456"
               />
               <p id="mfa-code-help" className="mt-1 text-xs text-slate-600 dark:text-slate-400">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
-            </div>
+            </div>}
             {error && (
               <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">{error}</p>
             )}
-            <button type="submit" disabled={isSubmitting || !code.trim()} className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">
-              {isSubmitting ? 'Verifying…' : 'Verify'}
-            </button>
-            <button type="button" onClick={() => { setMfaToken(null); setCode(''); setPassword(''); setError(null); }} className="w-full text-sm text-slate-600 dark:text-slate-400 underline hover:text-blue-700 dark:hover:text-blue-400">
+            {methods.includes('totp') && (
+              <button type="submit" disabled={isSubmitting || !code.trim()} className={methods.includes('passkey') ? 'w-full border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed' : 'w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed'}>
+                {isSubmitting ? 'Verifying…' : 'Verify'}
+              </button>
+            )}
+            <button type="button" onClick={() => { setMfaToken(null); setMethods([]); setCode(''); setPassword(''); setError(null); }} className="w-full text-sm text-slate-600 dark:text-slate-400 underline hover:text-blue-700 dark:hover:text-blue-400">
               Back to sign in
             </button>
           </form>

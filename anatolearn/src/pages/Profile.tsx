@@ -6,6 +6,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import RequestState from '../components/RequestState';
 import Modal from '../components/account/Modal';
 import MfaCard from '../components/account/MfaCard';
+import PasskeysCard from '../components/account/PasskeysCard';
 import { cardClass, dangerButton, errorBox, inputClass, labelClass, passwordProblem, passwordRules, primaryButton, secondaryButton, successBox } from '../components/account/styles';
 import { formatDate, formatDateTime } from '../components/account/time';
 import { useResource } from '../hooks/useResource';
@@ -278,6 +279,7 @@ export default function Profile() {
           <SessionsCard profile={profile} />
 
           {profile.role !== 'student' && <MfaCard profile={profile} onChanged={(patch) => setOverride({ ...profile, ...patch })} />}
+          {profile.role !== 'student' && <PasskeysCard profile={profile} onChanged={(patch) => setOverride({ ...profile, ...patch })} />}
 
           <section aria-labelledby="privacy-heading" className={cardClass}>
             <h2 id="privacy-heading" className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Your data</h2>

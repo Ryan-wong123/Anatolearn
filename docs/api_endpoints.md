@@ -213,7 +213,7 @@ Body: `{ email, password }`. Looks up the user by (lowercased/trimmed) email, co
 
 The token is not in the body. API clients that cannot use cookies may still send a JWT as a Bearer token.
 
-- If the account has two-factor authentication on, the response is instead `{ "mfa_required": true, "mfa_token": "..." }` (no session cookie yet). Send the token and a code to `POST /api/auth/mfa/verify`. On a normal sign-in the body also contains `mfa_setup_required` (true when the account's role requires two-factor authentication and it is not set up).
+- If the account has two-factor authentication on (authenticator app and/or passkeys), the response is instead `{ "mfa_required": true, "mfa_token": "...", "methods": ["totp", "passkey"] }` (no session cookie yet; `methods` lists what the account has). Send the token and a code to `POST /api/auth/mfa/verify`, or complete a passkey check with the two `/api/auth/mfa/passkey/*` endpoints below. On a normal sign-in the body also contains `mfa_setup_required` (true when the account's role requires two-factor authentication and it is not set up).
 - 401 if the email doesn't exist **or** the password is wrong — deliberately the same generic `"Invalid email or password"` message either way, so a failed login can't be used to check which emails are registered
 - 400 if `email` or `password` is missing
 - 500 if `JWT_SECRET` isn't configured on the server (logged as a startup warning too)
@@ -249,6 +249,12 @@ This section supersedes older submission/download/result behavior in historical 
 
 | Endpoint | Access | Request / result |
 |---|---|---|
+| POST /api/auth/mfa/passkey/options | public (needs the `mfa_token`), rate limited | body `{ mfa_token }`; returns WebAuthn `PublicKeyCredentialRequestOptionsJSON` for the account's passkeys and stores a single-use challenge (5 minutes). 401 for a bad/expired token, a locked or disabled account, or an account without passkeys |
+| POST /api/auth/mfa/passkey/verify | public (needs the `mfa_token`), rate limited | body `{ mfa_token, response }` where `response` is the browser's assertion JSON. Success sets the session cookies and returns `{ user }`; 401 otherwise. A wrong, replayed or cloned-key assertion counts towards the account lockout |
+| GET /api/profile/passkeys | any signed-in user | `{ passkeys: [{ id, name, device_type, backed_up, created_at, last_used_at }] }` |
+| POST /api/profile/passkeys/options | any signed-in user | body `{ password }` (wrong guesses count towards the lockout); returns WebAuthn creation options and stores a single-use challenge. 409 at 10 passkeys |
+| POST /api/profile/passkeys | any signed-in user | body `{ name, response }` with the browser's registration JSON; 201 `{ passkey }`. 400 if the challenge is missing/expired or verification fails; signs out other devices |
+| DELETE /api/profile/passkeys/:id | any signed-in user | body `{ password }`. 403 while two-factor is required and this is the last second factor; 404 if not yours; signs out other devices |
 | POST /api/auth/mfa/verify | public, origin checked, rate limited | body `{ mfa_token, code }`; `code` is a 6-digit authenticator code or a recovery code. Success sets the session cookies and returns `{ user }` (plus `recovery_codes_remaining` if a recovery code was used); 401 otherwise. Wrong codes count towards the account lockout |
 | POST /api/auth/logout | public, origin checked | clears media cookie; frontend then clears sessionStorage |
 | PATCH /api/models/:id/download-permission | teacher | `{is_downloadable: boolean}` -> model; default false; downloads require read access and this flag for both roles |
@@ -295,7 +301,7 @@ List endpoints for models, videos, quizzes and resources accept optional `page` 
 
 - `GET /api/profile` returns name, email, role, programme and last sign-in.
 - `PUT /api/profile` `{ name, program_id? }`. Students keep their registered programme (it controls content access); teachers may change theirs.
-- `GET /api/profile` also returns, for teachers, `storage_used_bytes` and `storage_limit_bytes` (0 = unlimited). Uploads to `/api/models/upload`, `/api/resources/upload` and `/api/videos/upload` answer **413** `{ message }` when they would exceed the teacher's or the site's storage limit (decided from `Content-Length` before the file is stored, then again with the real size), and **400** when a `.docx` or `.usdz` archive is unsafe.
+- `GET /api/profile` also returns `totp_enabled` and `passkey_count`; `mfa_enabled` is true when either exists. It also returns, for teachers, `storage_used_bytes` and `storage_limit_bytes` (0 = unlimited). Uploads to `/api/models/upload`, `/api/resources/upload` and `/api/videos/upload` answer **413** `{ message }` when they would exceed the teacher's or the site's storage limit (decided from `Content-Length` before the file is stored, then again with the real size), and **400** when a `.docx` or `.usdz` archive is unsafe.
 - `GET /api/profile` also returns `active_sessions` and `session_idle_minutes`. `DELETE /api/profile/sessions` ends every session of the account including the current one and clears the cookies (cookie sessions need the CSRF header). A session unused for longer than `session_idle_minutes` returns 401 like an expired one.
 - `GET /api/profile` also returns `mfa_enabled`, `mfa_required` and `mfa_recovery_codes_left`.
 - Two-factor authentication (teachers and administrators): `POST /api/profile/mfa/setup` `{ password }` returns `{ secret, otpauth_uri }`; `POST /api/profile/mfa/enable` `{ code }` turns it on and returns the one-time `recovery_codes`; `POST /api/profile/mfa/disable` `{ password, code }` (403 when `MFA_REQUIRED` applies to the role); `POST /api/profile/mfa/recovery-codes` `{ password, code }` replaces the recovery codes. When `MFA_REQUIRED=true`, a staff account that has not enrolled gets `403 { code: 'mfa_setup_required' }` from every endpoint except `GET /api/profile` and the setup/enable calls.
