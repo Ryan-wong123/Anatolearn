@@ -3,11 +3,12 @@ const { authenticate } = require('../../access');
 const { manage } = require('../../middleware/ownership');
 const { requireTeacher } = require('../../middleware/roles');
 const { uploadModel, cleanupFailedUpload } = require('../../middleware/uploads');
+const { enforceQuota } = require('../../quota');
 module.exports = function registerRoutes(app) {
     app.patch('/api/models/:id/download-permission', authenticate, requireTeacher, manage('models'), controller.setDownloadPermission);
     app.get("/api/models", authenticate, controller.listModels);
     app.get("/api/models/:id", authenticate, controller.getModel);
-    app.post("/api/models/upload", authenticate, requireTeacher, uploadModel.single("model"), cleanupFailedUpload, controller.uploadModel);
+    app.post("/api/models/upload", authenticate, requireTeacher, enforceQuota, uploadModel.single("model"), cleanupFailedUpload, controller.uploadModel);
     app.delete("/api/models/:id", authenticate, requireTeacher, manage('models'), controller.deleteModel);
     app.patch("/api/models/:id/publish", authenticate, requireTeacher, manage('models'), controller.setPublication);
     app.patch("/api/models/:id/neutral-view", authenticate, requireTeacher, manage('models'), controller.saveNeutralView);

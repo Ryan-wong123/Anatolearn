@@ -136,6 +136,30 @@ function PasswordCard({ role }: { role: ProfileRecord['role'] }) {
   );
 }
 
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.max(bytes / 1024 ** 2, 0.1).toFixed(1)} MB`;
+}
+
+function StorageCard({ used, limit }: { used: number; limit: number }) {
+  const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  return (
+    <section aria-labelledby="storage-heading" className={cardClass}>
+      <h2 id="storage-heading" className="mb-2 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">Upload storage</h2>
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+        {limit > 0
+          ? `You have used ${formatBytes(used)} of your ${formatBytes(limit)} allowance for models, videos and resources. Deleting content frees the space.`
+          : `You have used ${formatBytes(used)} for models, videos and resources.`}
+      </p>
+      {limit > 0 && (
+        <div role="progressbar" aria-label="Storage used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <div className={`h-full rounded-full ${percent >= 90 ? 'bg-red-600' : percent >= 70 ? 'bg-amber-500' : 'bg-blue-600'}`} style={{ width: `${percent}%` }} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SessionsCard({ profile }: { profile: ProfileRecord }) {
   const navigate = useNavigate();
   const { logout } = useAppContext();
@@ -248,6 +272,8 @@ export default function Profile() {
           </section>
 
           <PasswordCard role={profile.role} />
+
+          {profile.storage_used_bytes !== undefined && <StorageCard used={profile.storage_used_bytes} limit={profile.storage_limit_bytes ?? 0} />}
 
           <SessionsCard profile={profile} />
 

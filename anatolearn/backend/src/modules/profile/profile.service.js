@@ -4,6 +4,7 @@ const { record } = require('../../audit');
 const { CSRF_COOKIE } = require('../../csrf');
 const mfa = require('../../mfa');
 const { idleMinutes } = require('../../sessionPolicy');
+const quota = require('../../quota');
 const { passwordProblem } = require('../../passwords');
 const { checkSecondFactor } = require('../auth/auth.service');
 const authRepository = require('../auth/auth.repository');
@@ -14,7 +15,9 @@ async function getProfile(input) {
     const profile = (await repository.findProfile([input.user.id])).rows[0];
     const idle = idleMinutes(profile.role);
     const active = (await repository.countActiveSessions([input.user.id, idle])).rows[0].n;
-    return { ...meta(), status: 200, kind: 'json', body: { ...profile, mfa_required: mfa.mfaRequired(profile.role), active_sessions: active, session_idle_minutes: idle } };
+    // Teachers also see how much of their upload allowance is used (limit 0 = unlimited).
+    const storage = profile.role === 'teacher' ? { storage_used_bytes: (await quota.usage(input.user.id)).mine, storage_limit_bytes: quota.limits().perUser } : {};
+    return { ...meta(), status: 200, kind: 'json', body: { ...profile, mfa_required: mfa.mfaRequired(profile.role), active_sessions: active, session_idle_minutes: idle, ...storage } };
 }
 async function updateProfile(input) {
     const { name, program_id } = input.body;

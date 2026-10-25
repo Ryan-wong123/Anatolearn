@@ -17,7 +17,7 @@ Controls implemented in AnatoLearn and where to find them. See `Deployment.md` f
 - Teaching files are served only through authenticated, programme-checked API routes; the S3 bucket is private.
 
 ## Data protection
-- Uploads are validated by extension and file signature (models, resources, captions and videos), size and field limited, rate limited (60 per hour per IP), then scanned by ClamAV before reaching S3 (fail closed in production). Rejected uploads return 4xx.
+- Uploads are validated by extension and file signature (models, resources, captions and videos), size and field limited, rate limited (60 per hour per IP), counted against a per-teacher and a site-wide storage quota (refused before anything is stored, 413), then scanned by ClamAV before reaching S3 (fail closed in production). `.docx` and `.usdz` archives are checked for zip bombs: entry count, total and per-entry expansion, headers that understate the real size (deflated entries are decompressed into a counter and stopped at their declared size), encryption, ZIP64 and paths that escape their folder; a USDZ must be stored uncompressed. Rejected uploads return 4xx.
 - 500 responses never include internal error text. Request logs exclude query strings and bodies. CSV exports neutralise spreadsheet formulas.
 - Users can export their data and delete their account from the Profile page.
 
@@ -35,5 +35,6 @@ Controls implemented in AnatoLearn and where to find them. See `Deployment.md` f
 ## Known limitations
 - Direct-to-S3 browser uploads are intentionally not used: files pass through the API so they can be validated and virus-scanned before storage.
 - Two-factor authentication is TOTP, which a real-time phishing page can still relay. Passkeys (WebAuthn) would close that gap. A lost device is recovered by an administrator, not by email.
+- Image uploads are not checked for pixel dimensions, so an image with an extreme size could still be heavy to render in a browser (the server never decodes images).
 - Email-based password reset and email verification are not implemented; teachers reset passwords from Users, and `ALLOWED_EMAIL_DOMAINS` limits who can register.
 - Postgres inside Docker does not use TLS (traffic stays on the private Docker network). Use RDS with TLS if you need encryption in transit to the database.

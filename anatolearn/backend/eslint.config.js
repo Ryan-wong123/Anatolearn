@@ -21,9 +21,10 @@ module.exports = [
   },
   {
     // The only modules that build file paths at run time. Every path comes from a server-generated UUID file name,
-    // storage.resolveAsset() (which rejects anything outside the storage root), storage.objectKey() or the migrations directory;
+    // storage.resolveAsset() (which rejects anything outside the storage root), storage.objectKey(), the migrations directory or
+    // multer's own temp file (zipGuard.js);
     // never from raw input.
-    files: ['src/storage.js', 'src/scan.js', 'src/migrate.js', 'src/middleware/uploads.js'],
+    files: ['src/storage.js', 'src/scan.js', 'src/migrate.js', 'src/zipGuard.js', 'src/middleware/uploads.js'],
     rules: { 'security/detect-non-literal-fs-filename': 'off' },
   },
   {

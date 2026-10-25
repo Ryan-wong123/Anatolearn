@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { canDownload } = require('../../access');
 const storage = require('../../storage');
+const quota = require('../../quota');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function setDownloadPermission(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -46,8 +47,9 @@ async function uploadModel(input) {
         if (!title) {
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "title is required" } });
         }
+        await quota.assertWithin(input.user.id, input.file.size);
         const filePath = await storage.persist(input.file, 'models/anatomy');
-        const result = await repository.insertModel([title, description || null, filePath, program_id || null, body_system || null, body_part || null, input.user.id]);
+        const result = await repository.insertModel([title, description || null, filePath, program_id || null, body_system || null, body_part || null, input.user.id, input.file.size]);
         return ({ ...outcomeMeta, status: 201, kind: 'json', body: result.rows[0] });
     }
     catch (err) {
