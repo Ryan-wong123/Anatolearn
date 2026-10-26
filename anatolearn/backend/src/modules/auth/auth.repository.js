@@ -1,7 +1,7 @@
 const pool = require('../../db');
 // parameters: [sessionId, userId, staffIdleMinutes, studentIdleMinutes]. A session idle for longer than its role allows is rejected.
 async function findSessionUser(parameters) {
-    return pool.query(`SELECT u.id, u.name, u.role, u.program_id, (u.mfa_enabled_at IS NOT NULL) AS mfa_enabled,
+    return pool.query(`SELECT u.id, u.name, u.role, u.program_id, (u.mfa_enabled_at IS NOT NULL OR EXISTS (SELECT 1 FROM passkeys k WHERE k.user_id = u.id)) AS mfa_enabled,
       (s.last_seen_at < NOW() - INTERVAL '1 minute') AS stale FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.user_id=$2
       AND s.revoked_at IS NULL AND s.expires_at > NOW() AND u.is_active
@@ -20,7 +20,7 @@ async function insertUser(parameters) {
        RETURNING id, name, email, role, program_id, created_at`, parameters);
 }
 async function findUserByEmail(parameters) {
-    return pool.query("SELECT id, name, email, password_hash, role, program_id, is_active, locked_until, (locked_until > NOW()) AS is_locked, (mfa_enabled_at IS NOT NULL) AS mfa_enabled FROM users WHERE email = $1", parameters);
+    return pool.query("SELECT id, name, email, password_hash, role, program_id, is_active, locked_until, (locked_until > NOW()) AS is_locked, (mfa_enabled_at IS NOT NULL OR EXISTS (SELECT 1 FROM passkeys k WHERE k.user_id = users.id)) AS mfa_enabled, (mfa_enabled_at IS NOT NULL) AS has_totp, EXISTS (SELECT 1 FROM passkeys k WHERE k.user_id = users.id) AS has_passkey FROM users WHERE email = $1", parameters);
 }
 async function insertSession(parameters) {
     return pool.query("INSERT INTO auth_sessions(id,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '24 hours')", parameters);
@@ -39,6 +39,12 @@ async function registerFailedLogin(parameters) {
 async function registerSuccessfulLogin(parameters) {
     return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1', parameters);
 }
+async function findLockState(parameters) {
+    return pool.query('SELECT (locked_until > NOW()) AS is_locked, CEIL(EXTRACT(EPOCH FROM (locked_until - NOW())) / 60)::int AS minutes_left FROM users WHERE id = $1', parameters);
+}
+async function clearFailedLogins(parameters) {
+    return pool.query('UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = $1', parameters);
+}
 async function findUserForMfa(parameters) {
     return pool.query(`SELECT id, name, email, role, program_id, is_active, (locked_until > NOW()) AS is_locked,
       mfa_secret, mfa_last_step FROM users WHERE id = $1 AND mfa_enabled_at IS NOT NULL`, parameters);
@@ -51,4 +57,4 @@ async function consumeRecoveryCode(parameters) {
     return pool.query(`UPDATE users SET mfa_recovery_hashes = array_remove(mfa_recovery_hashes, $2)
       WHERE id = $1 AND $2 = ANY(mfa_recovery_hashes) RETURNING cardinality(mfa_recovery_hashes) AS remaining`, parameters);
 }
-module.exports = { touchSession, findUserForMfa, claimTotpStep, consumeRecoveryCode, registerFailedLogin, registerSuccessfulLogin, findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };
+module.exports = { findLockState, clearFailedLogins, touchSession, findUserForMfa, claimTotpStep, consumeRecoveryCode, registerFailedLogin, registerSuccessfulLogin, findProgram, findSessionUser, findExistingEmail, insertUser, findUserByEmail, insertSession, revokeSession };

@@ -1,6 +1,7 @@
 const repository = require('./videos.repository');
 const storage = require('../../storage');
 const quota = require('../../quota');
+const { removeFiles } = require('../../assetCleanup');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listVideos(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -95,6 +96,8 @@ async function deleteVideo(input) {
     if (result.rows.length === 0) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Video not found" } });
     }
+    const { video_path, captions_path, thumbnail_path } = result.rows[0];
+    await removeFiles([video_path, captions_path, thumbnail_path]);
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: { message: "Video deleted" } });
 }
 async function setPublication(input) {

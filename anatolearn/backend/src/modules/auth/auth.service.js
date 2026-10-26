@@ -102,7 +102,7 @@ async function login(input) {
         if (user.mfa_enabled) {
             void record({ actor: user, action: 'auth.mfa_challenge', targetType: 'user', targetId: user.id, ip: input.ip });
             const mfaToken = jwt.sign({ uid: user.id, purpose: 'mfa' }, JWT_SECRET, { expiresIn: `${MFA_CHALLENGE_MINUTES}m` });
-            return ({ ...outcomeMeta, headers: { 'Cache-Control': 'no-store' }, status: 200, kind: 'json', body: { mfa_required: true, mfa_token: mfaToken } });
+            return ({ ...outcomeMeta, headers: { 'Cache-Control': 'no-store' }, status: 200, kind: 'json', body: { mfa_required: true, mfa_token: mfaToken, methods: [user.has_totp && 'totp', user.has_passkey && 'passkey'].filter(Boolean) } });
         }
         return await startSession(user, input, outcomeMeta);
     }
@@ -179,4 +179,4 @@ async function logout(input) {
     outcomeMeta.cookies.push({ name: CSRF_COOKIE, clear: true, options: { path: '/' } });
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: { message: 'Logged out' } });
 }
-module.exports = { register, login, logout, verifyMfa, checkSecondFactor };
+module.exports = { register, login, logout, verifyMfa, checkSecondFactor, startSession };

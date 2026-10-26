@@ -69,6 +69,46 @@ jobs:
       - run: npm run test:models
       - run: npm run build
 
+  e2e:
+    name: Browser tests (Chromium)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: anatolearn
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: anatolearn
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U anatolearn" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://anatolearn:password@localhost:5432/anatolearn
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            anatolearn/package-lock.json
+            anatolearn/backend/package-lock.json
+      - run: npm ci
+        working-directory: anatolearn
+      - run: npm ci
+        working-directory: anatolearn/backend
+      - run: npx playwright install --with-deps chromium
+        working-directory: anatolearn
+      # Starts its own backend and Vite server; covers sign-in with two-factor and passkeys, sessions, lockout and content ownership.
+      - run: npm run test:e2e
+        working-directory: anatolearn
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-traces
+          path: anatolearn/test-results
+          retention-days: 7
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

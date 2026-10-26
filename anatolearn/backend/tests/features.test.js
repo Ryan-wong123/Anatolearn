@@ -216,7 +216,7 @@ test('accounts, CSRF, lockout, profile, announcements, search, dashboard, pagina
       await new Promise((resolve) => setTimeout(resolve, 150));
       const log = await (await call('/api/audit-log?action=PATCH', { token: admin.token })).json();
       assert.ok(log.some((row) => row.actor_id === teacherAccount.id && row.action === 'PATCH /models/:id/publish' && row.target_id === String(model)));
-      assert.ok((await (await call('/api/audit-log?action=auth.', { token: admin.token })).json()).some((row) => row.action === 'auth.account_locked'));
+      assert.ok((await (await call('/api/audit-log?action=auth.account_locked', { token: admin.token })).json()).some((row) => row.action === 'auth.account_locked'));
       assert.equal((await call('/api/audit-log', { token: student.token })).status, 403);
       assert.equal((await call('/api/audit-log', { token: teacher.token })).status, 403);
     });

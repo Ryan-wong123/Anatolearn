@@ -118,7 +118,7 @@ export default function MfaCard({ profile, onChanged }: { profile: Profile; onCh
       const result = await api.mfaEnable(code.trim());
       setCode('');
       setStep({ name: 'codes', codes: result.recovery_codes });
-      onChanged({ mfa_enabled: true, mfa_recovery_codes_left: result.recovery_codes.length });
+      onChanged({ mfa_enabled: true, totp_enabled: true, mfa_recovery_codes_left: result.recovery_codes.length });
       updateUser({ mfa_setup_required: false });
     } catch (err) { setError(message(err, 'Could not turn on two-factor authentication')); }
     finally { setBusy(false); }
@@ -127,12 +127,12 @@ export default function MfaCard({ profile, onChanged }: { profile: Profile; onCh
   return (
     <section aria-labelledby="mfa-heading" className={cardClass}>
       <h2 id="mfa-heading" className="mb-2 flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
-        <ShieldCheck className="h-5 w-5" aria-hidden="true" />Two-factor authentication
+        <ShieldCheck className="h-5 w-5" aria-hidden="true" />Authenticator app
       </h2>
 
       {profile.mfa_required && !profile.mfa_enabled && step.name !== 'codes' && (
         <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-          Your role requires two-factor authentication. Set it up below to keep using AnatoLearn.
+          Your role requires two-factor authentication. Set up an authenticator app below, or add a passkey, to keep using AnatoLearn.
         </p>
       )}
       {notice && <p role="status" className={`${successBox} mb-4`}>{notice}</p>}
@@ -172,7 +172,7 @@ export default function MfaCard({ profile, onChanged }: { profile: Profile; onCh
             <button type="button" onClick={() => { setStep({ name: 'idle' }); setError(null); setPassword(''); }} className={secondaryButton}>Cancel</button>
           </div>
         </form>
-      ) : profile.mfa_enabled ? (
+      ) : profile.totp_enabled ? (
         <>
           <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
             Two-factor authentication is <strong className="text-green-800 dark:text-green-300">on</strong>. You have {profile.mfa_recovery_codes_left} unused recovery code{profile.mfa_recovery_codes_left === 1 ? '' : 's'}.
@@ -185,7 +185,7 @@ export default function MfaCard({ profile, onChanged }: { profile: Profile; onCh
         </>
       ) : (
         <>
-          <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">Protect your account with a code from an authenticator app in addition to your password.</p>
+          <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">Protect your account with a code from an authenticator app in addition to your password. You can also use a passkey below instead.</p>
           <button type="button" onClick={() => { setNotice(null); setStep({ name: 'password' }); }} className={primaryButton}>Set up…</button>
         </>
       )}
@@ -193,7 +193,7 @@ export default function MfaCard({ profile, onChanged }: { profile: Profile; onCh
       {dialog === 'disable' && (
         <ConfirmDialog title="Turn off two-factor authentication?" intro="Your account will be protected by your password alone, and you will be signed out on other devices." submitLabel="Turn off" danger
           action={api.mfaDisable} onClose={() => setDialog(null)}
-          onDone={() => { setDialog(null); onChanged({ mfa_enabled: false, mfa_recovery_codes_left: 0 }); setNotice('Two-factor authentication is off.'); }} />
+          onDone={() => { setDialog(null); onChanged({ totp_enabled: false, mfa_enabled: profile.passkey_count > 0, mfa_recovery_codes_left: 0 }); setNotice('Two-factor authentication is off.'); }} />
       )}
       {dialog === 'regenerate' && (
         <ConfirmDialog title="Get new recovery codes?" intro="Your existing recovery codes stop working as soon as new ones are created." submitLabel="Create new codes"

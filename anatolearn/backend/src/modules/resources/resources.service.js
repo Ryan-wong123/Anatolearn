@@ -2,6 +2,7 @@ const repository = require('./resources.repository');
 const fs = require('fs/promises');
 const storage = require('../../storage');
 const quota = require('../../quota');
+const { removeFiles } = require('../../assetCleanup');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function listResources(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -67,6 +68,8 @@ async function deleteResource(input) {
     if (result.rows.length === 0) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Resource not found" } });
     }
+    // A link resource stores a URL, not a file; removeFiles ignores anything that is not a stored upload.
+    if (result.rows[0].resource_type !== 'link') await removeFiles([result.rows[0].file_path]);
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: { message: "Resource deleted" } });
 }
 async function updateResource(input) {

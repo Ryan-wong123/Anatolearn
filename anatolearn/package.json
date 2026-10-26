@@ -13,9 +13,11 @@
     "test:models": "node --test tests/model-formats.test.mjs",
     "test:browser": "playwright test",
     "test:browser:report": "playwright show-report",
-    "test:browser:summary": "node tests/browser/report-summary.mjs"
+    "test:browser:summary": "node tests/browser/report-summary.mjs",
+    "test:e2e": "playwright test -c playwright.e2e.config.mjs"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
     "lucide-react": "^1.18.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.6",

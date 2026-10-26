@@ -34,6 +34,18 @@ services:
       PUBLIC_DIR: /public
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-before-any-real-deployment}
       TEACHER_INVITE_CODE: ${TEACHER_INVITE_CODE:-dev-teacher-code}
+      # Optional switches, off or at the backend's own defaults unless set in your shell or .env:
+      MFA_REQUIRED: ${MFA_REQUIRED:-false}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      UPLOAD_QUOTA_MB_PER_USER: ${UPLOAD_QUOTA_MB_PER_USER:-5120}
+      UPLOAD_QUOTA_MB_TOTAL: ${UPLOAD_QUOTA_MB_TOTAL:-51200}
+      SESSION_IDLE_MINUTES_STAFF: ${SESSION_IDLE_MINUTES_STAFF:-120}
+      SESSION_IDLE_MINUTES_STUDENT: ${SESSION_IDLE_MINUTES_STUDENT:-480}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      IMAGE_MAX_DIMENSION: ${IMAGE_MAX_DIMENSION:-8000}
+      IMAGE_MAX_MEGAPIXELS: ${IMAGE_MAX_MEGAPIXELS:-40}
+      MAX_FAILED_LOGINS: ${MAX_FAILED_LOGINS:-5}
+      LOCKOUT_MINUTES: ${LOCKOUT_MINUTES:-15}
 
     depends_on:
       - postgres

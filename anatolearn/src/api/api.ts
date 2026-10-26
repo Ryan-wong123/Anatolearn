@@ -1,5 +1,6 @@
 import type { AnnotationPayload, AnnotationRecord, ModelRecord } from '../types/anatomy';
-import type { Announcement, AuditEntry, Paged, Profile, SearchResults, StudentDashboard, StudentStats, TeacherDashboard, TeacherOverview, UserSummary } from '../types/portal';
+import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
+import type { Announcement, AuditEntry, Paged, Passkey, Profile, SearchResults, StudentDashboard, StudentStats, TeacherDashboard, TeacherOverview, UserSummary } from '../types/portal';
 
 const API_BASE = "/api";
 
@@ -33,6 +34,7 @@ export type LoginResult = {
     mfa_setup_required?: boolean;
     mfa_required?: boolean;
     mfa_token?: string;
+    methods?: ('totp' | 'passkey')[];
     recovery_codes_remaining?: number;
 };
 
@@ -176,6 +178,17 @@ export const api = {
         apiFetch('/profile/mfa/disable', { method: 'POST', body: JSON.stringify({ password, code }) }),
     mfaRecoveryCodes: (password: string, code: string): Promise<{ recovery_codes: string[] }> =>
         apiFetch('/profile/mfa/recovery-codes', { method: 'POST', body: JSON.stringify({ password, code }) }),
+    getPasskeys: (): Promise<{ passkeys: Passkey[] }> => request('/profile/passkeys'),
+    passkeyRegistrationOptions: (password: string): Promise<PublicKeyCredentialCreationOptionsJSON> =>
+        apiFetch('/profile/passkeys/options', { method: 'POST', body: JSON.stringify({ password }) }),
+    registerPasskey: (name: string, response: unknown): Promise<{ passkey: { id: number; name: string } }> =>
+        apiFetch('/profile/passkeys', { method: 'POST', body: JSON.stringify({ name, response }) }),
+    removePasskey: (id: number, password: string): Promise<{ message: string }> =>
+        apiFetch(`/profile/passkeys/${id}`, { method: 'DELETE', body: JSON.stringify({ password }) }),
+    passkeySignInOptions: (mfa_token: string): Promise<PublicKeyCredentialRequestOptionsJSON> =>
+        apiFetch('/auth/mfa/passkey/options', { method: 'POST', body: JSON.stringify({ mfa_token }) }),
+    passkeySignInVerify: (mfa_token: string, response: unknown): Promise<LoginResult> =>
+        apiFetch('/auth/mfa/passkey/verify', { method: 'POST', body: JSON.stringify({ mfa_token, response }) }),
     signOutEverywhere: (): Promise<{ message: string }> => apiFetch('/profile/sessions', { method: 'DELETE' }),
     exportMyData: () => downloadFile('/profile/export'),
     deleteMyAccount: (password: string) => apiFetch('/profile', { method: 'DELETE', body: JSON.stringify({ password }) }),
