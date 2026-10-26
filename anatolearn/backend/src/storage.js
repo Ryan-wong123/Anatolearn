@@ -39,6 +39,34 @@ async function persist(file, folder) {
   await fs.unlink(file.path).catch(() => {});
   return assetPath;
 }
+// Every stored file under one of the upload folders (models, videos, captions, resources, thumbnails), local or S3:
+// [{ path: '/resources/resource-<uuid>.pdf', size, modified (ms) }]. Symbolic links are ignored.
+async function listAssets(folder) {
+  const found = [];
+  if (!REMOTE) {
+    const walk = async (directory, relative) => {
+      let entries;
+      try { entries = await fs.readdir(directory, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (entry.isSymbolicLink()) continue;
+        const absolute = path.join(directory, entry.name), assetPath = `${relative}/${entry.name}`;
+        if (entry.isDirectory()) await walk(absolute, assetPath);
+        else if (entry.isFile()) { const stat = await fs.stat(absolute); found.push({ path: assetPath, size: stat.size, modified: stat.mtimeMs }); }
+      }
+    };
+    await walk(path.join(ROOT, folder), `/${folder}`);
+    return found;
+  }
+  const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+  const root = PREFIX ? `${PREFIX}/` : '';
+  let token;
+  do {
+    const page = await s3().send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: `${root}${folder}/`, ContinuationToken: token }));
+    for (const object of page.Contents ?? []) found.push({ path: `/${object.Key.slice(root.length)}`, size: object.Size, modified: object.LastModified.getTime() });
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return found;
+}
 // Size in bytes of a stored file, or null if it cannot be found.
 async function statAsset(assetPath) {
   try {
@@ -140,6 +168,7 @@ async function validateResource(file,type) {
     : type==='document' ? await docxOk() || (ext==='.doc' && bytes.subarray(0,8).equals(Buffer.from('d0cf11e0a1b11ae1','hex')))
     : type==='image' && ((ext==='.png' && bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'))) || (['.jpg','.jpeg'].includes(ext) && bytes.subarray(0,3).equals(Buffer.from('ffd8ff','hex'))) || (ext==='.webp' && bytes.subarray(0,4).toString()==='RIFF' && bytes.subarray(8,12).toString()==='WEBP'));
   if (!matches) throw Object.assign(new Error('The file contents do not match the selected PDF, document or photo format'),{status:400});
+  if (type==='image') require('./imageSize').assertImageSize(bytes,'The photo');
 }
 // Checks the container signature against the claimed extension so a renamed executable or script is not stored as video.
 async function validateVideo(file) {
@@ -157,4 +186,4 @@ async function validateCaptions(file) {
   if (text.includes('\u0000') || !/^WEBVTT(?:[ \t]|\r?\n|$)/.test(text))
     throw Object.assign(new Error('Caption file must be a UTF-8 WebVTT (.vtt) file starting with WEBVTT'),{status:400});
 }
-module.exports={statAsset,ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateVideo,validateCaptions};
+module.exports={listAssets,statAsset,ROOT,UPLOAD_ROOT,REMOTE,persist,writeAsset,removeAsset,sendObject,resolveAsset,readAsset,validateModel,referencesAsset,validateResource,validateVideo,validateCaptions};

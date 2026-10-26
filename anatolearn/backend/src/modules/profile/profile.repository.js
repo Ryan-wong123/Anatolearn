@@ -1,7 +1,7 @@
 const pool = require('../../db');
 async function findProfile(parameters) {
-    return pool.query(`SELECT u.id, u.name, u.email, u.role, u.program_id, p.name AS program_name, u.created_at, u.last_login_at, (u.mfa_enabled_at IS NOT NULL) AS mfa_enabled,
-      cardinality(u.mfa_recovery_hashes) AS mfa_recovery_codes_left
+    return pool.query(`SELECT u.id, u.name, u.email, u.role, u.program_id, p.name AS program_name, u.created_at, u.last_login_at, (u.mfa_enabled_at IS NOT NULL OR EXISTS (SELECT 1 FROM passkeys k WHERE k.user_id = u.id)) AS mfa_enabled, (u.mfa_enabled_at IS NOT NULL) AS totp_enabled,
+      (SELECT count(*)::int FROM passkeys k WHERE k.user_id = u.id) AS passkey_count, cardinality(u.mfa_recovery_hashes) AS mfa_recovery_codes_left
       FROM users u LEFT JOIN programs p ON p.id = u.program_id WHERE u.id = $1`, parameters);
 }
 async function findPasswordHash(parameters) { return pool.query('SELECT password_hash FROM users WHERE id = $1', parameters); }

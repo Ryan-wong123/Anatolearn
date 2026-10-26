@@ -14,6 +14,8 @@ export interface Profile {
   id: number; name: string; email: string; role: 'student' | 'teacher' | 'admin'; program_id: number | null; program_name: string | null;
   created_at: string; last_login_at: string | null;
   mfa_enabled: boolean; mfa_required: boolean; mfa_recovery_codes_left: number;
+  // mfa_enabled means any second factor; these split it into the authenticator app and the registered passkeys
+  totp_enabled: boolean; passkey_count: number;
   active_sessions: number; session_idle_minutes: number;
   // Teachers only; a limit of 0 means unlimited
   storage_used_bytes?: number; storage_limit_bytes?: number;
@@ -47,3 +49,5 @@ export interface TeacherOverview {
 }
 export interface TeacherDashboard extends TeacherOverview { role: 'teacher'; announcements: Announcement[] }
 export interface Paged<T> { items: T[]; total: number }
+
+export interface Passkey { id: number; name: string; device_type: string | null; backed_up: boolean; created_at: string; last_used_at: string | null }

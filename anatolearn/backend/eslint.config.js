@@ -24,7 +24,7 @@ module.exports = [
     // storage.resolveAsset() (which rejects anything outside the storage root), storage.objectKey(), the migrations directory or
     // multer's own temp file (zipGuard.js);
     // never from raw input.
-    files: ['src/storage.js', 'src/scan.js', 'src/migrate.js', 'src/zipGuard.js', 'src/middleware/uploads.js'],
+    files: ['src/storage.js', 'src/scan.js', 'src/migrate.js', 'src/zipGuard.js', 'src/assetCleanup.js', 'src/middleware/uploads.js'],
     rules: { 'security/detect-non-literal-fs-filename': 'off' },
   },
   {

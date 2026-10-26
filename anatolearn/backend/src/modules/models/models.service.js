@@ -4,6 +4,8 @@ const path = require('path');
 const { canDownload } = require('../../access');
 const storage = require('../../storage');
 const quota = require('../../quota');
+const { assertImageSize } = require('../../imageSize');
+const { removeFiles } = require('../../assetCleanup');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 async function setDownloadPermission(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
@@ -63,6 +65,8 @@ async function deleteModel(input) {
     if (result.rows.length === 0) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Model not found" } });
     }
+    // The row is gone; now free the storage it used, so deleting content really releases space (and quota).
+    await removeFiles([result.rows[0].file_path, result.rows[0].thumbnail_path]);
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: { message: "Model deleted" } });
 }
 async function setPublication(input) {
@@ -166,6 +170,7 @@ async function saveThumbnail(input) {
         const png = Buffer.from(base64Data, "base64");
         if (png.length > 2 * 1024 * 1024 || !png.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")))
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: "Thumbnail must be a PNG image of 2 MiB or smaller" } });
+        try { assertImageSize(png, 'The thumbnail'); } catch (error) { return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: error.message } }); }
         const filename = `model-${input.params.id}.png`;
         const publicPath = `/thumbnails/${filename}`;
         await storage.writeAsset(publicPath, png);

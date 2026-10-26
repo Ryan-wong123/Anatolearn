@@ -200,6 +200,8 @@ chmod 600 .env.production
 | `UPLOAD_DOCX_MAX_UNCOMPRESSED_MB` / `UPLOAD_USDZ_MAX_UNCOMPRESSED_MB` | Optional. The most a `.docx` (default 300) or `.usdz` (default 1024) archive may expand to when opened. Larger files are rejected as possible zip bombs |
 | `SESSION_IDLE_MINUTES_STAFF` / `SESSION_IDLE_MINUTES_STUDENT` | Minutes without any request after which a session stops working (5 to 1440). Defaults 120 for teachers and administrators and 480 for students; the 24 hour absolute limit always applies. Anyone can also end all their sessions from Profile -> Signed-in devices |
 | `MFA_REQUIRED` | `true` (the default in `docker-compose.prod.yml`) forces every teacher and administrator to set up two-factor authentication before they can use the site, and stops them turning it off. `false` makes it optional |
+| `WEBAUTHN_RP_ID`, `WEBAUTHN_RP_NAME` | Optional. The passkey relying-party ID (default: the hostname of the first `FRONTEND_ORIGINS` entry) and the name shown in the browser prompt. Do not change the ID after people have registered passkeys |
+| `IMAGE_MAX_DIMENSION`, `IMAGE_MAX_MEGAPIXELS` | Optional. Largest photo (resource images and model thumbnails) accepted: pixels on a side (default 8000) and total megapixels (default 40) |
 | `MFA_ENCRYPTION_KEY` | **Set this before anyone enrols**: `openssl rand -hex 32` (at least 32 characters). It encrypts the stored authenticator secrets. If left empty the key is derived from `JWT_SECRET`. Back it up with the rest of `.env.production`, and never change it afterwards (see "Two-factor authentication" below) |
 | `BACKUP_INTERVAL_HOURS` | Database backup frequency, default 24 |
 
@@ -251,6 +253,7 @@ With `MFA_REQUIRED=true` the first administrator is sent to the **Profile** page
 
 From then on every sign-in asks for a code (or a recovery code). Wrong codes count towards the same 5-attempt lockout as wrong passwords, and a code can only be used once.
 
+- **Passkeys (optional, recommended):** on the same Profile page choose **Add a passkey**, enter the password, and follow the browser's prompt (fingerprint, face, screen lock or a security key). Register at least two (for example a laptop and a security key). After the password, sign-in then offers **Use a passkey** instead of a code. Passkeys only work on the real site: set `FRONTEND_ORIGINS` to the exact public https origin (as step 9 requires) and, if people reach the site on a different hostname than that origin's, set `WEBAUTHN_RP_ID` to the site's domain (no scheme or port, for example `anatolearn.example.com`). **Changing the domain or `WEBAUTHN_RP_ID` afterwards makes every registered passkey stop working**, and people must register them again. Passkeys need https (localhost is allowed for development). A passkey-only account has no recovery codes; an administrator resets it with **Users -> Reset 2FA**.
 - **Create a second administrator now and enrol it.** An administrator who loses their phone and recovery codes can only be reset by *another* administrator (**Users -> Reset 2FA**). Administrators cannot reset themselves. If you have only one, use the database fix under Troubleshooting.
 - **Teachers** are enrolled the same way: the first time they sign in after `MFA_REQUIRED` is on, they are taken to their Profile to set it up. Students are never asked.
 - **Lost phone:** an administrator opens **Users**, clicks **Reset 2FA** on that person (this signs them out everywhere), and the person signs in with their password and enrols again. Recovery codes can be regenerated on the Profile page (password and a current code needed).
@@ -375,10 +378,19 @@ Database changes are automatic: every new numbered file in `backend/sql` (e.g. `
 
 ### Upgrading an existing deployment to this version
 
+- **Deleting content now deletes its files.** Files left behind by earlier deletions still sit in storage (and count against nothing, but cost space). After deploying, list them and then remove them from the backend container (a snapshot or S3 versioning keeps a way back):
+
+  ```bash
+  docker compose -f docker-compose.prod.yml exec backend npm run cleanup:orphans                 # dry run: counts and sizes only
+  docker compose -f docker-compose.prod.yml exec backend npm run cleanup:orphans -- --delete     # remove them
+  ```
+  Files newer than 24 hours are skipped (an upload may be in progress); change it with `--min-age-hours N`. Always read the dry-run list before `--delete`.
+
 - **Content ownership (migration `020_content_owner.sql`)** is applied automatically. From now on a teacher can change, delete, publish or grade only what they created, and sees quiz attempts, answer keys and dashboard figures only for their own quizzes. Content that exists today has no recorded owner, so it is **unclaimed**: any teacher can still change it until it is claimed. After the first deploy:
   1. Ask each teacher to open their pages and press **Claim** under the items that are theirs (every unclaimed item shows "No owner yet" with a Claim button), or
   2. As an administrator open **Users -> Assign unclaimed content** and give all of it to one teacher, then use **Transfer content** on that teacher's row to hand parts on if needed (it moves everything one teacher owns to another, so it suits whole handovers rather than splitting).
   Check afterwards that nothing is left: in the database `SELECT count(*) FROM quizzes WHERE owner_id IS NULL;` (and the same for `models`, `videos`, `resources`, `question_bank`).
+- **Passkeys (migration `022_passkeys.sql`)** are applied automatically and need nothing else, provided `FRONTEND_ORIGINS` is the real public origin. Nobody has a passkey until they add one on their Profile page. Photos above 8000 pixels on a side (or 40 megapixels) are now refused on upload; raise `IMAGE_MAX_DIMENSION` / `IMAGE_MAX_MEGAPIXELS` if your teachers legitimately upload larger ones.
 - **Upload limits (migration `021_upload_sizes.sql`)** add storage quotas (defaults 5 GB per teacher, 50 GB for the site) and a zip-expansion check for `.docx` and `.usdz` uploads. Existing files have no recorded size, so they count as 0 until you run the backfill once after deploying, otherwise the limits ignore everything uploaded before the upgrade:
   ```bash
   docker compose -f docker-compose.prod.yml --env-file .env.production exec backend npm run backfill:sizes
@@ -417,6 +429,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 
 | Symptom | Cause / fix |
 |---|---|
+| A teacher, or you, gets `429 Too many incorrect attempts` on Profile (password change, delete account, two-factor) | Wrong passwords there count toward the same lockout as login. It clears after `LOCKOUT_MINUTES`, or an administrator can unlock the account from Users |
+| Deleting a quiz returns 409 | The quiz has student attempts or an active session. Unpublish it instead; deleting would erase the results |
 | Compose says a variable is required | A value is missing from `.env.production`; compose names which one |
 | Backend exits: `Invalid configuration:` followed by a list | The startup checks found unsafe values; each line names the variable and what is wrong (step 9). Fix `.env.production` and run `up -d` again |
 | Backend exits: `JWT_SECRET must be set...` | Secret missing or under 32 characters |
@@ -441,6 +455,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE anatolearn IN SCHEMA public GRANT USAGE, SELEC
 | A staff member sees the Profile page and nothing else | `MFA_REQUIRED=true` and they have not set up two-factor authentication yet. This is expected: they set it up there |
 | "Invalid or expired verification code" at sign-in | Wrong or already-used code, or the 5-minute window after the password expired (click *Back to sign in*). If codes are always rejected, check the phone's time is automatic and the server clock is right (`timedatectl`). Five wrong attempts lock the account for 15 minutes; an administrator can unlock it under Users |
 | A staff member lost their phone | An administrator uses **Users -> Reset 2FA** on them. For the only administrator see the database fix below |
+| "The passkey could not be verified" or the browser says no passkey is available on this site | The site is being used on a different origin or hostname than `FRONTEND_ORIGINS` / `WEBAUTHN_RP_ID` (including `http://` instead of `https://`), or the passkey was registered under an old domain. Fix the settings, or have an administrator reset 2FA and register again |
+| A photo upload says `The photo is NxN pixels. The most allowed is...` | The image exceeds `IMAGE_MAX_DIMENSION` / `IMAGE_MAX_MEGAPIXELS`; resize it or raise the limits |
 | Everyone's codes are rejected, or the API logs `Failed to verify MFA code` after a deploy | `MFA_ENCRYPTION_KEY` (or `JWT_SECRET`, if the key is empty) changed since people enrolled. Restore the old value, or reset two-factor for everyone who had enrolled |
 | A script or integration gets 403 `mfa_setup_required` | It signs in as a teacher or administrator who has not enrolled. Enrol that account first, or use a different account |
 | Upload rejected: "file contents do not match" | The file is not really what its extension says (a renamed file, a corrupt export, an SVG renamed to `.png`). Re-export it from the original program |
@@ -486,4 +502,4 @@ They then sign in with the password and enrol again. Do this only after confirmi
 
 `docker-compose.yml` is dev-only (Vite dev server, local disk storage, ports bound to 127.0.0.1). Without `STORAGE_DRIVER=s3` the API stores files under `PUBLIC_DIR` on disk, and ClamAV and backups are off. The API applies migrations on start. Load sample content with `docker compose exec backend npm run seed:demo` (wipes content tables; refuses in production). Do not expose the dev stack publicly.
 
-CI (`.github/workflows/ci.yml`) runs backend unit and integration tests against Postgres, frontend lint, tests and build, `npm audit`, production image builds and a gitleaks secret scan of the full history on every pull request. `.github/workflows/codeql.yml` runs CodeQL static analysis. `.github/workflows/trivy.yml` builds the two production images and fails on fixable HIGH or CRITICAL vulnerabilities in them (on every pull request, on `main` and weekly), and reports on the postgres, clamav and caddy images the stack pulls. The `Backend tests` job also runs `npm run lint` in `anatolearn/backend`, which includes `eslint-plugin-security` (it fails on `eval`, shell commands built from variables, non-literal `require` and file paths, and unsafe regular expressions). Run it locally with `cd anatolearn/backend && npm run lint`. Dependabot opens weekly update PRs. Without `MFA_REQUIRED` set, local development and CI do not require two-factor authentication; to try it locally run the stack with `MFA_REQUIRED=true`.
+CI (`.github/workflows/ci.yml`) runs backend unit and integration tests against Postgres, frontend lint, tests and build, `npm audit`, production image builds and a gitleaks secret scan of the full history on every pull request. `.github/workflows/codeql.yml` runs CodeQL static analysis. `.github/workflows/trivy.yml` builds the two production images and fails on fixable HIGH or CRITICAL vulnerabilities in them (on every pull request, on `main` and weekly), and reports on the postgres, clamav and caddy images the stack pulls. The `Backend tests` job also runs `npm run lint` in `anatolearn/backend`, which includes `eslint-plugin-security` (it fails on `eval`, shell commands built from variables, non-literal `require` and file paths, and unsafe regular expressions). Run it locally with `cd anatolearn/backend && npm run lint`. Dependabot opens weekly update PRs. Without `MFA_REQUIRED` set, local development and CI do not require two-factor authentication; to try it locally run the stack with `MFA_REQUIRED=true`; the development `docker-compose.yml` passes `MFA_REQUIRED` (default false), `MFA_ENCRYPTION_KEY`, the upload quotas, the idle timeouts and the lockout settings through from your shell or `.env`.

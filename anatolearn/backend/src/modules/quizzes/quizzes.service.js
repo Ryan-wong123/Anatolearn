@@ -2,6 +2,8 @@ const repository = require('./quizzes.repository');
 const { visibleRows, paged } = require('../catalog/catalog.service');
 const catalog = require('../catalog/catalog.repository');
 const { canManage } = require('../../ownership');
+const pool = require('../../db');
+const questionsRepository = require('../questions/questions.repository');
 async function setTimer(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
     const seconds = input.body.time_limit_seconds;
@@ -59,6 +61,9 @@ async function updateQuiz(input) {
 }
 async function deleteQuiz(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
+    // Attempts and sessions are deleted with the quiz, which would erase students' results: unpublish the quiz instead.
+    if ((await questionsRepository.findQuizUsage([input.params.id], pool)).rows.length)
+        return ({ ...outcomeMeta, status: 409, kind: 'json', body: { message: 'This quiz has student attempts and cannot be deleted. Unpublish it to hide it from students.' } });
     const result = await repository.deleteQuiz([input.params.id]);
     if (result.rows.length === 0) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Quiz not found" } });
