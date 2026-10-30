@@ -102,7 +102,7 @@ jobs:
       # Starts its own backend and Vite server; covers sign-in with two-factor and passkeys, sessions, lockout and content ownership.
       - run: npm run test:e2e
         working-directory: anatolearn
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: e2e-traces
