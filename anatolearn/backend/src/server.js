@@ -22,9 +22,10 @@ if (require.main === module) {
     if (process.env.NODE_ENV === 'production')
       for (const warning of await checkDatabaseRole(pool)) console.warn(`WARNING: ${warning}`);
     require('./maintenance').startMaintenance(pool);
+    void require('./cache').start();
     const port = process.env.PORT || 5000;
     const server = app.listen(port, () => console.log(`AnatoLearn backend running on port ${port}`));
-    const shutdown = () => server.close(() => pool.end().finally(() => process.exit(0)));
+    const shutdown = () => server.close(() => Promise.all([pool.end(), require('./cache').close()]).finally(() => process.exit(0)));
     process.once('SIGTERM', shutdown);
     process.once('SIGINT', shutdown);
   })().catch((error) => { console.error('Startup failed:', error.message); process.exit(1); });
