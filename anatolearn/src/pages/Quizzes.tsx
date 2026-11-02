@@ -13,6 +13,9 @@ import { Clock, BookOpen, Search, Heart, RotateCcw } from 'lucide-react';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
 import { api } from '../api/api';
+import ThreeDQuestion, { type Student3DConfig } from '../components/quiz/ThreeDQuestion';
+import ThreeDQuestionEditor, { type Teacher3DConfig } from '../components/quiz/ThreeDQuestionEditor';
+import type { RegionReview } from '../components/quiz/regionFeedback';
 
 interface Quiz {
   id: number;
@@ -28,11 +31,15 @@ interface Quiz {
   created_at: string;
 }
 
+type QuestionFormat = 'mcq' | 'open_ended' | 'region_identification' | 'annotation_matching';
+const is3D = (f:QuestionFormat): f is 'region_identification' | 'annotation_matching' => f==='region_identification'||f==='annotation_matching';
 interface QuizQuestion {
   id: number;
   quiz_id: number;
   question: string;
-  format: 'mcq' | 'open_ended';
+  format: QuestionFormat;
+  student_config?: Student3DConfig;
+  question_config?: Teacher3DConfig | null;
   option_a: string | null;
   option_b: string | null;
   option_c: string | null;
@@ -43,7 +50,9 @@ interface CreatedQuizQuestion {
   id: number;
   quiz_id: number;
   question: string;
-  format: 'mcq' | 'open_ended';
+  format: QuestionFormat;
+  student_config?: Student3DConfig;
+  question_config?: Teacher3DConfig | null;
   option_a: string | null;
   option_b: string | null;
   option_c: string | null;
@@ -57,6 +66,10 @@ interface SubmitFeedbackItem {
   selected_option: string;
   correct_option: string;
   is_correct: boolean;
+  format?: QuestionFormat;
+  score?: number | null;
+  details?: {iou?:number;coverage?:number;precision?:number;matched?:number;total?:number}|null;
+  region_review?: RegionReview | null;
 }
 
 interface SubmitResult {
@@ -80,7 +93,7 @@ interface QuizAttemptSummary {
 }
 
 interface TeacherAttempt { id:number; student_id:number; student_name?:string; status:string; score:number|null; attempted_at:string; }
-interface AttemptAnswer { id:number; question_id:number; question:string; format:'mcq'|'open_ended'; model_answer:string|null; correct_option:string|null; selected_option:string|null; answer_text:string|null; teacher_score:number|null; is_correct:boolean|null; }
+interface AttemptAnswer { id:number; question_id:number; question:string; format:QuestionFormat; model_answer:string|null; correct_option:string|null; selected_option:string|null; answer_text:string|null; teacher_score:number|null; is_correct:boolean|null; answer_json?: {points?:{x:number;y:number;z:number}[]}|null; region_review?:RegionReview|null; }
 interface OpenEndedResult { question_id:number; question:string; answer_text:string|null; teacher_score:number|null; }
 
 const optionLetters = ['A', 'B', 'C', 'D'] as const;
@@ -97,7 +110,7 @@ const quizTypeBadgeClasses: Record<Quiz['type'], string> = {
 
 function deriveQuizType(questions: CreatedQuizQuestion[]): 'MCQ' | 'Practical' | 'Mixed' {
   const hasMcq = questions.some((q) => q.format === 'mcq');
-  const hasOpenEnded = questions.some((q) => q.format === 'open_ended');
+  const hasOpenEnded = questions.some((q) => q.format !== 'mcq');
 
   if (hasMcq && hasOpenEnded) return 'Mixed';
   if (hasOpenEnded) return 'Practical';
@@ -126,6 +139,7 @@ export default function Quizzes() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
+  const [reviewRegionId, setReviewRegionId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showCreateQuiz, setShowCreateQuiz] = useState(false);
@@ -148,7 +162,8 @@ export default function Quizzes() {
   // modal/state, but changes what Finish/Cancel do (see handleFinishCreateQuiz
   // and handleCancelCreateQuiz).
   const [isEditMode, setIsEditMode] = useState(false);
-  const [newQuestionFormat, setNewQuestionFormat] = useState<'mcq' | 'open_ended'>('mcq');
+  const [newQuestionFormat, setNewQuestionFormat] = useState<QuestionFormat>('mcq');
+  const [new3DConfig, setNew3DConfig] = useState<Teacher3DConfig|null>(null);
   const [newModelAnswer, setNewModelAnswer] = useState('');
 
   const [showResultsQuiz, setShowResultsQuiz] = useState<Quiz | null>(null);
@@ -218,6 +233,7 @@ export default function Quizzes() {
       const loadedQuestions = session.questions;
 
 
+      setReviewRegionId(null);
       setActiveQuiz(quiz);
       setQuestions(loadedQuestions);
       setCurrentQuestion(0);
@@ -233,10 +249,14 @@ export default function Quizzes() {
     try {
       const attempt = await api.getAttempt(summary.id);
       const answers: (AttemptAnswer & {option_a:string|null;option_b:string|null;option_c:string|null;option_d:string|null})[] = await api.getAttemptAnswers(summary.id);
-      setQuestions(answers.map((a)=>({id:a.question_id,quiz_id:summary.quiz_id,question:a.question,format:a.format,option_a:a.option_a,option_b:a.option_b,option_c:a.option_c,option_d:a.option_d})));
+      setQuestions(answers.map((a)=>({id:a.question_id,quiz_id:summary.quiz_id,question:a.question,format:a.format,option_a:a.option_a,option_b:a.option_b,option_c:a.option_c,option_d:a.option_d,
+        student_config: a.region_review ? {model_id:a.region_review.model_id} : undefined})));
+      setSelectedAnswers(Object.fromEntries(answers.filter(a => a.format==='region_identification' && a.answer_json).map(a => [a.question_id, JSON.stringify(a.answer_json)])));
+      setReviewRegionId(null);
       setActiveQuiz(quizzes.find((q)=>q.id===summary.quiz_id) || {id:summary.quiz_id,program_id:null,title:summary.quiz_title,description:null,type:'Mixed',category:null,is_published:false,created_at:''});
-      const feedback = answers.filter((a)=>a.format==='mcq').map((a)=>({question_id:a.question_id,selected_option:a.selected_option||'',correct_option:a.correct_option||'',is_correct:a.is_correct===true}));
-      setSubmitResult({status:attempt.status,score:attempt.score,total:attempt.total_questions,correct:attempt.correct_count,incorrect:attempt.status==='graded'?attempt.total_questions-attempt.correct_count:null,mcq_count:feedback.length,open_ended_count:answers.length-feedback.length,feedback});
+      const feedback = answers.filter((a)=>a.format==='mcq'||is3D(a.format)).map((a)=>({question_id:a.question_id,format:a.format,selected_option:a.selected_option||'',correct_option:a.correct_option||'',is_correct:a.is_correct===true,score:is3D(a.format)?a.teacher_score:null,
+        details:a.region_review?.details||null,region_review:a.region_review||null}));
+      setSubmitResult({status:attempt.status,score:attempt.score,total:attempt.total_questions,correct:attempt.correct_count,incorrect:attempt.status==='graded'?attempt.total_questions-attempt.correct_count:null,mcq_count:answers.filter(a=>a.format==='mcq').length,open_ended_count:answers.filter(a=>a.format==='open_ended').length,feedback});
       setOpenEndedResults(answers.filter((a)=>a.format==='open_ended'));
       setExpiresAt(null);setSessionId('');setSubmitError(null);
     } catch { setSubmitError('Could not load this attempt.'); }
@@ -257,6 +277,10 @@ export default function Quizzes() {
       if (q.format === 'mcq') {
         return { question_id: q.id, selected_option: selectedAnswers[q.id] };
       }
+      if (is3D(q.format)) {
+        let answer_json:unknown = null;try{answer_json=JSON.parse(selectedAnswers[q.id]||'null');}catch{/* incomplete selection */}
+        return {question_id:q.id,answer_json};
+      }
       return { question_id: q.id, answer_text: selectedAnswers[q.id] };
     });
 
@@ -265,6 +289,7 @@ export default function Quizzes() {
       setSubmitError(null);
       const result = await api.submitQuiz(activeQuiz.id, answers, sessionId);
       setSubmitResult(result);
+      setReviewRegionId(null);
       sessionStorage.setItem(`quiz-attempt-${activeQuiz.id}`, String(result.attempt.id));
 
       // Task 8.8: refresh real history right away so the new attempt shows
@@ -318,12 +343,14 @@ export default function Quizzes() {
     setSubmitResult(null);
     setSubmitError(null);
     setOpenEndedResults([]);
+    setReviewRegionId(null);
   };
 
   const handleBackToList = () => {
     if (sessionId && !submitResult) void api.cancelQuizSession(sessionId).catch(() => {});
     setExpiresAt(null);
     setActiveQuiz(null);
+    setReviewRegionId(null);
     setQuestions([]);
     setSubmitResult(null);
     setSubmitError(null);
@@ -381,6 +408,7 @@ export default function Quizzes() {
     setCreateQuizError(null);
     setNewModelAnswer('');
     setNewQuestionFormat('mcq');
+    setNew3DConfig(null);
     setIsEditMode(false);
   };
 
@@ -413,6 +441,7 @@ export default function Quizzes() {
     setCreateQuizError(null);
     setNewModelAnswer('');
     setNewQuestionFormat('mcq');
+    setNew3DConfig(null);
     setIsEditMode(false);
   };
 
@@ -430,6 +459,7 @@ export default function Quizzes() {
         setNewCorrectOption('A');
         setNewModelAnswer('');
         setNewQuestionFormat('mcq');
+    setNew3DConfig(null);
       }
     } catch (err) {
       console.error('Failed to delete question:', err);
@@ -441,6 +471,7 @@ export default function Quizzes() {
     setEditingQuestionId(q.id);
     setNewQuestionText(q.question);
     setNewQuestionFormat(q.format);
+    setNew3DConfig(q.question_config||null);
 
     if (q.format === 'mcq') {
       setNewOptionA(q.option_a || '');
@@ -449,7 +480,7 @@ export default function Quizzes() {
       setNewOptionD(q.option_d || '');
       setNewCorrectOption(q.correct_option || 'A');
       setNewModelAnswer('');
-    } else {
+    } else if (q.format === 'open_ended') {
       setNewModelAnswer(q.model_answer || '');
       setNewOptionA('');
       setNewOptionB('');
@@ -472,27 +503,24 @@ export default function Quizzes() {
         setCreateQuizError('All 4 options are required for MCQ questions.');
         return;
       }
-    } else {
+    } else if (newQuestionFormat === 'open_ended') {
       if (!newModelAnswer.trim()) {
-        setCreateQuizError('A model answer is required for open-ended questions.');
-        return;
+        setCreateQuizError('A model answer is required for open-ended questions.');return;
+      }
+    } else {
+      if (!new3DConfig?.model_id || (newQuestionFormat==='region_identification' && !new3DConfig.reference_annotation_id) ||
+        (newQuestionFormat==='annotation_matching' && (new3DConfig.annotation_ids?.length||0)<2)) {
+        setCreateQuizError('Select a model and the required reference annotation(s).');return;
       }
     }
 
-    const payload = newQuestionFormat === 'mcq'
-      ? {
-        question: newQuestionText,
-        format: 'mcq' as const,
-        option_a: newOptionA,
-        option_b: newOptionB,
-        option_c: newOptionC,
-        option_d: newOptionD,
-        correct_option: newCorrectOption,
-      }
-      : {
-        question: newQuestionText,
-        format: 'open_ended' as const,
-        model_answer: newModelAnswer,
+    const payload = newQuestionFormat === 'mcq' ? {
+        question:newQuestionText,format:'mcq' as const,
+        option_a:newOptionA,option_b:newOptionB,option_c:newOptionC,option_d:newOptionD,correct_option:newCorrectOption,
+      } : newQuestionFormat === 'open_ended' ? {
+        question:newQuestionText,format:'open_ended' as const,model_answer:newModelAnswer,
+      } : {
+        question:newQuestionText,format:newQuestionFormat,question_config:new3DConfig!,
       };
 
     try {
@@ -515,6 +543,7 @@ export default function Quizzes() {
       setNewCorrectOption('A');
       setNewModelAnswer('');
       setNewQuestionFormat('mcq');
+    setNew3DConfig(null);
     } catch (err) {
       console.error('Failed to save question:', err);
       setCreateQuizError(err instanceof Error ? err.message : 'Failed to save question. Please try again.');
@@ -945,7 +974,7 @@ export default function Quizzes() {
 
       {activeQuiz && !submitResult && current && (
         <Dialog onClose={handleBackToList} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl p-6">
+          <div className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full ${is3D(current.format)?'max-w-5xl':'max-w-xl'} max-h-[95vh] overflow-y-auto p-6`}>
             <div className="mb-6">
               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
                 Question {currentQuestion + 1} of {questions.length}
@@ -980,6 +1009,11 @@ export default function Quizzes() {
                     </label>
                   );
                 })}
+              </div>
+            ) : is3D(current.format) && current.student_config ? (
+              <div className="mb-6">
+                <ThreeDQuestion key={current.id} format={current.format} config={current.student_config}
+                  value={selectedAnswers[current.id]||''} onChange={v=>handleSelectAnswer(current.id,v)}/>
               </div>
             ) : (
               <div className="mb-8">
@@ -1035,7 +1069,20 @@ export default function Quizzes() {
 
       {activeQuiz && submitResult && (
         <Dialog onClose={handleBackToList} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl p-6">
+          <div className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full ${reviewRegionId !== null ? 'max-w-5xl' : 'max-w-xl'} max-h-[95vh] overflow-y-auto p-6`}>
+            {reviewRegionId !== null ? (() => {
+              const reviewQuestion = questions.find(q => q.id === reviewRegionId);
+              const review = feedbackByQuestionId.get(reviewRegionId)?.region_review;
+              if (!reviewQuestion || !review || reviewQuestion.format !== 'region_identification') return null;
+              return <div className="space-y-4">
+                <button type="button" onClick={() => setReviewRegionId(null)} className="text-sm text-blue-600 dark:text-blue-400 hover:underline">← Back to results</button>
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Region review: {reviewQuestion.question}</h2>
+                <ThreeDQuestion key={`review-${reviewRegionId}`} format="region_identification"
+                  config={{model_id:review.model_id}} value={selectedAnswers[reviewRegionId]||''}
+                  onChange={() => {}} disabled review={review}/>
+                <p className="text-sm text-slate-500 dark:text-slate-400">IoU {review.details?.iou ?? 0}% · Coverage {review.details?.coverage ?? 0}% · Precision {review.details?.precision ?? 0}%</p>
+              </div>;
+            })() : <>
             {submitResult.status === 'pending_review' ? (
               <div className="text-center mb-6">
                 <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/40 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -1070,62 +1117,63 @@ export default function Quizzes() {
 
             {(submitResult.status === 'graded' || openEndedResults.length > 0) && (
               <div className="space-y-3 mb-6">
-                {questions
-                  .filter((q) => q.format === 'mcq')
-                  .map((question, index) => {
-                    const fb = feedbackByQuestionId.get(question.id);
+                {questions.map((question, index) => {
+                  const fb = feedbackByQuestionId.get(question.id);
+                  const openResult = openEndedResults.find((result) => result.question_id === question.id);
+                  if (question.format === 'mcq') {
                     const isCorrect = fb?.is_correct ?? false;
                     const correctLetter = fb?.correct_option;
                     const correctText = correctLetter
                       ? (question[`option_${correctLetter.toLowerCase()}` as keyof QuizQuestion] as string)
                       : '';
-
                     return (
-                      <div
-                        key={question.id}
-                        className={`px-4 py-3 rounded-lg border ${isCorrect
-                          ? 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800'
-                          : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800'
-                          }`}
-                      >
-                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                          Q{index + 1}. {question.question}
-                        </p>
-                        <p
-                          className={`text-xs mt-1 ${isCorrect ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'
-                            }`}
-                        >
-                          {isCorrect
-                            ? '✓ Correct'
-                            : correctLetter
-                              ? `✗ Incorrect — Correct answer: ${correctText}`
-                              : '✗ Incorrect — the correct answer will be shown once your teacher has finished marking this attempt'}
+                      <div key={question.id} className={`px-4 py-3 rounded-lg border ${isCorrect
+                        ? 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800'
+                        : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800'}`}>
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Q{index + 1}. {question.question}</p>
+                        <p className={`text-xs mt-1 ${isCorrect ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                          {isCorrect ? '✓ Correct' : correctLetter
+                            ? `✗ Incorrect — Correct answer: ${correctText}`
+                            : '✗ Incorrect — the correct answer will be shown once your teacher has finished marking this attempt'}
                         </p>
                       </div>
                     );
-                  })}
-
-                {openEndedResults.map((result, index) => (
-                  <div
-                    key={result.question_id}
-                    className={`px-4 py-3 rounded-lg border ${result.teacher_score !== null
+                  }
+                  if (is3D(question.format)) {
+                    return (
+                      <div key={question.id} className="px-4 py-3 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30">
+                        <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Q{index + 1}. {question.question}</p>
+                        <p className="text-sm mt-1 text-blue-700 dark:text-blue-300">
+                          {question.format === 'region_identification' ? 'Region overlap' : 'Structure matching'}: {fb?.score ?? 0}%
+                        </p>
+                        {question.format === 'region_identification' && fb?.region_review && (
+                          <button type="button" onClick={() => setReviewRegionId(question.id)}
+                            className="mt-3 inline-flex items-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-2">
+                            Review your shading on the 3D model
+                          </button>
+                        )}
+                        {fb?.details && (
+                          <p className="text-xs mt-1 text-slate-600 dark:text-slate-300">
+                            {question.format === 'region_identification'
+                              ? `IoU ${fb.details.iou}% · Coverage ${fb.details.coverage}% · Precision ${fb.details.precision}%`
+                              : `${fb.details.matched} of ${fb.details.total} matched`}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={question.id} className={`px-4 py-3 rounded-lg border ${openResult?.teacher_score != null
                       ? 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                      : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'
-                      }`}
-                  >
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      Q{questions.filter((q) => q.format === 'mcq').length + index + 1}. {result.question}
-                    </p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-wrap">
-                      Your answer: {result.answer_text || 'No answer provided.'}
-                    </p>
-                    <p className={`text-xs mt-1 font-medium ${result.teacher_score !== null ? 'text-slate-700 dark:text-slate-300' : 'text-amber-700 dark:text-amber-400'}`}>
-                      {result.teacher_score !== null
-                        ? `Graded: ${result.teacher_score}/100`
-                        : 'Awaiting teacher review'}
-                    </p>
-                  </div>
-                ))}
+                      : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800'}`}>
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Q{index + 1}. {question.question}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-wrap">Your answer: {openResult?.answer_text || 'No answer provided.'}</p>
+                      <p className={`text-xs mt-1 font-medium ${openResult?.teacher_score != null ? 'text-slate-700 dark:text-slate-300' : 'text-amber-700 dark:text-amber-400'}`}>
+                        {openResult?.teacher_score != null ? `Graded: ${openResult.teacher_score}/100` : 'Awaiting teacher review'}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -1145,6 +1193,7 @@ export default function Quizzes() {
                 </button>
               )}
             </div>
+            </>}
           </div>
         </Dialog>
       )}
@@ -1259,12 +1308,12 @@ export default function Quizzes() {
                         {q.format === 'mcq' ? (
                           <>MCQ — Correct: {q.correct_option}</>
                         ) : (
-                          <>Open Ended</>
+                          <>{q.format === 'open_ended' ? 'Open Ended' : q.format === 'region_identification' ? '3D Region Identification' : '3D Annotation Matching'}</>
                         )}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">
-                      <button onClick={() => { void api.bankQuestion(q.id,createdQuiz.category || '').catch((e: Error) => setCreateQuizError(e.message)); }} className="text-xs text-blue-600 hover:underline">Save to bank</button>
+                      {!is3D(q.format) && <button onClick={() => { void api.bankQuestion(q.id,createdQuiz.category || '').catch((e: Error) => setCreateQuizError(e.message)); }} className="text-xs text-blue-600 hover:underline">Save to bank</button>}
                       <button
                         onClick={() => handleEditCreatedQuestion(q)}
                         className="text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
@@ -1311,6 +1360,12 @@ export default function Quizzes() {
                   >
                     Open Ended
                   </button>
+                  {([['region_identification','3D Region'],['annotation_matching','3D Matching']] as const).map(([format,title])=>(
+                    <button key={format} type="button" aria-pressed={newQuestionFormat===format} onClick={()=>{setNewQuestionFormat(format);setNew3DConfig(null);}}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${newQuestionFormat===format?'bg-blue-50 dark:bg-blue-950/40 border-blue-500 text-blue-700 dark:text-blue-400':'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
+                      {title}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -1358,7 +1413,7 @@ export default function Quizzes() {
                     Select the radio button next to the correct answer.
                   </p>
                 </>
-              ) : (
+              ) : newQuestionFormat === 'open_ended' ? (
                 <div>
                   <label htmlFor="quizzes-field-5" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Model Answer
@@ -1374,6 +1429,8 @@ export default function Quizzes() {
                     Open-ended answers require manual review before a score is shown to the student.
                   </p>
                 </div>
+              ) : (
+                <ThreeDQuestionEditor format={newQuestionFormat} config={new3DConfig} onChange={setNew3DConfig}/>
               )}
 
               {createQuizError && (
@@ -1487,6 +1544,11 @@ export default function Quizzes() {
                           <p className={`mt-1 font-medium ${answer.is_correct ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
                             {answer.is_correct ? '✓ Correct (auto-graded)' : '✗ Incorrect (auto-graded)'}
                           </p>
+                        </div>
+                      ) : is3D(answer.format) ? (
+                        <div className="text-sm text-blue-700 dark:text-blue-300">
+                          Auto-graded {answer.format==='region_identification'?'region identification':'annotation matching'}: {answer.teacher_score??0}/100
+                          <span className="ml-2">{answer.is_correct?'✓ Correct':'Not fully correct'}</span>
                         </div>
                       ) : (
                         <div className="space-y-3">

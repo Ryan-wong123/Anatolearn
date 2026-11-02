@@ -1,0 +1,12 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { gradeRegion, gradeMatching, valid3DAnswer } = require('../src/modules/assessments/threeDGrading');
+const mask = {projectedMask:{mode:'fill',maskPoints:[{x:.25,y:.25},{x:.75,y:.25},{x:.75,y:.75},{x:.25,y:.75}],position:{x:0,y:0,z:0},orientation:{x:0,y:0,z:0},size:{x:2,y:2,z:2}}};
+const square = [{x:-.5,y:.5,z:0},{x:.5,y:.5,z:0},{x:.5,y:-.5,z:0},{x:-.5,y:-.5,z:0}];
+test('same surface region scores 100',()=>{const g=gradeRegion(mask,{points:square});assert.equal(g.score,100);assert.equal(g.correct,true);});
+test('empty region scores zero',()=>assert.equal(gradeRegion(mask,null).score,0));
+test('undersized region is penalized',()=>{const small=square.map(p=>({x:p.x/2,y:p.y/2,z:0}));const g=gradeRegion(mask,{points:small});assert.ok(g.score<70);assert.equal(g.correct,false);});
+test('overly broad region is penalized',()=>{const huge=square.map(p=>({x:p.x*2,y:p.y*2,z:0}));const g=gradeRegion(mask,{points:huge});assert.ok(g.score<70);});
+test('matching scores one correct out of two as 50',()=>{assert.deepEqual(gradeMatching({'12':'Biceps','13':'Triceps'},{matches:{'12':'Biceps','13':'Biceps'}}),{score:50,correct:false,details:{matched:1,total:2}});});
+test('matching scores both correct',()=>assert.equal(gradeMatching({'12':'Biceps','13':'Triceps'},{matches:{'12':'Biceps','13':'Triceps'}}).score,100));
+test('rejects malicious or overlarge 3D submissions',()=>{assert.equal(valid3DAnswer({format:'region_identification'},{points:[{x:NaN,y:0,z:0}]}),false);assert.equal(valid3DAnswer({format:'annotation_matching'},{matches:{'1':{bad:1}}}),false);});
