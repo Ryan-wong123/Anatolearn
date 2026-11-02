@@ -275,3 +275,5 @@ Both development and production Compose configure `REDIS_URL=redis://redis:6379`
 Cached data includes programmes, content metadata/lists, model annotations and dashboard statistics. Access/session checks and personal video progress stay live. Redis outages fall back to PostgreSQL. See [Architecture.md](docs/Architecture.md) for TTLs and invalidation details.
 
 Verification: run backend `npm test` and `npm run lint` on the host; run `docker compose exec -T backend npm run test:cache` for the dedicated real Redis/PostgreSQL integration test and `docker compose exec -T backend npm run test:integration` for existing application regressions. `test:cache` needs both services and migration 023. Inspect hit/miss counts with `docker compose exec -T redis redis-cli INFO stats`. These counters include all clients and are not a latency benchmark.
+
+GitHub Actions now runs `npm run test:cache` in the backend CI job against health-checked Redis/PostgreSQL services after migrations. The dedicated step enables caching explicitly and needs no repository secrets. It runs on pull requests and pushes to `main`.
