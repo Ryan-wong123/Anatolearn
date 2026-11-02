@@ -35,3 +35,6 @@ async function listWithModelTitles(parameters) {
      ORDER BY m.title, a.label`, parameters);
 }
 module.exports = { listForModel, listForExport, insertAnnotation, deleteAnnotation, updateAnnotation, listWithModelTitles };
+
+const { cachedRead } = require('../../cache');
+module.exports.listForModel = cachedRead('annotations', 'annotations.listForModel', 600, listForModel);

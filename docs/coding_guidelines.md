@@ -420,3 +420,5 @@ app.js composes middleware/routes and handles errors; server.js starts the proce
 - Commit messages and pull request descriptions carry no AI attribution (no `Co-Authored-By: Claude`, `Claude-Session:` or "Generated with" lines). `.claude/settings.json` turns Claude Code's attribution off, `.githooks/commit-msg` removes those lines and refuses a Claude/Anthropic author, and the `Commit hygiene` workflow fails a pull request that contains either.
 - To use the hook in your own clone: `git config core.hooksPath .githooks`.
 - Write the subject as a short imperative sentence and the body as what changed and why. Keep unrelated changes in separate commits.
+
+Git hooks and shell scripts use LF line endings, enforced by root `.gitattributes`. This prevents Bash option errors on Windows when `core.autocrlf=true`.

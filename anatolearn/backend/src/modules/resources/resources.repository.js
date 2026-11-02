@@ -23,3 +23,7 @@ async function updatePublication(parameters) {
     return pool.query(`UPDATE resources SET is_published = $1 WHERE id = $2 RETURNING *`, parameters);
 }
 module.exports = { listPublished, listAll, insertResource, deleteResource, findResource, updateResource, updatePublication };
+
+const { cachedRead } = require('../../cache');
+module.exports.listPublished = cachedRead('catalog', 'resources.listPublished', 300, listPublished);
+module.exports.listAll = cachedRead('catalog', 'resources.listAll', 300, listAll);

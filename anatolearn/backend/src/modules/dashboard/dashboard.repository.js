@@ -55,3 +55,6 @@ async function teacherOverview(parameters) {
     return { totals: totals.rows[0], pending_review: pending.rows[0].n, recent_attempts: recent.rows, quiz_performance: byQuiz.rows };
 }
 module.exports = { recentActivity, quizProgress, weakAreas, attemptSummary, counts, teacherOverview };
+
+const { cachedRead } = require('../../cache');
+module.exports.counts = cachedRead('catalog', 'dashboard.counts', 30, counts);

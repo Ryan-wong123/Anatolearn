@@ -50,6 +50,10 @@ flowchart TB
     Services -.->|"Acquire/release transaction connections"| Pool
     Guards -->|"Session and content lookups"| Repositories
     Repositories --> Pool
+    Repositories -.->|"Selected read caches"| Cache["cache.js: versions, TTLs and fallback"]
+    Services -.->|"Dashboard aggregates"| Cache
+    Cache --> Pool
+    Cache --> Redis[("Redis: disposable read cache")]
     Maintenance --> Pool
   end
 
@@ -373,3 +377,17 @@ Video resume: `user_activity.position_seconds` (`backend/sql/016_video_progress.
 Favourites and download control: students can favourite 3D models (gallery cards) and library items (rows) as well as videos and quizzes. `components/content/useFavorites.ts` loads the student's ids for one type and toggles via `/api/favorites`; `components/FavoriteButton.tsx` is the shared heart. `favorites` accepts `model` and `resource` (migration 017, with deletion triggers), and the dashboard lists all four kinds. Videos and Quizzes keep their own inline favourite code. For teachers, `ContentSettings` replaces the Enable/Disable downloads buttons with one Enabled/Disabled select that saves on change (`PATCH /models/:id/download-permission`). Gap: the dashboard resource favourite links to `/library` rather than the item.
 
 Dashboard favourites: each card is a `FavoriteCard` (link plus sibling heart button, since a button cannot nest in an anchor). Clicking the heart calls `DELETE /api/favorites/:type/:id` and removes the card from local state; failures show a toast and keep the card. Re-favouriting is done from the content pages.
+
+## Redis read caching — 2 November 2026
+
+Both Compose stacks now run a private `redis:7.4-alpine` service. The backend uses the `redis` Node client through `backend/src/cache.js`; `server.js` starts its connection without blocking API startup and destroys it during shutdown. `REDIS_URL` enables Redis; omitting it or setting `CACHE_ENABLED=false` bypasses caching. PostgreSQL remains authoritative and file storage remains local/S3.
+
+Explicit `cachedRead` wrappers in repositories cache only plain rows, before service visibility/programme filtering, pagination and controller ownership shaping. Cached reads are: programme list and name lookup (3600 seconds); model lists/detail, video lists/shared detail, quiz lists and resource lists (300 seconds); annotations for a model (600 seconds); dashboard content counts (30 seconds). `dashboard.service.js` also caches student aggregates per student ID and teacher overview per teacher ID (30 seconds). Recent activity and announcements are still read live. Video resume positions are fetched live and attached to independent copies of shared metadata. Quiz answer-bearing reads are not cached.
+
+Every cache lookup reads the relevant PostgreSQL `cache_versions` UUID first. Migration `023_cache_versions.sql` installs deferred constraint triggers on programmes, content, annotations, users, quiz attempts/answers/questions. They rotate affected versions at commit, once per domain per transaction. A commit-time advisory lock orders version updates; version locks are not held during normal application DML. Rollbacks preserve the old version. Separate statement triggers handle TRUNCATE. This covers writes from services, cascades, ownership transfers and direct SQL. Versioned Redis keys make an in-flight pre-change cache fill unreachable to requests beginning after commit; old entries expire normally. A Redis failure during a write cannot lose invalidation because Redis is not involved in writes.
+
+Cache keys include the domain, generation and SHA-256 of the repository operation/arguments (or aggregate audience/user ID). Each hit/fill returns a separate JSON value. Identical in-process misses coalesce; there is no cross-replica stampede lock. Entries larger than 2 MiB bypass storage. Redis GET/SET waits are capped at 150 ms; failures/corrupt entries trigger database fallback and a five-second local cache cooldown. Offline commands are not queued. Redis reconnects with capped backoff and logs connection errors without URLs/credentials.
+
+Authentication, session revocation/idle expiry, content/ownership guards, activity writes, progress writes, quota checks, quiz transactions, media streaming and HTTP cache policy remain live. The cache does not store tokens, passwords, MFA secrets or file bytes. Redis uses a 128 MiB dataset budget, `allkeys-lru`, a 192 MiB container limit, no persistence, a non-root user and no host port. PostgreSQL version reads and normal guards still run on hits; pagination remains in JavaScript. Domain invalidation is deliberately broad, so writes can lower hit rates. No latency/load improvement has been benchmarked. Search, favourites, announcements and shared rate limiting are outside this initial implementation. Flush the disposable Redis database when restoring a PostgreSQL snapshot into a running environment.
+
+Repository tooling: root `.gitattributes` enforces LF for `.githooks/*` and `*.sh`; the commit-message hook is checked out with LF so Bash runs correctly on Windows. This does not change application runtime behavior.
