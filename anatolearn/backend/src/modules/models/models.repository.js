@@ -56,3 +56,7 @@ async function updateThumbnail(parameters) {
        RETURNING *`, parameters);
 }
 module.exports = { updateDownloadPermission, listModels, findModel, insertModel, deleteModel, updatePublication, updateNeutralView, updateModel, logDownload, updateThumbnail };
+
+const { cachedRead } = require('../../cache');
+module.exports.listModels = cachedRead('catalog', 'models.listModels', 300, listModels);
+module.exports.findModel = cachedRead('catalog', 'models.findModel', 300, findModel);

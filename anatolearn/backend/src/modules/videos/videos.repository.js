@@ -38,3 +38,8 @@ async function updateVideo(parameters) {
     return pool.query(`UPDATE videos SET title = $1, description = $2, annotation_id = $3 WHERE id = $4 RETURNING *`, parameters);
 }
 module.exports = { listPublished, listAll, findVideo, findPosition, savePosition, insertVideo, findCaptions, updateCaptions, clearCaptions, deleteVideo, updatePublication, updateVideo };
+
+const { cachedRead } = require('../../cache');
+module.exports.listPublished = cachedRead('catalog', 'videos.listPublished', 300, listPublished);
+module.exports.listAll = cachedRead('catalog', 'videos.listAll', 300, listAll);
+module.exports.findVideo = cachedRead('catalog', 'videos.findVideo', 300, findVideo);

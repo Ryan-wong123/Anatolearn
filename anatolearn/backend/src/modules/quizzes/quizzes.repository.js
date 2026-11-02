@@ -55,3 +55,7 @@ async function findAttempt(parameters) {
     return pool.query("SELECT * FROM quiz_attempts WHERE id = $1", parameters);
 }
 module.exports = { updateTimer, listPublished, listAll, listQuestions, insertQuiz, updateQuiz, deleteQuiz, updateType, updatePublication, listAttempts, listPendingAttempts, listStudentAttempts, listAttemptAnswers, findAttempt };
+
+const { cachedRead } = require('../../cache');
+module.exports.listPublished = cachedRead('catalog', 'quizzes.listPublished', 300, listPublished);
+module.exports.listAll = cachedRead('catalog', 'quizzes.listAll', 300, listAll);
