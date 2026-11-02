@@ -265,3 +265,13 @@ The summary command writes a sanitized, shareable outcome to `verification/brows
 The backend now uses a layered modular monolith. For a feature change, begin in backend/src/modules/<feature>/<feature>.routes.js, then follow its controller binding to the service and repository. Routes define HTTP paths/middleware, services implement validation and workflows, and repositories own SQL. http/controller.js converts plain service input/result records to Express requests/responses; middleware/ owns shared role/content/upload handling. See Architecture.md section 20 and coding_guidelines.md section 18 for boundaries and current limitations.
 
 Existing npm/Docker commands and API URLs are unchanged; this refactor requires no schema migration or frontend changes. npm test in backend/ now includes HTTP-adapter and layer-boundary checks alongside existing policy tests. npm run test:integration also covers registration, model/annotation exports and additional content-management workflows using disposable records/files.
+
+## Redis caching (2 November 2026)
+
+From `anatolearn/`, run `docker compose up -d --build --renew-anon-volumes redis backend` after pulling this change. This refreshes backend dependencies without removing PostgreSQL data. Normal `docker compose up --build` also starts Redis. Backend startup automatically applies additive migration `023_cache_versions.sql`; no database reset is needed.
+
+Both development and production Compose configure `REDIS_URL=redis://redis:6379`. Redis stays on the Docker network, has no public port and stores disposable data without a volume. To run the API directly on the host, omit `REDIS_URL` to use PostgreSQL alone, or supply a reachable Redis URL. Set `CACHE_ENABLED=false` and recreate the backend to disable caching explicitly.
+
+Cached data includes programmes, content metadata/lists, model annotations and dashboard statistics. Access/session checks and personal video progress stay live. Redis outages fall back to PostgreSQL. See [Architecture.md](docs/Architecture.md) for TTLs and invalidation details.
+
+Verification: run backend `npm test` and `npm run lint` on the host; run `docker compose exec -T backend npm run test:cache` for the dedicated real Redis/PostgreSQL integration test and `docker compose exec -T backend npm run test:integration` for existing application regressions. `test:cache` needs both services and migration 023. Inspect hit/miss counts with `docker compose exec -T redis redis-cli INFO stats`. These counters include all clients and are not a latency benchmark.

@@ -20,3 +20,6 @@ async function findAttemptOwner(parameters) {
     return pool.query('SELECT a.student_id, q.owner_id FROM quiz_attempts a JOIN quizzes q ON q.id = a.quiz_id WHERE a.id = $1', parameters);
 }
 module.exports = { findProgram, updateContentProgram, findProgramByName, findContent, findAttemptOwner };
+
+const { cachedRead } = require('../../cache');
+module.exports.findProgramByName = cachedRead('programs', 'catalog.findProgramByName', 3600, findProgramByName);
