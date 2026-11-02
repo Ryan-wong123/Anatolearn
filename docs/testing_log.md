@@ -894,3 +894,11 @@ Checks actually run: parsed the complete workflow with PyYAML and checked the Re
 Checks actually run: `npm test` in `anatolearn/backend` (54 tests, including the new `tests/rateLimitStore.test.js`, which uses a fake Redis client to check that two stores share one counter, that the window TTL is set only on the first hit, decrement/reset behaviour, per-process fallback when Redis is not ready or errors, and when the shared store is enabled) passed; `npm run lint` passed with zero warnings. `kubectl kustomize anatolearn/k8s/overlays/production` rendered 23 objects with hashed ConfigMap names correctly referenced.
 
 Not run: the manifests were not applied to any cluster and were not schema-validated (kubeconform could not be downloaded in this environment). The Redis rate-limit store was not exercised against a real Redis, the PostgreSQL integration suites and `test:cache` were not rerun, and the nginx configuration was not started. `BACKUP_ONCE` mode was not run. No load test was performed.
+
+## Kubernetes follow-up: shared nginx config, CI workflows, load test script — 2 November 2026
+
+Changed `ops/nginx.conf` to include `/etc/nginx/upstream.conf` so Compose and Kubernetes share one server configuration; removed the copied `k8s/base/nginx.conf`. Added `.github/workflows/kubernetes.yml` (manifest render and kubeconform validation, `nginx -t`), `.github/workflows/images.yml` (image builds, GHCR publish on main) and `ops/loadtest/k6.js`.
+
+Checks actually run: `kubectl kustomize` still renders the production overlay with the new `upstream.conf` ConfigMap key mounted at `/etc/nginx/upstream.conf`; both new workflows parse as YAML; the k6 script passes `node --check` as an ES module.
+
+Not run: nginx, Docker and k6 are not available in this environment, so the nginx configuration was not syntax-checked, the images were not built, and the load test script never ran against a server. The kubeconform and `nginx -t` jobs will first run on GitHub. The login request shape and endpoint paths in the k6 script were checked against the backend source, not by execution.

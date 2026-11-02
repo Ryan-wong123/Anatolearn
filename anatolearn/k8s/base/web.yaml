@@ -41,8 +41,8 @@ spec:
             capabilities: { drop: [ALL] }
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
-            # Replaces the image's conf.d/default.conf (Docker DNS resolver and backend name).
-            - { name: nginx-conf, mountPath: /etc/nginx/conf.d/default.conf, subPath: default.conf, readOnly: true }
+            # Overrides the image's upstream.conf (Docker DNS resolver and backend name); everything else is ops/nginx.conf.
+            - { name: nginx-conf, mountPath: /etc/nginx/upstream.conf, subPath: upstream.conf, readOnly: true }
           readinessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 10

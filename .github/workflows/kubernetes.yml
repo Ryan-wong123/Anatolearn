@@ -1,0 +1,57 @@
+name: Kubernetes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'anatolearn/k8s/**'
+      - 'anatolearn/ops/nginx*.conf'
+      - 'anatolearn/Dockerfile.web.prod'
+      - '.github/workflows/kubernetes.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned images, run directly rather than through third-party actions (same approach as trivy.yml).
+  KUBECONFORM: ghcr.io/yannh/kubeconform:v0.6.7
+  NGINX: nginxinc/nginx-unprivileged:1.27-alpine
+
+jobs:
+  manifests:
+    name: Render and validate manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # kubectl is preinstalled on GitHub-hosted runners. Rendering catches broken references and bad patches.
+      - name: Render the base and the production overlay
+        run: |
+          kubectl kustomize anatolearn/k8s/base > /tmp/base.yaml
+          kubectl kustomize anatolearn/k8s/overlays/production > /tmp/production.yaml
+      # Strict schema validation against the Kubernetes API for the targeted version.
+      - name: Validate against the Kubernetes schemas
+        run: |
+          for file in base production; do
+            echo "::group::$file"
+            docker run --rm -i "$KUBECONFORM" -strict -summary -kubernetes-version 1.31.0 - < "/tmp/$file.yaml"
+            echo "::endgroup::"
+          done
+
+  nginx:
+    name: nginx configuration syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Checks the Docker Compose variant. The Kubernetes upstream file names the cluster DNS service, which
+      # does not resolve outside a cluster, so it is covered by the manifests job and a real rollout instead.
+      - name: nginx -t
+        run: |
+          docker run --rm \
+            -v "$PWD/anatolearn/ops/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/anatolearn/ops/nginx-upstream.conf:/etc/nginx/upstream.conf:ro" \
+            "$NGINX" nginx -t
