@@ -17,6 +17,11 @@ jobs:
     name: Backend tests
     runs-on: ubuntu-latest
     services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
       postgres:
         image: postgres:16
         env:
@@ -48,6 +53,12 @@ jobs:
       - run: npm run migrate
       - run: npm test
       - run: npm run test:integration
+      - name: Redis integration tests
+        timeout-minutes: 2
+        env:
+          REDIS_URL: redis://localhost:6379
+          CACHE_ENABLED: "true"
+        run: npm run test:cache
 
   frontend:
     name: Frontend lint, tests and build
