@@ -478,7 +478,8 @@ export const api = {
         quizId: number,
         data: {
             question: string;
-            format: 'mcq' | 'open_ended';
+            format: 'mcq' | 'open_ended' | 'region_identification' | 'annotation_matching';
+            question_config?: { model_id:number; reference_annotation_id?:number; annotation_ids?:number[] };
             option_a?: string;
             option_b?: string;
             option_c?: string;
@@ -511,7 +512,8 @@ export const api = {
         id: number,
         data: {
             question: string;
-            format: 'mcq' | 'open_ended';
+            format: 'mcq' | 'open_ended' | 'region_identification' | 'annotation_matching';
+            question_config?: { model_id:number; reference_annotation_id?:number; annotation_ids?:number[] };
             option_a?: string;
             option_b?: string;
             option_c?: string;
@@ -527,7 +529,7 @@ export const api = {
 
     submitQuiz: (
         quizId: number,
-        answers: { question_id: number; selected_option?: string; answer_text?: string }[],
+        answers: { question_id: number; selected_option?: string; answer_text?: string; answer_json?:unknown }[],
         sessionId: string
     ) =>
         apiFetch(`/quizzes/${quizId}/submit`, {

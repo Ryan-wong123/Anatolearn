@@ -29,8 +29,8 @@ async function insertAttempt(parameters, connection) {
         VALUES($1,$2,$3,$4,$5,$6) RETURNING *`, parameters);
 }
 async function insertAnswer(parameters, connection) {
-    return connection.query(`INSERT INTO quiz_attempt_answers(attempt_id,question_id,selected_option,answer_text,is_correct)
-        VALUES($1,$2,$3,$4,$5)`, parameters);
+    return connection.query(`INSERT INTO quiz_attempt_answers(attempt_id,question_id,selected_option,answer_text,is_correct,teacher_score,answer_json,region_review)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, parameters);
 }
 async function completeSession(parameters, connection) {
     return connection.query('UPDATE quiz_sessions SET submitted_at=NOW() WHERE id=$1', parameters);

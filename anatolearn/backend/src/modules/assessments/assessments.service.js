@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const { canRead } = require('../../access');
 const { SESSION_LIFETIME_HOURS } = require('../../maintenance');
 const pool = require('../../db');
+const { FORMATS, valid3DAnswer, gradeRegion, gradeMatching } = require('./threeDGrading');
 function validateAnswers(questions, answers) {
     if (!Array.isArray(answers) || answers.length !== questions.length)
         return false;
@@ -14,6 +15,7 @@ function validateAnswers(questions, answers) {
         ids.add(answer.question_id);
         return question.format === 'mcq'
             ? answer.selected_option == null || ['A', 'B', 'C', 'D'].includes(answer.selected_option)
+            : FORMATS.includes(question.format) ? valid3DAnswer(question, answer.answer_json)
             : answer.answer_text == null || (typeof answer.answer_text === 'string' && answer.answer_text.length <= 20000);
     });
 }
@@ -41,11 +43,32 @@ async function startQuiz(input) {
             await repository.rollback(client);
             return ({ ...outcomeMeta, status: 400, kind: 'json', body: { message: 'This quiz has no questions' } });
         }
+        // Snapshot ground truth into the immutable timed session. The student receives only
+        // model_id, marker numbers and shuffled options, never the reference region/key.
+        for (const question of questions) {
+            if (!FORMATS.includes(question.format)) continue;
+            const c = question.question_config;
+            if (question.format === 'region_identification') {
+                const { rows } = await client.query('SELECT annotation_data FROM annotations WHERE id=$1 AND model_id=$2', [c.reference_annotation_id,c.model_id]);
+                if (!rows[0]?.annotation_data?.projectedMask) throw Object.assign(new Error('Region reference is unavailable'),{status:409});
+                const {cachedGeometry, ...mask} = rows[0].annotation_data.projectedMask;
+                question.reference_mask = {projectedMask:mask};
+                question.student_config = {model_id:c.model_id};
+            } else {
+                const {rows} = await client.query('SELECT id,label FROM annotations WHERE model_id=$1 AND id=ANY($2::int[])', [c.model_id,c.annotation_ids]);
+                if (rows.length !== c.annotation_ids.length) throw Object.assign(new Error('Matching references are unavailable'),{status:409});
+                const key = Object.fromEntries(rows.map(row => [String(row.id),row.label]));
+                question.matching_key = key;
+                const options = Object.values(key);
+                for(let i=options.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[options[i],options[j]]=[options[j],options[i]];}
+                question.student_config = {model_id:c.model_id,marker_ids:c.annotation_ids,options};
+            }
+        }
         const id = randomUUID();
         const result = await repository.insertSession([id, quiz.id, input.user.id, quiz.time_limit_seconds, JSON.stringify(questions), SESSION_LIFETIME_HOURS], client);
         await repository.commit(client);
         return ({ ...outcomeMeta, status: 200, kind: 'json', body: { session_id: id, expires_at: result.rows[0].expires_at, server_now: result.rows[0].server_now, session_expires_at: result.rows[0].session_expires_at,
-                questions: questions.map(({ correct_option, model_answer, ...question }) => question) } });
+                questions: questions.map(({ correct_option, model_answer, question_config, reference_mask, matching_key, ...question }) => question) } });
     }
     catch (error) {
         await repository.rollback(client);
@@ -81,22 +104,41 @@ async function submitQuiz(input) {
         }
         const answers = input.body.answers.map((answer) => {
             const question = questions.find((item) => item.id === answer.question_id);
-            return { ...answer, is_correct: question.format === 'mcq' ? question.correct_option === answer.selected_option : null };
+            const mcq = question.format === 'mcq';
+            const threeD = FORMATS.includes(question.format);
+            const result = question.format === 'region_identification'
+                ? gradeRegion(question.reference_mask,answer.answer_json)
+                : question.format === 'annotation_matching'
+                ? gradeMatching(question.matching_key,answer.answer_json) : null;
+            // Capture the reference from this session (not the mutable live annotation).
+            // The snapshot is only exposed after the student has submitted.
+            const regionReview = question.format === 'region_identification' ? {
+                model_id: question.student_config.model_id,
+                reference_annotation_id: question.question_config.reference_annotation_id,
+                reference_mask: question.reference_mask.projectedMask,
+                details: result.details,
+            } : null;
+            return { ...answer, format:question.format, is_correct:mcq ? question.correct_option === answer.selected_option : threeD ? result.correct : null,
+                points:result?.score ?? null, details:result?.details ?? null, regionReview };
         });
-        const openCount = questions.filter((q) => q.format === 'open_ended').length;
-        const correct = answers.filter((a) => a.is_correct).length;
+        const openCount = questions.filter(q => q.format === 'open_ended').length;
+        const correct = answers.filter(a => a.is_correct).length;
         const status = openCount ? 'pending_review' : 'graded';
-        const score = openCount ? null : Math.round(correct / questions.length * 100);
+        const score = openCount ? null : Math.round(answers.reduce((sum,a) => sum + (a.format === 'mcq' ? (a.is_correct ? 100 : 0) : a.points ?? 0),0) / questions.length);
         const attempt = (await repository.insertAttempt([input.params.id, input.user.id, score, questions.length, openCount ? null : correct, status], client)).rows[0];
         for (const answer of answers)
-            await repository.insertAnswer([attempt.id, answer.question_id, answer.selected_option || null, answer.answer_text || null, answer.is_correct], client);
+            await repository.insertAnswer([attempt.id, answer.question_id, answer.selected_option || null, answer.answer_text || null, answer.is_correct,
+                answer.points,answer.answer_json ? JSON.stringify(answer.answer_json) : null,
+                answer.regionReview ? JSON.stringify(answer.regionReview) : null], client);
         await repository.completeSession([session.id], client);
         await repository.commit(client);
         return ({ ...outcomeMeta, status: 200, kind: 'json', body: { attempt, status, score, total: questions.length, correct: openCount ? null : correct,
-                incorrect: openCount ? null : questions.length - correct, mcq_count: questions.length - openCount, open_ended_count: openCount,
+                incorrect: openCount ? null : questions.length - correct, mcq_count: questions.filter(q=>q.format==='mcq').length, open_ended_count: openCount,
                 // The key is withheld while open-ended answers still await marking (see getAttemptAnswers).
-                feedback: answers.filter((a) => a.is_correct !== null).map((a) => ({ ...a,
-                    correct_option: openCount ? null : questions.find((q) => q.id === a.question_id).correct_option })) } });
+                feedback: answers.filter(a => a.is_correct !== null).map(a => ({ question_id:a.question_id, format:a.format, selected_option:a.selected_option||null, is_correct:a.is_correct, score:a.points, details:a.details,
+                    // Deliberately return only in the SUBMISSION response; never in startQuiz.
+                    region_review:a.regionReview,
+                    correct_option: openCount ? null : questions.find(q => q.id === a.question_id).correct_option })) } });
     }
     catch (error) {
         await repository.rollback(client);
@@ -122,9 +164,9 @@ async function gradeAnswer(input) {
         await repository.lockAttempt([answer.attempt_id], client);
         const updated = (await repository.updateAnswerGrade([score, score >= 50, answer.id], client)).rows[0];
         const answers = (await repository.listAttemptAnswers([answer.attempt_id], client)).rows;
-        if (answers.every((a) => a.format === 'mcq' || a.teacher_score != null)) {
+        if (answers.every((a) => a.format !== 'open_ended' || a.teacher_score != null)) {
             const finalScore = Math.round(answers.reduce((sum, a) => sum + (a.format === 'mcq' ? (a.is_correct ? 100 : 0) : a.teacher_score), 0) / answers.length);
-            await repository.updateAttemptGrade([finalScore, answers.filter((a) => a.format === 'mcq' && a.is_correct).length, answer.attempt_id], client);
+            await repository.updateAttemptGrade([finalScore, answers.filter((a) => a.is_correct).length, answer.attempt_id], client);
         }
         await repository.commit(client);
         return ({ ...outcomeMeta, status: 200, kind: 'json', body: updated });
