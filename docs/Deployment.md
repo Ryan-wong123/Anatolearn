@@ -498,6 +498,26 @@ UPDATE auth_sessions SET revoked_at = NOW() WHERE user_id = (SELECT id FROM user
 
 They then sign in with the password and enrol again. Do this only after confirming the person's identity out of band.
 
+## Kubernetes (optional alternative to EC2 + Compose)
+
+Use this when one EC2 instance is no longer enough. Manifests are in `anatolearn/k8s/` (Kustomize). They have not been applied to a real cluster yet, so treat the first rollout as a staging exercise.
+
+Prerequisites: an EKS (or other) cluster with ingress-nginx, cert-manager (a `ClusterIssuer` named `letsencrypt`), metrics-server and, for NetworkPolicies, a CNI that enforces them; managed PostgreSQL 16 and Redis 7; the S3 bucket from step 2; an IAM role for the `anatolearn` ServiceAccount (IRSA) with the bucket policy from step 3.
+
+1. Build and push three images to your registry: `anatolearn/backend` (`Dockerfile.prod`), `anatolearn` (`Dockerfile.web.prod`, tag it `anatolearn-web`) and `anatolearn/ops/backup`.
+2. Create the least-privilege database role once against the managed database: `PGHOST=... PGPASSWORD=... POSTGRES_USER=anatolearn POSTGRES_DB=anatolearn APP_DB_PASSWORD=... bash anatolearn/ops/postgres-init/10-app-role.sh`.
+3. Edit the `CHANGE` values in `k8s/overlays/production/kustomization.yaml` (image names and tags, IAM role ARN, host). Copy `secret.example.yaml` to `secret.yaml`, fill it in and apply it with `kubectl create namespace anatolearn` first if needed.
+4. `kubectl apply -k anatolearn/k8s/overlays/production`, then wait for the migration Job: `kubectl -n anatolearn wait --for=condition=complete job/anatolearn-migrate --timeout=300s`. ClamAV pods take several minutes to become Ready.
+5. Create the first administrator as in step 11, using `kubectl -n anatolearn exec deploy/anatolearn-backend -- node scripts/create-admin.js`.
+
+Updating: push new images, change the tags, delete the old migration Job (`kubectl -n anatolearn delete job anatolearn-migrate --ignore-not-found`) and apply again. Pods roll one at a time with no downtime.
+
+Scaling notes:
+
+- Every backend replica opens up to `DB_POOL_MAX` (default 10) connections. The HPA maximum of 8 backend pods therefore needs about 80 database connections; raise the database limit, lower `DB_POOL_MAX`, or put PgBouncer in front.
+- Rate limits are shared through Redis. `CACHE_ENABLED=false` also turns the shared limiter off (per-pod limits).
+- Run a load test (for example k6) against staging before trusting the HPA targets, and watch database CPU and connections, ClamAV CPU during uploads, and backend egress for video streaming.
+
 ## Local development
 
 `docker-compose.yml` is dev-only (Vite dev server, local disk storage, ports bound to 127.0.0.1). Without `STORAGE_DRIVER=s3` the API stores files under `PUBLIC_DIR` on disk, and ClamAV and backups are off. The API applies migrations on start. Load sample content with `docker compose exec backend npm run seed:demo` (wipes content tables; refuses in production). Do not expose the dev stack publicly.
