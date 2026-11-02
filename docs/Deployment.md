@@ -516,7 +516,8 @@ Scaling notes:
 
 - Every backend replica opens up to `DB_POOL_MAX` (default 10) connections. The HPA maximum of 8 backend pods therefore needs about 80 database connections; raise the database limit, lower `DB_POOL_MAX`, or put PgBouncer in front.
 - Rate limits are shared through Redis. `CACHE_ENABLED=false` also turns the shared limiter off (per-pod limits).
-- Run a load test (for example k6) against staging before trusting the HPA targets, and watch database CPU and connections, ClamAV CPU during uploads, and backend egress for video streaming.
+- Load test staging before trusting the HPA targets: `k6 run -e BASE_URL=https://staging.example.com -e EMAIL=student@school.edu -e PASSWORD=... anatolearn/ops/loadtest/k6.js` (options `PEAK_VUS`, `HOLD`, `THINK`; see the header of the script). It signs in once with a student account (no MFA), then browses programmes, models and videos. All virtual users share one IP, so set `DISABLE_RATE_LIMIT=true` on the staging backend only, otherwise the 600 requests per minute per IP limit returns 429s (counted separately as `rate_limited`). Watch database CPU and connections, ClamAV CPU during uploads (the script does not upload), and backend egress for video streaming.
+- Images: `.github/workflows/images.yml` publishes `ghcr.io/<owner>/anatolearn-{backend,web,backup}:<commit sha>` on pushes to main. Point the overlay's `images` entries at them (and add an image pull secret if the packages are private) or push to ECR instead.
 
 ## Local development
 

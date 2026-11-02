@@ -36,7 +36,7 @@ configMapGenerator:
       - WEBAUTHN_RP_NAME=AnatoLearn
   - name: anatolearn-nginx
     files:
-      - default.conf=nginx.conf
+      - upstream.conf=nginx-upstream.conf
 generatorOptions:
   disableNameSuffixHash: false
 images:
