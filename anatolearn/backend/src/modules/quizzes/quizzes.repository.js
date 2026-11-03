@@ -10,7 +10,7 @@ async function listAll() {
 }
 async function listQuestions(parameters, includeAnswerKeys) {
     const columns = includeAnswerKeys
-        ? 'id, quiz_id, question, format, option_a, option_b, option_c, option_d, correct_option, model_answer, question_config'
+        ? 'id, quiz_id, question, format, category, option_a, option_b, option_c, option_d, correct_option, model_answer, question_config'
         : 'id, quiz_id, question, format, option_a, option_b, option_c, option_d';
     return pool.query(`SELECT ${columns} FROM quiz_questions WHERE quiz_id = $1 ORDER BY id`, parameters);
 }

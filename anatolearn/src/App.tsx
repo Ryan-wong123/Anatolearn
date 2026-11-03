@@ -48,7 +48,7 @@ export default function App() {
                 <Route path="/3dviewer/:modelId" element={<Viewer />} />
                 <Route path="/videos" element={<Videos />} />
                 <Route path="/videos/:videoId" element={<VideoPlayer />} />
-                <Route path="/quizzes" element={<Quizzes />} />
+                <Route path="/quizzes/*" element={<Quizzes />} />
                 <Route path="/library" element={<Library />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/announcements" element={<Announcements />} />

@@ -24,6 +24,26 @@ async function commit(connection) {
 async function lockOwnedSession(parameters, connection) {
     return connection.query('SELECT *, NOW() AS server_now FROM quiz_sessions WHERE id=$1 AND quiz_id=$2 AND student_id=$3 FOR UPDATE', parameters);
 }
+async function lockStartForStudent(parameters, connection) {
+    return connection.query('SELECT pg_advisory_xact_lock($1::int, $2::int)', parameters);
+}
+async function findActiveSession(parameters, connection) {
+    return connection.query(`SELECT *, NOW() AS server_now FROM quiz_sessions
+        WHERE quiz_id=$1 AND student_id=$2 AND submitted_at IS NULL
+          AND session_expires_at > NOW() AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY started_at DESC, id DESC LIMIT 1 FOR UPDATE`, parameters);
+}
+async function findLatestSessionForStudent(parameters) {
+    return pool.query(`SELECT *, NOW() AS server_now FROM quiz_sessions
+        WHERE quiz_id=$1 AND student_id=$2 ORDER BY started_at DESC, id DESC LIMIT 1`, parameters);
+}
+async function lockOwnedDraft(parameters, connection) {
+    return connection.query('SELECT *, NOW() AS server_now FROM quiz_sessions WHERE id=$1 AND student_id=$2 FOR UPDATE', parameters);
+}
+async function saveDraft(parameters, connection) {
+    return connection.query(`UPDATE quiz_sessions SET draft_answers=$3::jsonb, draft_revision=$4, draft_saved_at=NOW()
+        WHERE id=$1 AND student_id=$2 AND draft_revision < $4 RETURNING draft_revision, draft_saved_at`, parameters);
+}
 async function insertAttempt(parameters, connection) {
     return connection.query(`INSERT INTO quiz_attempts(quiz_id,student_id,score,total_questions,correct_count,status)
         VALUES($1,$2,$3,$4,$5,$6) RETURNING *`, parameters);
@@ -50,4 +70,4 @@ async function listAttemptAnswers(parameters, connection) {
 async function updateAttemptGrade(parameters, connection) {
     return connection.query("UPDATE quiz_attempts SET score=$1,status='graded',correct_count=$2 WHERE id=$3", parameters);
 }
-module.exports = { closeOwnedSession, begin, findQuizForShare, rollback, listQuizQuestions, insertSession, commit, lockOwnedSession, insertAttempt, insertAnswer, completeSession, findAnswerWithFormat, lockAttempt, updateAnswerGrade, listAttemptAnswers, updateAttemptGrade };
+module.exports = { findLatestSessionForStudent, lockStartForStudent, findActiveSession, lockOwnedDraft, saveDraft, closeOwnedSession, begin, findQuizForShare, rollback, listQuizQuestions, insertSession, commit, lockOwnedSession, insertAttempt, insertAnswer, completeSession, findAnswerWithFormat, lockAttempt, updateAnswerGrade, listAttemptAnswers, updateAttemptGrade };

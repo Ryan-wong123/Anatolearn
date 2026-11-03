@@ -7,7 +7,7 @@ import type { ProjectedMaskData, ScreenPoint } from '../viewer/types';
 /** A frozen teacher reference returned ONLY after the quiz attempt is submitted. */
 export type RegionReview = {
   model_id: number;
-  reference_annotation_id: number;
+  reference_annotation_id: number | null;
   reference_mask: ProjectedMaskData;
   details?: { iou?: number; coverage?: number; precision?: number };
 };

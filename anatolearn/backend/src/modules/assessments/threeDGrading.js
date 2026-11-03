@@ -5,7 +5,7 @@ function valid3DAnswer(question, value) {
   if (question.format === 'region_identification') return Array.isArray(value.points) && value.points.length <= 256 &&
     value.points.every(p => p && finite(p.x) && finite(p.y) && finite(p.z) && Math.abs(p.x) < 1e7 && Math.abs(p.y) < 1e7 && Math.abs(p.z) < 1e7);
   if (question.format === 'annotation_matching') return value.matches && !Array.isArray(value.matches) &&
-    typeof value.matches === 'object' && Object.keys(value.matches).length <= 6 &&
+    typeof value.matches === 'object' && Object.keys(value.matches).length <= 12 &&
     Object.entries(value.matches).every(([k,v]) => /^\d{1,6}$/.test(k) && typeof v === 'string' && v.length <= 255);
   return false;
 }

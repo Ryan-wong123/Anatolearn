@@ -31,6 +31,12 @@ type Program = {
 
 export default function Layout() {
   const location = useLocation();
+  // Quiz attempts use a distraction-free page and need a stable error boundary
+  // across /quizzes → /quizzes/:id/take so unsaved answers aren't remounted.
+  const isQuizExperience = /^\/quizzes\/\d+\/(?:take|review(?:\/\d+)?)\/?$/.test(location.pathname);
+  const isQuizEditor = /^\/quizzes\/(?:create|\d+\/edit)\/?$/.test(location.pathname);
+  const isDedicatedQuizPage = isQuizExperience || isQuizEditor;
+  const boundaryKey = location.pathname === '/quizzes' || isDedicatedQuizPage ? '/quizzes' : location.pathname;
   const navigate = useNavigate();
   const { role, setRole, program, setProgram, user, logout, isDevMode, theme, toggleTheme } = useAppContext();
 
@@ -90,7 +96,7 @@ export default function Layout() {
   return (
     <div className="bg-slate-50 dark:bg-slate-800 min-h-screen flex flex-col">
       <a href="#main-content" tabIndex={0} className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-[100] focus:rounded-lg focus:bg-white focus:p-3 focus:text-blue-700">Skip to content</a>
-      <nav aria-label="Main navigation" className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
+      {!isDedicatedQuizPage && <nav aria-label="Main navigation" className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-6">
             <button ref={navigationToggle} aria-controls="mobile-navigation" aria-label="Toggle navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)} className="xl:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
@@ -228,18 +234,18 @@ export default function Layout() {
           </form>}
           {[...items, ...(isAdmin ? [] : [{ path: '/announcements', label: unreadAnnouncements ? `Announcements (${unreadAnnouncements} new)` : 'Announcements', icon: Bell }]), { path: '/profile', label: 'My profile', icon: UserCircle2 }].map(({path,label,icon:Icon}) => <Link aria-current={location.pathname === path || location.pathname.startsWith(path+'/') ? 'page' : undefined} key={path} to={path} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 p-3 rounded-lg text-slate-900 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon className="w-4 h-4" />{label}</Link>)}
         </div>
-      </nav>
+      </nav>}
       {logoutError && <p role="alert" className="p-3 text-red-600">{logoutError}</p>}
 
       <RequestState loading={false} error={programsError} onRetry={reloadPrograms} label="programmes" />
       <main ref={main} id="main-content" tabIndex={-1} className="flex-1">
-        <ErrorBoundary nested key={location.pathname}>
+        <ErrorBoundary nested key={boundaryKey}>
           <Suspense fallback={<p role="status" className="p-6 text-slate-600 dark:text-slate-300">Loading…</p>}>
             <Outlet />
           </Suspense>
         </ErrorBoundary>
       </main>
-      <Footer />
+      {!isDedicatedQuizPage && <Footer />}
     </div>
   );
 }

@@ -9,7 +9,8 @@ import BarList from '../components/dashboard/BarList';
 import Sparkline from '../components/dashboard/Sparkline';
 import type { StudentStats } from '../types/portal';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Clock, BookOpen, Search, Heart, RotateCcw } from 'lucide-react';
+import { Clock, BookOpen, Search, Heart, RotateCcw, ArrowLeft, ChevronLeft, ChevronRight, X, Check, Sun, Moon } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
 import { api } from '../api/api';
@@ -53,6 +54,7 @@ interface CreatedQuizQuestion {
   format: QuestionFormat;
   student_config?: Student3DConfig;
   question_config?: Teacher3DConfig | null;
+  category?: string | null;
   option_a: string | null;
   option_b: string | null;
   option_c: string | null;
@@ -102,6 +104,24 @@ const HISTORY_PAGE_SIZE = 10;
 type HistorySort = 'newest' | 'oldest' | 'highest';
 const clientNow = () => Date.now();
 
+type SavedAnswers = Record<number, string>;
+interface QuizSessionData {
+  session_id: string; expires_at: string | null; server_now: string; session_expires_at: string;
+  questions: QuizQuestion[]; draft_answers?: SavedAnswers; draft_revision?: number; resumed?: boolean;
+}
+interface CachedQuizDraft { sessionId: string; answers: SavedAnswers; revision: number; currentQuestion: number; updatedAt: number; }
+const cacheKey = (userId: number, quizId: number) => `anatolearn-quiz-draft-v1:${userId}:${quizId}`;
+function readCachedQuizDraft(userId: number, quizId: number, sessionId: string): CachedQuizDraft | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(cacheKey(userId, quizId)) || 'null') as CachedQuizDraft | null;
+    if (!value || value.sessionId !== sessionId || typeof value.answers !== 'object' ||
+      !Number.isSafeInteger(value.revision) || value.revision < 0 || !Number.isFinite(value.updatedAt) ||
+      Date.now() - value.updatedAt > 48 * 3600 * 1000) return null;
+    return value;
+  } catch { return null; }
+}
+
+
 const quizTypeBadgeClasses: Record<Quiz['type'], string> = {
   MCQ: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400',
   Practical: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400',
@@ -119,7 +139,17 @@ function deriveQuizType(questions: CreatedQuizQuestion[]): 'MCQ' | 'Practical' |
 
 export default function Quizzes() {
   const { toast } = useToast();
-  const { role, program } = useAppContext();
+  const { role, program, theme, toggleTheme, user } = useAppContext();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const quizRoute = /^\/quizzes\/(\d+)\/(take|review)(?:\/(\d+))?\/?$/.exec(location.pathname);
+  const isQuizPage = Boolean(quizRoute);
+  const authorRoute = /^\/quizzes\/(?:create|(\d+)\/edit)\/?$/.exec(location.pathname);
+  const isAuthorPage = Boolean(authorRoute);
+  const authorQuizId = authorRoute?.[1] ? Number(authorRoute[1]) : null;
+  const isDedicatedPage = isQuizPage || isAuthorPage;
+  const routeHydration = useRef<string | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
 
 
   const [quizSearchTerm, setQuizSearchTerm] = useState('');
@@ -130,6 +160,15 @@ export default function Quizzes() {
   const [historySort, setHistorySort] = useState<HistorySort>('newest');
   const [historyPage, setHistoryPage] = useState(1);
   const [sessionId, setSessionId] = useState('');
+  const [draftStatus, setDraftStatus] = useState<'saved' | 'saving' | 'offline' | 'conflict'>('saved');
+  const draftSessionRef = useRef('');
+  const draftRevisionRef = useRef(0);
+  const draftAckRef = useRef(0);
+  const draftSnapshotRef = useRef('{}');
+  const draftAnswersRef = useRef<SavedAnswers>({});
+  const draftQuestionRef = useRef(0);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftKeyRef = useRef<string | null>(null);
   const [clockOffset, setClockOffset] = useState(0);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -142,13 +181,21 @@ export default function Quizzes() {
   const [reviewRegionId, setReviewRegionId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showSubmissionReview, setShowSubmissionReview] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showCreateQuiz, setShowCreateQuiz] = useState(false);
+  const [authorPageError, setAuthorPageError] = useState<string | null>(null);
+  const authorHydrationRef = useRef<string | null>(null);
 
   const [newQuizTitle, setNewQuizTitle] = useState('');
   const [newQuizDescription, setNewQuizDescription] = useState('');
   const [newQuizCategory, setNewQuizCategory] = useState('');
   const [createdQuiz, setCreatedQuiz] = useState<Quiz | null>(null);
   const [createdQuestions, setCreatedQuestions] = useState<CreatedQuizQuestion[]>([]);
+  const draftQuestionId = useRef(-1);
+  const [bankOnSaveIds, setBankOnSaveIds] = useState<number[]>([]);
+  const [savingEditor, setSavingEditor] = useState(false);
+  const [deletingQuizId, setDeletingQuizId] = useState<number | null>(null);
   const [newQuestionText, setNewQuestionText] = useState('');
   const [newOptionA, setNewOptionA] = useState('');
   const [newOptionB, setNewOptionB] = useState('');
@@ -157,10 +204,8 @@ export default function Quizzes() {
   const [newCorrectOption, setNewCorrectOption] = useState<'A' | 'B' | 'C' | 'D'>('A');
   const [createQuizError, setCreateQuizError] = useState<string | null>(null);
   const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
-  // True when the question-editor modal was opened via "Edit Questions" on
-  // an existing quiz, rather than the create-new-quiz flow. Reuses the same
-  // modal/state, but changes what Finish/Cancel do (see handleFinishCreateQuiz
-  // and handleCancelCreateQuiz).
+  // Distinguish existing-quiz editing from creating a new quiz so that
+  // exiting the editor never deletes an existing quiz.
   const [isEditMode, setIsEditMode] = useState(false);
   const [newQuestionFormat, setNewQuestionFormat] = useState<QuestionFormat>('mcq');
   const [new3DConfig, setNew3DConfig] = useState<Teacher3DConfig|null>(null);
@@ -205,6 +250,65 @@ export default function Quizzes() {
   const favorites = useResource<Set<number>>(fetchFavorites, new Set(), program);
   const {data:favoritedQuizIds,setData:setFavoritedQuizIds} = favorites;
 
+  // Allow professors to reopen an editor URL after refresh. Question changes
+  // are saved by the existing API; the current unsaved form is not persisted.
+  useEffect(() => {
+    if (!isAuthorPage || role !== 'teacher') return;
+    if (/^\/quizzes\/create\/?$/.test(location.pathname)) {
+      setShowCreateQuiz(true);
+      return;
+    }
+    const id = authorQuizId;
+    if (!id || loading || (showCreateQuiz && createdQuiz?.id === id) || authorHydrationRef.current === location.pathname) return;
+    const quiz = quizzes.find((item) => item.id === id);
+    if (!quiz || quiz.can_manage === false) {
+      setShowCreateQuiz(false);
+      setCreatedQuiz(null);
+      setCreatedQuestions([]);
+      setAuthorPageError('Quiz not found, or you do not have permission to edit it.');
+      return;
+    }
+    let cancelled = false;
+    authorHydrationRef.current = location.pathname;
+    void api.getQuizQuestions(id).then((loaded: CreatedQuizQuestion[]) => {
+      if (cancelled) return;
+      setCreatedQuiz(quiz);
+      setCreatedQuestions(loaded);
+      setIsEditMode(true);
+      setShowCreateQuiz(true);
+      setAuthorPageError(null);
+    }).catch((err: unknown) => {
+      if (cancelled) return;
+      setAuthorPageError(err instanceof Error ? err.message : 'Could not load quiz questions.');
+      authorHydrationRef.current = null;
+    });
+    return () => {
+      cancelled = true;
+      if (authorHydrationRef.current === location.pathname) authorHydrationRef.current = null;
+    };
+  }, [isAuthorPage, role, location.pathname, loading, quizzes, showCreateQuiz, createdQuiz, authorQuizId]);
+
+  // Browser refresh/close cannot preserve unsaved quiz-editor drafts.
+  useEffect(() => {
+    if (!isAuthorPage || !showCreateQuiz) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isAuthorPage, showCreateQuiz]);
+
+  // Navigating away with the browser Back button should not leave the next
+  // "Create quiz" action pointing at a previously edited quiz.
+  useEffect(() => {
+    if (role !== 'teacher' || location.pathname !== '/quizzes') return;
+    setShowCreateQuiz(false);
+    setCreatedQuiz(null);
+    setCreatedQuestions([]);
+    setEditingQuiz(null);
+    setIsEditMode(false);
+    setEditingQuestionId(null);
+    authorHydrationRef.current = null;
+  }, [location.pathname, role]);
+
   const toggleFavorite = async (quiz: Quiz) => {
     const isFavorited = favoritedQuizIds.has(quiz.id);
     try {
@@ -225,23 +329,83 @@ export default function Quizzes() {
   };
 
 
+  // The local copy is written synchronously on every change. The database
+  // autosave is debounced; on reconnect or refresh the most recent revision wins.
+  const saveLocalDraft = (answers: SavedAnswers, revision: number, index = draftQuestionRef.current) => {
+    if (!draftKeyRef.current || !draftSessionRef.current) return;
+    try {
+      localStorage.setItem(draftKeyRef.current, JSON.stringify({
+        sessionId: draftSessionRef.current, answers, revision, currentQuestion: index, updatedAt: Date.now(),
+      } satisfies CachedQuizDraft));
+    } catch { /* Server autosave remains available when browser storage is disabled/full. */ }
+  };
+
+  const flushDraft = (id: string, answers: SavedAnswers, revision: number, keepalive = false) => {
+    if (!id || !revision) return;
+    void api.saveQuizDraft(id, answers, revision, keepalive).then((response) => {
+      if (draftSessionRef.current !== id) return;
+      if (response.saved || response.revision === revision) {
+        draftAckRef.current = Math.max(draftAckRef.current, response.revision);
+        if (draftAckRef.current >= draftRevisionRef.current) setDraftStatus('saved');
+      } else if (response.revision >= draftRevisionRef.current) {
+        setDraftStatus('conflict'); // another tab/device saved a different answer at the same/newer revision
+      }
+    }).catch(() => {
+      if (draftSessionRef.current === id) setDraftStatus('offline');
+    });
+  };
+
+  const activateQuizSession = (quiz: Quiz, session: QuizSessionData) => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    const remoteRevision = Number(session.draft_revision ?? 0);
+    const remoteAnswers = session.draft_answers || {};
+    const cached = user ? readCachedQuizDraft(user.id, quiz.id, session.session_id) : null;
+    // Only use the browser backup when it is newer than PostgreSQL.
+    const restoreLocal = cached !== null && cached.revision > remoteRevision;
+    const restoredAnswers = restoreLocal ? cached.answers : remoteAnswers;
+    draftSessionRef.current = session.session_id;
+    draftRevisionRef.current = Math.max(remoteRevision, cached?.revision ?? 0);
+    draftAckRef.current = remoteRevision;
+    draftAnswersRef.current = restoredAnswers;
+    draftSnapshotRef.current = JSON.stringify(remoteAnswers);
+    draftKeyRef.current = user ? cacheKey(user.id, quiz.id) : null;
+    draftQuestionRef.current = cached ? Math.min(Math.max(0, cached.currentQuestion || 0), session.questions.length - 1) : 0;
+    setDraftStatus(restoreLocal ? 'saving' : 'saved');
+    setSessionId(session.session_id);
+    setExpiresAt(session.expires_at);
+    setClockOffset(Date.parse(session.server_now) - clientNow());
+    setRemaining(null);
+    setReviewRegionId(null);
+    setShowSubmissionReview(false);
+    setShowExitConfirm(false);
+    setActiveQuiz(quiz);
+    setQuestions(session.questions);
+    setCurrentQuestion(draftQuestionRef.current);
+    setSelectedAnswers(restoredAnswers);
+    setSubmitResult(null);
+    setSubmitError(null);
+    setOpenEndedResults([]);
+  };
+
   const handleStartQuiz = async (quiz: Quiz) => {
     try {
-      const session = await api.startQuiz(quiz.id);
-      setSessionId(session.session_id);
-      setExpiresAt(session.expires_at); setClockOffset(Date.parse(session.server_now)-clientNow());
-      const loadedQuestions = session.questions;
-
-
-      setReviewRegionId(null);
-      setActiveQuiz(quiz);
-      setQuestions(loadedQuestions);
-      setCurrentQuestion(0);
-      setSelectedAnswers({});
-      setSubmitResult(null);
-      setSubmitError(null);
+      setRouteError(null);
+      const session: QuizSessionData = await api.startQuiz(quiz.id);
+      activateQuizSession(quiz, session);
+      navigate(`/quizzes/${quiz.id}/take`);
     } catch (err) {
+      setRouteError(err instanceof Error ? err.message : 'Could not start quiz');
       setSubmitError(err instanceof Error ? err.message : 'Could not start quiz');
+    }
+  };
+
+  const handleResumeQuiz = async (quiz: Quiz) => {
+    try {
+      setRouteError(null);
+      const session: QuizSessionData = await api.resumeQuiz(quiz.id);
+      activateQuizSession(quiz, session);
+    } catch (err) {
+      setRouteError(err instanceof Error ? err.message : 'Could not resume quiz');
     }
   };
 
@@ -253,25 +417,92 @@ export default function Quizzes() {
         student_config: a.region_review ? {model_id:a.region_review.model_id} : undefined})));
       setSelectedAnswers(Object.fromEntries(answers.filter(a => a.format==='region_identification' && a.answer_json).map(a => [a.question_id, JSON.stringify(a.answer_json)])));
       setReviewRegionId(null);
+      setShowSubmissionReview(false);
+      setCurrentQuestion(0);
       setActiveQuiz(quizzes.find((q)=>q.id===summary.quiz_id) || {id:summary.quiz_id,program_id:null,title:summary.quiz_title,description:null,type:'Mixed',category:null,is_published:false,created_at:''});
       const feedback = answers.filter((a)=>a.format==='mcq'||is3D(a.format)).map((a)=>({question_id:a.question_id,format:a.format,selected_option:a.selected_option||'',correct_option:a.correct_option||'',is_correct:a.is_correct===true,score:is3D(a.format)?a.teacher_score:null,
         details:a.region_review?.details||null,region_review:a.region_review||null}));
       setSubmitResult({status:attempt.status,score:attempt.score,total:attempt.total_questions,correct:attempt.correct_count,incorrect:attempt.status==='graded'?attempt.total_questions-attempt.correct_count:null,mcq_count:answers.filter(a=>a.format==='mcq').length,open_ended_count:answers.filter(a=>a.format==='open_ended').length,feedback});
       setOpenEndedResults(answers.filter((a)=>a.format==='open_ended'));
-      setExpiresAt(null);setSessionId('');setSubmitError(null);
-    } catch { setSubmitError('Could not load this attempt.'); }
+      setExpiresAt(null);setSessionId('');setSubmitError(null);setRouteError(null);
+      navigate(`/quizzes/${summary.quiz_id}/review/${summary.id}`);
+    } catch { setRouteError('Could not load this attempt.'); setSubmitError('Could not load this attempt.'); }
   }
 
   const handleSelectAnswer = (questionId: number, value: string) => {
-    setSelectedAnswers((prev) => ({ ...prev, [questionId]: value }));
+    setSelectedAnswers((prev) => {
+      const next = { ...prev, [questionId]: value };
+      draftAnswersRef.current = next;
+      saveLocalDraft(next, draftRevisionRef.current + 1);
+      return next;
+    });
+    setSubmitError(null);
   };
 
   const handleNext = () => {
-    setCurrentQuestion((prev) => prev + 1);
+    setSubmitError(null);
+    setCurrentQuestion((prev) => Math.min(prev + 1, questions.length - 1));
   };
 
-  const handleSubmit = async () => {
+  // Local backup is immediate; only PostgreSQL writes are debounced. This
+  // includes JSON-encoded 3D region points and annotation matching answers.
+  useEffect(() => {
+    if (!sessionId || !activeQuiz || submitResult || submitting || draftSessionRef.current !== sessionId) return;
+    const snapshot = JSON.stringify(selectedAnswers);
+    if (snapshot === draftSnapshotRef.current) return;
+    draftSnapshotRef.current = snapshot;
+    draftAnswersRef.current = selectedAnswers;
+    const revision = ++draftRevisionRef.current;
+    saveLocalDraft(selectedAnswers, revision);
+    setDraftStatus('saving');
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => flushDraft(sessionId, selectedAnswers, revision), 650);
+    return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
+  }, [selectedAnswers, sessionId, activeQuiz, submitResult, submitting]);
+
+  // Remember the last question even when switching between questions doesn't
+  // change an answer; reopening the same tab returns to that question.
+  useEffect(() => {
+    draftQuestionRef.current = currentQuestion;
+    if (sessionId && draftSessionRef.current === sessionId && !submitResult) {
+      saveLocalDraft(draftAnswersRef.current, draftRevisionRef.current, currentQuestion);
+    }
+  }, [currentQuestion, sessionId, submitResult]);
+
+  useEffect(() => {
+    if (!sessionId || submitResult) return;
+    const flushPending = () => {
+      if (draftAckRef.current < draftRevisionRef.current)
+        flushDraft(sessionId, draftAnswersRef.current, draftRevisionRef.current, true);
+    };
+    const retry = setInterval(flushPending, 15000);
+    window.addEventListener('online', flushPending);
+    window.addEventListener('pagehide', flushPending);
+    return () => { clearInterval(retry); window.removeEventListener('online', flushPending); window.removeEventListener('pagehide', flushPending); };
+  }, [sessionId, submitResult]);
+
+  const isQuestionAnswered = (question: QuizQuestion) => {
+    const response = selectedAnswers[question.id]?.trim() || '';
+    if (!response) return false;
+    if (question.format === 'mcq' || question.format === 'open_ended') return true;
+    try {
+      const answer = JSON.parse(response) as { points?: unknown[]; matches?: Record<string, string> };
+      if (question.format === 'region_identification') return (answer.points?.length ?? 0) >= 3;
+      const markerIds = question.student_config?.marker_ids || [];
+      return markerIds.length > 0 && markerIds.every((id) => Boolean(answer.matches?.[String(id)]));
+    } catch { return false; }
+  };
+
+  const handleSubmit = async (allowIncomplete = false) => {
     if (!activeQuiz) return;
+    if (!allowIncomplete) {
+      const firstMissing = questions.findIndex((question) => !isQuestionAnswered(question));
+      if (firstMissing >= 0) {
+        setCurrentQuestion(firstMissing);
+        setSubmitError('Please answer every question before submitting. You can use the question navigator to return to unanswered questions.');
+        return;
+      }
+    }
 
     const answers = questions.map((q) => {
       if (q.format === 'mcq') {
@@ -289,8 +520,16 @@ export default function Quizzes() {
       setSubmitError(null);
       const result = await api.submitQuiz(activeQuiz.id, answers, sessionId);
       setSubmitResult(result);
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      if (draftKeyRef.current) localStorage.removeItem(draftKeyRef.current);
+      draftSessionRef.current = '';
+      draftKeyRef.current = null;
+      setDraftStatus('saved');
+      setShowSubmissionReview(false);
       setReviewRegionId(null);
       sessionStorage.setItem(`quiz-attempt-${activeQuiz.id}`, String(result.attempt.id));
+      // A stable review URL means refresh shows the completed attempt, not a new quiz.
+      navigate(`/quizzes/${activeQuiz.id}/review/${result.attempt.id}`, { replace: true });
 
       // Task 8.8: refresh real history right away so the new attempt shows
       // up without needing a full page reload.
@@ -314,7 +553,7 @@ export default function Quizzes() {
     }
   };
 
-  useEffect(() => { submitRef.current = () => { if (!submitting && !submitResult) void handleSubmit(); }; });
+  useEffect(() => { submitRef.current = () => { if (!submitting && !submitResult) void handleSubmit(true); }; });
   useEffect(() => {
     if (!expiresAt || !activeQuiz || submitResult) return;
     const tick = () => {
@@ -326,75 +565,107 @@ export default function Quizzes() {
     return () => clearInterval(timer);
   }, [expiresAt, activeQuiz, submitResult, clockOffset]);
 
-  useEffect(() => {
-    if (!sessionId || submitResult) return;
-    const cancel = () => { void api.cancelQuizSession(sessionId).catch(() => {}); };
-    window.addEventListener('pagehide',cancel);
-    return () => { window.removeEventListener('pagehide',cancel); cancel(); };
-  }, [sessionId, submitResult]);
 
   const handleRetry = async () => {
-    if (activeQuiz) { const session = await api.startQuiz(activeQuiz.id); setSessionId(session.session_id); setExpiresAt(session.expires_at); setClockOffset(Date.parse(session.server_now)-Date.now()); }
-    if (activeQuiz) {
-      sessionStorage.removeItem(`quiz-attempt-${activeQuiz.id}`);
-    }
-    setCurrentQuestion(0);
-    setSelectedAnswers({});
-    setSubmitResult(null);
-    setSubmitError(null);
-    setOpenEndedResults([]);
-    setReviewRegionId(null);
+    if (!activeQuiz) return;
+    const session: QuizSessionData = await api.startQuiz(activeQuiz.id);
+    if (draftKeyRef.current) localStorage.removeItem(draftKeyRef.current);
+    activateQuizSession(activeQuiz, session);
+    sessionStorage.removeItem(`quiz-attempt-${activeQuiz.id}`);
+    navigate(`/quizzes/${activeQuiz.id}/take`, { replace: true });
   };
 
   const handleBackToList = () => {
+    // Keep the old route marked as handled until /quizzes has rendered.
+    // Otherwise clearing activeQuiz can trigger route hydration again while
+    // React Router is still transitioning away from /review/:attemptId.
+    routeHydration.current = location.pathname;
     if (sessionId && !submitResult) void api.cancelQuizSession(sessionId).catch(() => {});
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    if (draftKeyRef.current) localStorage.removeItem(draftKeyRef.current);
+    draftSessionRef.current = '';
+    draftKeyRef.current = null;
     setExpiresAt(null);
+    setSessionId('');
+    setRemaining(null);
+    setRouteError(null);
     setActiveQuiz(null);
+    setShowSubmissionReview(false);
+    setShowExitConfirm(false);
     setReviewRegionId(null);
     setQuestions([]);
     setSubmitResult(null);
     setSubmitError(null);
     setOpenEndedResults([]);
+    navigate('/quizzes');
   };
 
-  const handleCreateQuiz = async () => {
+  // Opening a bookmark or refreshing a quiz URL starts its page rather than
+  // dropping the student back at the quiz listing. Route transitions keep
+  // this component mounted, retaining answers across question navigation.
+  useEffect(() => {
+    const match = /^\/quizzes\/(\d+)\/(take|review)(?:\/(\d+))?\/?$/.exec(location.pathname);
+    if (!match || activeQuiz || role !== 'student' || routeHydration.current === location.pathname) return;
+    const quizId = Number(match[1]);
+    if (match[2] === 'take') {
+      if (loading) return;
+      routeHydration.current = location.pathname;
+      const quiz = quizzes.find((entry) => entry.id === quizId);
+      if (quiz) void handleResumeQuiz(quiz);
+      else setRouteError('This quiz is unavailable. Return to the quiz list and try again.');
+    } else {
+      if (history.loading) return;
+      routeHydration.current = location.pathname;
+      const attemptId = Number(match[3]);
+      const summary = attemptHistory.find((entry) => entry.id === attemptId && entry.quiz_id === quizId);
+      if (summary) void reviewAttempt(summary);
+      else setRouteError('This attempt was not found in your history.');
+    }
+  }, [location.pathname, role, activeQuiz, loading, quizzes, history.loading, attemptHistory]);
+
+  // Browser Back within /quizzes/* must clear the in-memory attempt as well.
+  useEffect(() => {
+    if (location.pathname !== '/quizzes') return;
+    // Once the list route is active, a future deep link can hydrate normally.
+    routeHydration.current = null;
+    if (!activeQuiz) return;
+    // Browser Back is not an explicit discard: the server session stays resumable.
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    if (sessionId && !submitResult && draftAckRef.current < draftRevisionRef.current)
+      flushDraft(sessionId, draftAnswersRef.current, draftRevisionRef.current, true);
+    draftSessionRef.current = '';
+    draftKeyRef.current = null;
+    routeHydration.current = null;
+    setActiveQuiz(null);
+    setSessionId('');
+    setExpiresAt(null);
+    setRemaining(null);
+    setQuestions([]);
+    setSubmitResult(null);
+    setReviewRegionId(null);
+  }, [location.pathname, activeQuiz, sessionId, submitResult]);
+
+  // No quiz or question data is persisted until Finish editing. This lets
+  // professors genuinely discard a new quiz or edits to an existing one.
+  const handleCreateQuiz = () => {
     if (!newQuizTitle.trim()) {
       setCreateQuizError('Title is required.');
       return;
     }
-
-    try {
-      setCreateQuizError(null);
-      const quiz = await api.createQuiz({
-        title: newQuizTitle,
-        description: newQuizDescription || undefined,
-        type: 'MCQ',
-        category: newQuizCategory || undefined,
-      });
-      setCreatedQuiz(quiz);
-    } catch (err) {
-      console.error('Failed to create quiz:', err);
-      setCreateQuizError(err instanceof Error ? err.message : 'Failed to create quiz. Please try again.');
-    }
+    setCreatedQuiz({ id: -1, title: newQuizTitle.trim(), description: newQuizDescription || null,
+      category: newQuizCategory || null, type: 'MCQ', program_id: null,
+      is_published: false, created_at: '' });
+    setCreatedQuestions([]);
+    setIsEditMode(false);
+    setBankOnSaveIds([]);
+    setCreateQuizError(null);
   };
 
-  const handleCancelCreateQuiz = async () => {
-    // Only delete an abandoned quiz when this was the create-new-quiz flow.
-    // An existing quiz being edited must never be deleted on cancel, even
-    // if the teacher removed every question before backing out.
-    if (!isEditMode && createdQuiz && createdQuestions.length === 0) {
-      try {
-        await api.deleteQuiz(createdQuiz.id);
-      } catch (err) {
-        console.error('Failed to delete abandoned quiz:', err);
-        setCreateQuizError(err instanceof Error ? err.message : 'Could not discard this draft. Please try again.');
-        return;
-      }
-    }
-
+  const clearQuizEditor = () => {
     setShowCreateQuiz(false);
     setCreatedQuiz(null);
     setCreatedQuestions([]);
+    setBankOnSaveIds([]);
     setNewQuizTitle('');
     setNewQuizDescription('');
     setNewQuizCategory('');
@@ -409,61 +680,106 @@ export default function Quizzes() {
     setNewModelAnswer('');
     setNewQuestionFormat('mcq');
     setNew3DConfig(null);
+    setEditingQuiz(null);
     setIsEditMode(false);
+    authorHydrationRef.current = null;
   };
+
+  const handleCancelCreateQuiz = () => {
+    if (savingEditor) return;
+    if (!window.confirm('Exit without saving? All changes made in this editor session will be discarded.')) return;
+    clearQuizEditor();
+    navigate('/quizzes');
+  };
+
+  const hasUnsavedQuestionForm = () => editingQuestionId !== null ||
+    !!newQuestionText.trim() || !!newOptionA.trim() || !!newOptionB.trim() ||
+    !!newOptionC.trim() || !!newOptionD.trim() || !!newModelAnswer.trim() || !!new3DConfig;
 
   const handleFinishCreateQuiz = async () => {
-    if (createdQuiz) {
-      try {
-        const derivedType = deriveQuizType(createdQuestions);
-        await api.updateQuizType(createdQuiz.id, derivedType);
-        setQuizzes((prev) =>
-          isEditMode
-            // This quiz is already in the list — update its type in place
-            // instead of appending a duplicate entry.
-            ? prev.map((q) => (q.id === createdQuiz.id ? { ...q, type: derivedType } : q))
-            : [...prev, { ...createdQuiz, type: derivedType }]
-        );
-      } catch (err) {
-        console.error('Failed to finalize quiz:', err);
-        setCreateQuizError(err instanceof Error ? err.message : 'Could not finish saving this quiz. Please try again.');
-        return;
-      }
+    if (!createdQuiz || savingEditor) return;
+    if (editingQuiz && (editQuizTitle !== createdQuiz.title ||
+      editQuizDescription !== (createdQuiz.description || '') ||
+      editQuizCategory !== (createdQuiz.category || ''))) {
+      setCreateQuizError('There are unfinished quiz detail changes. Click Save details or Cancel before finishing.');
+      return;
     }
-
-    setShowCreateQuiz(false);
-    setCreatedQuiz(null);
-    setCreatedQuestions([]);
-    setNewQuizTitle('');
-    setNewQuizDescription('');
-    setNewQuizCategory('');
-    setEditingQuestionId(null);
-    setCreateQuizError(null);
-    setNewModelAnswer('');
-    setNewQuestionFormat('mcq');
-    setNew3DConfig(null);
-    setIsEditMode(false);
+    if (hasUnsavedQuestionForm()) {
+      setCreateQuizError('There is an unfinished question in the editor. Click Add Question / Save Changes, or clear it before finishing.');
+      document.getElementById('quiz-builder-question-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (!createdQuestions.length) {
+      setCreateQuizError('Add at least one question before finishing.');
+      return;
+    }
+    try {
+      setSavingEditor(true);
+      setCreateQuizError(null);
+      const saved: { quiz: Quiz; questions: CreatedQuizQuestion[] } = await api.commitQuizEditor(
+        isEditMode ? createdQuiz.id : null, {
+          title: createdQuiz.title,
+          description: createdQuiz.description || undefined,
+          category: createdQuiz.category || undefined,
+          questions: createdQuestions.map(q => ({
+            ...(q.id > 0 ? {id:q.id} : {}),
+            question:q.question,format:q.format,category:q.category || null,
+            option_a:q.option_a, option_b:q.option_b,option_c:q.option_c,option_d:q.option_d,
+            correct_option:q.correct_option,model_answer:q.model_answer,question_config:q.question_config || null,
+          })),
+        }
+      );
+      const toBank = createdQuestions.flatMap((q, index) => bankOnSaveIds.includes(q.id) ? [index] : []);
+      let bankFailure = false;
+      for (const index of toBank) {
+        try { await api.bankQuestion(saved.questions[index].id, saved.quiz.category || ''); }
+        catch { bankFailure = true; }
+      }
+      clearQuizEditor();
+      navigate('/quizzes');
+      await loadQuizzes();
+      toast(bankFailure ? 'Quiz saved, but some question-bank copies could not be saved.' : 'Quiz saved successfully.', bankFailure ? 'error' : 'success');
+    } catch (err) {
+      setCreateQuizError(err instanceof Error ? err.message : 'Could not save the quiz. No changes were committed.');
+    } finally {
+      setSavingEditor(false);
+    }
   };
 
-  const handleDeleteCreatedQuestion = async (id: number) => {
+  const handleDeleteCreatedQuestion = (id: number) => {
+    setCreatedQuestions((prev) => prev.filter((q) => q.id !== id));
+    setBankOnSaveIds(prev => prev.filter(item => item !== id));
+    if (editingQuestionId === id) {
+      setEditingQuestionId(null);
+      setNewQuestionText('');
+      setNewOptionA(''); setNewOptionB(''); setNewOptionC(''); setNewOptionD('');
+      setNewCorrectOption('A'); setNewModelAnswer(''); setNewQuestionFormat('mcq'); setNew3DConfig(null);
+    }
+  };
+
+  const stageBankQuestion = (q: {question:string;format:'mcq'|'open_ended';category:string|null;option_a:string|null;option_b:string|null;option_c:string|null;option_d:string|null;correct_option:string|null;model_answer:string|null}) => {
+    const id = draftQuestionId.current--;
+    setCreatedQuestions(prev => [...prev, {id,quiz_id:createdQuiz?.id ?? -1,question:q.question,format:q.format,
+      option_a:q.option_a,option_b:q.option_b,option_c:q.option_c,option_d:q.option_d,
+      category:q.category,
+      correct_option:q.correct_option as CreatedQuizQuestion['correct_option'],model_answer:q.model_answer,
+      question_config:null}]);
+    setCreateQuizError(null);
+  };
+
+  const handleDeleteQuiz = async (quiz: Quiz) => {
+    if (deletingQuizId !== null) return;
+    if (!window.confirm(`Permanently delete “${quiz.title}”? This action cannot be undone. Quizzes with student attempts cannot be deleted.`)) return;
     try {
-      await api.deleteQuizQuestion(id);
-      setCreatedQuestions((prev) => prev.filter((q) => q.id !== id));
-      if (editingQuestionId === id) {
-        setEditingQuestionId(null);
-        setNewQuestionText('');
-        setNewOptionA('');
-        setNewOptionB('');
-        setNewOptionC('');
-        setNewOptionD('');
-        setNewCorrectOption('A');
-        setNewModelAnswer('');
-        setNewQuestionFormat('mcq');
-    setNew3DConfig(null);
-      }
-    } catch (err) {
-      console.error('Failed to delete question:', err);
-      setCreateQuizError(err instanceof Error ? err.message : 'Failed to delete question. Please try again.');
+      setDeletingQuizId(quiz.id);
+      await api.deleteQuiz(quiz.id);
+      setQuizzes(prev => prev.filter(q => q.id !== quiz.id));
+      if (createdQuiz?.id === quiz.id) { clearQuizEditor(); navigate('/quizzes'); }
+      toast('Quiz deleted.', 'success');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Could not delete the quiz.', 'error');
+    } finally {
+      setDeletingQuizId(null);
     }
   };
 
@@ -508,9 +824,22 @@ export default function Quizzes() {
         setCreateQuizError('A model answer is required for open-ended questions.');return;
       }
     } else {
-      if (!new3DConfig?.model_id || (newQuestionFormat==='region_identification' && !new3DConfig.reference_annotation_id) ||
-        (newQuestionFormat==='annotation_matching' && (new3DConfig.annotation_ids?.length||0)<2)) {
-        setCreateQuizError('Select a model and the required reference annotation(s).');return;
+      const custom = new3DConfig?.source === 'custom';
+      const hasRegion = custom ? !!new3DConfig?.custom_region?.projectedMask &&
+        (new3DConfig.custom_region.points.length >= 3) : !!new3DConfig?.reference_annotation_id;
+      const customMarkers = new3DConfig?.custom_markers || [];
+      const names = customMarkers.map(m => (m.label || '').trim().toLowerCase());
+      const targetCount = new3DConfig?.target_count;
+      const hasMatching = custom ? customMarkers.length >= 2 && customMarkers.length <= 12 &&
+        (targetCount === undefined || customMarkers.length === targetCount) &&
+        (targetCount === undefined || customMarkers.every(m => !!m.region?.projectedMask)) &&
+        names.every(Boolean) && new Set(names).size === names.length :
+        (new3DConfig?.annotation_ids?.length || 0) >= 2;
+      if (!new3DConfig?.model_id || (newQuestionFormat==='region_identification' && !hasRegion) ||
+        (newQuestionFormat==='annotation_matching' && !hasMatching)) {
+        setCreateQuizError(custom
+          ? 'Draw and name every structure in the matching question (2–12), or draw the reference region.'
+          : 'Select a model and the required reference annotation(s).');return;
       }
     }
 
@@ -523,31 +852,28 @@ export default function Quizzes() {
         question:newQuestionText,format:newQuestionFormat,question_config:new3DConfig!,
       };
 
-    try {
-      setCreateQuizError(null);
-
-      if (editingQuestionId !== null) {
-        const updated = await api.updateQuizQuestion(editingQuestionId, payload);
-        setCreatedQuestions((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
-        setEditingQuestionId(null);
-      } else {
-        const question = await api.createQuizQuestion(createdQuiz.id, payload);
-        setCreatedQuestions((prev) => [...prev, question]);
-      }
-
-      setNewQuestionText('');
-      setNewOptionA('');
-      setNewOptionB('');
-      setNewOptionC('');
-      setNewOptionD('');
-      setNewCorrectOption('A');
-      setNewModelAnswer('');
-      setNewQuestionFormat('mcq');
-    setNew3DConfig(null);
-    } catch (err) {
-      console.error('Failed to save question:', err);
-      setCreateQuizError(err instanceof Error ? err.message : 'Failed to save question. Please try again.');
-    }
+    setCreateQuizError(null);
+    const draft: CreatedQuizQuestion = {
+      id: editingQuestionId ?? draftQuestionId.current--,
+      quiz_id: createdQuiz.id,
+      question: payload.question,
+      format: payload.format,
+      category: editingQuestionId !== null ? createdQuestions.find(q => q.id === editingQuestionId)?.category || null : null,
+      option_a: 'option_a' in payload ? payload.option_a : null,
+      option_b: 'option_b' in payload ? payload.option_b : null,
+      option_c: 'option_c' in payload ? payload.option_c : null,
+      option_d: 'option_d' in payload ? payload.option_d : null,
+      correct_option: 'correct_option' in payload ? payload.correct_option : null,
+      model_answer: 'model_answer' in payload ? payload.model_answer : null,
+      question_config: 'question_config' in payload ? payload.question_config : null,
+    };
+    setCreatedQuestions(prev => editingQuestionId !== null
+      ? prev.map(q => q.id === editingQuestionId ? draft : q)
+      : [...prev, draft]);
+    setEditingQuestionId(null);
+    setNewQuestionText('');
+    setNewOptionA(''); setNewOptionB(''); setNewOptionC(''); setNewOptionD('');
+    setNewCorrectOption('A'); setNewModelAnswer(''); setNewQuestionFormat('mcq'); setNew3DConfig(null);
   };
 
   const handleToggleQuizPublish = async (quiz: Quiz) => {
@@ -587,21 +913,39 @@ export default function Quizzes() {
     setGradingError(null);
   };
 
-  const openEditQuizQuestions = async (quiz: Quiz) => {
+  const openEditQuizQuestions = async (quiz: Quiz, showDetails = false) => {
     try {
+      setAuthorPageError(null);
       const fetched: CreatedQuizQuestion[] = await api.getQuizQuestions(quiz.id);
       setCreatedQuiz(quiz);
       setCreatedQuestions(fetched);
       setIsEditMode(true);
       setShowCreateQuiz(true);
+      setBankOnSaveIds([]);
       setCreateQuizError(null);
+      setEditingQuestionId(null);
+      setNewQuestionText('');
+      setNewQuestionFormat('mcq');
+      setNewOptionA(''); setNewOptionB(''); setNewOptionC(''); setNewOptionD('');
+      setNewModelAnswer(''); setNewCorrectOption('A');
+      setNew3DConfig(null);
+      setEditingQuiz(showDetails ? quiz : null);
+      setEditQuizTitle(quiz.title);
+      setEditQuizDescription(quiz.description || '');
+      setEditQuizCategory(quiz.category || '');
+      setEditQuizError(null);
+      navigate(`/quizzes/${quiz.id}/edit`);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Could not start quiz');
-      setCreateQuizError(err instanceof Error ? err.message : 'Failed to load questions for this quiz. Please try again.');
+      setAuthorPageError(err instanceof Error ? err.message : 'Failed to load questions for this quiz.');
+      toast(err instanceof Error ? err.message : 'Failed to load quiz editor.', 'error');
     }
   };
 
   const openEditQuiz = (quiz: Quiz) => {
+    void openEditQuizQuestions(quiz, true);
+  };
+
+  const startEditingQuizDetails = (quiz: Quiz) => {
     setEditingQuiz(quiz);
     setEditQuizTitle(quiz.title);
     setEditQuizDescription(quiz.description || '');
@@ -617,26 +961,12 @@ export default function Quizzes() {
     setEditQuizError(null);
   };
 
-  const handleSaveQuizEdit = async () => {
+  const handleSaveQuizEdit = () => {
     if (!editingQuiz) return;
-
-    if (!editQuizTitle.trim()) {
-      setEditQuizError('Title is required.');
-      return;
-    }
-
-    try {
-      const updated = await api.updateQuiz(editingQuiz.id, {
-        title: editQuizTitle,
-        description: editQuizDescription || undefined,
-        category: editQuizCategory || undefined,
-      });
-      setQuizzes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
-      closeEditQuiz();
-    } catch (err) {
-      console.error('Failed to update quiz:', err);
-      setEditQuizError(err instanceof Error ? err.message : 'Failed to save changes. Please try again.');
-    }
+    if (!editQuizTitle.trim()) { setEditQuizError('Title is required.'); return; }
+    setCreatedQuiz(prev => prev ? { ...prev, title:editQuizTitle.trim(),
+      description:editQuizDescription || null, category:editQuizCategory || null } : prev);
+    closeEditQuiz();
   };
 
   const handleSelectAttempt = async (attemptId: number) => {
@@ -692,6 +1022,7 @@ export default function Quizzes() {
   };
 
   const current = questions[currentQuestion];
+  const answeredCount = questions.filter(isQuestionAnswered).length;
   const feedbackByQuestionId = new Map(
     (submitResult?.feedback ?? []).map((f) => [f.question_id, f])
   );
@@ -732,7 +1063,8 @@ export default function Quizzes() {
   const filterControl = 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+    <div className={`${isDedicatedPage ? "max-w-[1880px]" : "max-w-7xl"} mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full`}>
+      {!isDedicatedPage && <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 font-display">
@@ -745,7 +1077,23 @@ export default function Quizzes() {
 
         {role === 'teacher' && (
           <button
-            onClick={() => setShowCreateQuiz(true)}
+            onClick={() => {
+              setCreatedQuiz(null);
+              setCreatedQuestions([]);
+              setBankOnSaveIds([]);
+              setNewQuizTitle('');
+              setNewQuizDescription('');
+              setNewQuizCategory('');
+              setNewQuestionText('');
+              setNewOptionA(''); setNewOptionB(''); setNewOptionC(''); setNewOptionD('');
+              setNewModelAnswer(''); setNew3DConfig(null); setNewQuestionFormat('mcq');
+              setEditingQuiz(null);
+              setShowCreateQuiz(true);
+              setIsEditMode(false);
+              setAuthorPageError(null);
+              setCreateQuizError(null);
+              navigate('/quizzes/create');
+            }}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700 transition-colors"
           >
             <BookOpen className="w-4 h-4" />
@@ -845,6 +1193,14 @@ export default function Quizzes() {
                     className="text-sm text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                   >
                     View Results
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deletingQuizId === quiz.id}
+                    onClick={() => { void handleDeleteQuiz(quiz); }}
+                    className="text-sm text-red-600 dark:text-red-400 hover:text-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    Delete Quiz
                   </button>
                 </div>
               )}
@@ -972,104 +1328,186 @@ export default function Quizzes() {
         </div>
       )}
 
-      {activeQuiz && !submitResult && current && (
-        <Dialog onClose={handleBackToList} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full ${is3D(current.format)?'max-w-5xl':'max-w-xl'} max-h-[95vh] overflow-y-auto p-6`}>
-            <div className="mb-6">
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">
-                Question {currentQuestion + 1} of {questions.length}
-                {remaining !== null && <span className="ml-3 text-amber-600" role="timer">{Math.floor(remaining/60)}:{String(remaining%60).padStart(2,'0')} remaining</span>}
-              </p>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display">
-                {current.question}
-              </h2>
+      </>}
+
+      {isQuizPage && (
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">AnatoLearn · Quiz attempt</p>
+            <h1 className="mt-1 text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 font-display">{activeQuiz?.title || 'Quiz'}</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <button type="button" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              className="rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500">
+              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+            {activeQuiz && !submitResult && (
+              <>
+                {sessionId && (
+                  <span role="status" aria-live="polite" className={`text-xs font-medium ${draftStatus === 'offline' || draftStatus === 'conflict' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {draftStatus === 'saved' ? 'Answers saved' : draftStatus === 'saving' ? 'Saving…' :
+                      draftStatus === 'conflict' ? 'Draft changed in another tab — refresh to review' : 'Unable to sync — saved in this browser'}
+                  </span>
+                )}
+                {remaining !== null && (
+                  <span className={`flex items-center gap-2 text-sm font-semibold ${remaining <= 60 ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'}`} role="timer">
+                    <Clock className="h-4 w-4" /> {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')} remaining
+                  </span>
+                )}
+                <button type="button" onClick={() => setShowExitConfirm(true)} aria-label="Exit quiz attempt" title="Exit attempt"
+                  className="rounded-lg p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <X className="h-5 w-5" />
+                </button>
+              </>
+            )}
+          </div>
+        </header>
+      )}
+      {isQuizPage && !activeQuiz && (
+        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-8" role="status">
+          {routeError || submitError || (role !== 'student' ? 'Only students can take quizzes.' : 'Loading quiz…')}
+          {(routeError || submitError) && <div className="mt-5"><button type="button" onClick={() => navigate('/quizzes')}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Return to quiz list</button></div>}
+        </div>
+      )}
+
+      {isQuizPage && activeQuiz && !submitResult && current && (
+        <section aria-label="Quiz questions" className="grid grid-cols-1 lg:grid-cols-[140px_minmax(0,1fr)] xl:grid-cols-[168px_minmax(0,1fr)] gap-5 lg:gap-8 items-start">
+          <aside className="lg:sticky lg:top-6 min-w-0" aria-label="Question navigation">
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">Question pages</h2>
+            <div className="flex lg:flex-col flex-wrap lg:flex-nowrap gap-2 lg:max-h-[75vh] lg:overflow-y-auto pr-1">
+              {questions.map((question, index) => {
+                const answered = isQuestionAnswered(question);
+                const selected = !showSubmissionReview && index === currentQuestion;
+                return (
+                  <button type="button" key={question.id}
+                    onClick={() => { setCurrentQuestion(index); setShowSubmissionReview(false); setSubmitError(null); }}
+                    aria-current={selected ? 'step' : undefined}
+                    aria-label={`Question ${index + 1}, ${answered ? 'answered' : 'unanswered'}`}
+                    className={`flex min-w-[68px] lg:w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 ${selected
+                      ? 'border-blue-500 bg-blue-50 text-blue-800 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-600'}`}>
+                    <span className="font-semibold">{index + 1}</span>
+                    {answered ? <Check className="h-4 w-4 text-green-600 dark:text-green-400" aria-hidden="true" /> : <span className="font-semibold text-slate-400 dark:text-slate-500" aria-hidden="true">--</span>}
+                  </button>
+                );
+              })}
             </div>
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">✓ Answered · -- Unanswered</p>
+            <button type="button" onClick={() => { setShowSubmissionReview(true); setSubmitError(null); }}
+              className="mt-4 text-sm font-medium text-blue-700 dark:text-blue-400 hover:underline">Submission review</button>
+          </aside>
 
-            {current.format === 'mcq' ? (
-              <div role="radiogroup" aria-label={current.question} className="space-y-3 mb-8">
-                {optionLetters.map((letter) => {
-                  const optionText = current[`option_${letter.toLowerCase()}` as keyof QuizQuestion] as string;
-
-                  return (
-                    <label
-                      key={letter}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors ${selectedAnswers[current.id] === letter
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
-                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
-                    >
-                      <input
-                        type="radio"
-                        name={`question-${current.id}`}
-                        checked={selectedAnswers[current.id] === letter}
-                        onChange={() => handleSelectAnswer(current.id, letter)}
-                        className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 accent-blue-600"
-                      />
-                      <span className="text-sm text-slate-700 dark:text-slate-300">{optionText}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : is3D(current.format) && current.student_config ? (
-              <div className="mb-6">
-                <ThreeDQuestion key={current.id} format={current.format} config={current.student_config}
-                  value={selectedAnswers[current.id]||''} onChange={v=>handleSelectAnswer(current.id,v)}/>
+          <div className={is3D(current.format) && current.student_config && !showSubmissionReview ? "min-w-0 w-full" : "min-w-0 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full p-4 sm:p-5"}>
+            {showSubmissionReview ? (
+              <div className="max-w-3xl py-2" aria-label="Quiz submission confirmation">
+                {answeredCount < questions.length && (
+                  <div className="mb-6" role="alert">
+                    <h2 className="text-xl font-semibold text-red-600 dark:text-red-400 mb-2">Warnings</h2>
+                    <p className="text-sm text-red-700 dark:text-red-300">You have {questions.length - answeredCount} unanswered question{questions.length - answeredCount === 1 ? '' : 's'}.</p>
+                    <ul className="mt-3 space-y-2 list-disc list-inside">
+                      {questions.map((question, index) => !isQuestionAnswered(question) ? (
+                        <li key={question.id}>
+                          <button type="button" onClick={() => { setCurrentQuestion(index); setShowSubmissionReview(false); }}
+                            className="text-sm text-blue-700 dark:text-blue-400 hover:underline">Question {index + 1}</button>
+                        </li>
+                      ) : null)}
+                    </ul>
+                  </div>
+                )}
+                <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-slate-100">Quiz Submission Confirmation</h2>
+                <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">You are about to submit your quiz.</p>
+                <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">Once submitted, you cannot return to edit this attempt.</p>
+                <p className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-400">{answeredCount} of {questions.length} questions answered.</p>
+                {submitError && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>}
+                <div className="mt-7 border-t border-slate-200 dark:border-slate-700 pt-5 flex flex-wrap gap-3">
+                  <button type="button" disabled={submitting} onClick={() => { void handleSubmit(true); }}
+                    className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                    {submitting ? 'Submitting…' : 'Submit Quiz'}
+                  </button>
+                  <button type="button" onClick={() => setShowSubmissionReview(false)} disabled={submitting}
+                    className="rounded-lg bg-slate-100 px-5 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 disabled:opacity-50">Back to Questions</button>
+                </div>
               </div>
             ) : (
-              <div className="mb-8">
-                <textarea
-                  value={selectedAnswers[current.id] || ''}
-                  onChange={(e) => handleSelectAnswer(current.id, e.target.value)}
-                  rows={5}
-                  className="text-slate-900 dark:text-slate-100 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
-                  aria-label="Your answer"
-                  placeholder="Type your answer here..."
-                />
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">
-                  This is an open-ended question. Your answer will be manually reviewed by your teacher.
-                </p>
-              </div>
+              <>
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => { setCurrentQuestion((prev) => Math.max(0, prev - 1)); setSubmitError(null); }}
+                      disabled={currentQuestion === 0}
+                      className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-sm font-medium text-slate-800 dark:text-slate-200 px-4 py-2 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <ChevronLeft className="h-4 w-4" /> Previous
+                    </button>
+                    <button type="button" onClick={currentQuestion === questions.length - 1 ? () => setShowSubmissionReview(true) : handleNext}
+                      className="inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700">
+                      {currentQuestion === questions.length - 1 ? 'Review' : 'Next'} <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Page {currentQuestion + 1} of {questions.length}</p>
+                </div>
+                {!is3D(current.format) && <div className="mb-6">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Question {currentQuestion + 1}</p>
+                  <h2 className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-slate-100 font-display">{current.question}</h2>
+                </div>}
+                {current.format === 'mcq' ? (
+                  <div role="radiogroup" aria-label={current.question} className="space-y-2.5 mb-8 max-w-4xl">
+                    {optionLetters.map((letter) => {
+                      const optionText = current[`option_${letter.toLowerCase()}` as keyof QuizQuestion] as string;
+                      return (
+                        <label key={letter} className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors ${selectedAnswers[current.id] === letter
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
+                          : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                          <input type="radio" name={`question-${current.id}`} checked={selectedAnswers[current.id] === letter}
+                            onChange={() => handleSelectAnswer(current.id, letter)} className="accent-blue-600" />
+                          <span className="text-sm text-slate-800 dark:text-slate-200">{optionText}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : is3D(current.format) && current.student_config ? (
+                  <div className="mb-6 min-w-0">
+                    <ThreeDQuestion key={current.id} format={current.format} config={current.student_config}
+                      value={selectedAnswers[current.id] || ''} onChange={v => handleSelectAnswer(current.id, v)}
+                      workspace questionLabel={`Question ${currentQuestion + 1}`} questionText={current.question}
+                      viewerClassName="h-[72vh] min-h-[540px] max-h-[920px] w-full" />
+                  </div>
+                ) : (
+                  <div className="mb-8">
+                    <textarea value={selectedAnswers[current.id] || ''} onChange={(e) => handleSelectAnswer(current.id, e.target.value)} rows={7}
+                      className="text-slate-900 dark:text-slate-100 w-full px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+                      aria-label="Your answer" placeholder="Type your answer here..." />
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-2">This answer will be reviewed by your teacher.</p>
+                  </div>
+                )}
+                {submitError && <p role="alert" className="text-sm text-red-600 dark:text-red-400 mb-4">{submitError}</p>}
+
+                <div className="flex items-center gap-4 mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <button type="button" onClick={() => { setShowSubmissionReview(true); setSubmitError(null); }}
+                    className="rounded-lg bg-slate-100 dark:bg-slate-800 px-5 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700">Submit Quiz</button>
+                  <span className="text-sm text-slate-500 dark:text-slate-400">{answeredCount} of {questions.length} questions answered</span>
+                </div>
+              </>
             )}
-
-            {submitError && (
-              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mb-4">
-                {submitError}
-              </p>
-            )}
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <button
-                onClick={handleBackToList}
-                className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-              >
-                Cancel
-              </button>
-
-              {currentQuestion < questions.length - 1 ? (
-                <button
-                  onClick={handleNext}
-                  disabled={!selectedAnswers[current.id]?.trim()}
-                  className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={!selectedAnswers[current.id]?.trim() || submitting}
-                  className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Submitting...' : 'Submit'}
-                </button>
-              )}
+          </div>
+        </section>
+      )}
+      {isQuizPage && showExitConfirm && activeQuiz && !submitResult && (
+        <Dialog onClose={() => setShowExitConfirm(false)} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-xl">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Exit this quiz?</h2>
+            <p className="mt-3 text-sm text-slate-700 dark:text-slate-300">Your answers have not been submitted. Exiting will end this attempt without a grade.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowExitConfirm(false)} className="rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-100">Continue quiz</button>
+              <button type="button" onClick={handleBackToList} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Exit without submitting</button>
             </div>
           </div>
         </Dialog>
       )}
-
-      {activeQuiz && submitResult && (
-        <Dialog onClose={handleBackToList} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className={`bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full ${reviewRegionId !== null ? 'max-w-5xl' : 'max-w-xl'} max-h-[95vh] overflow-y-auto p-6`}>
+      {isQuizPage && activeQuiz && submitResult && (
+        <section aria-label="Quiz results" className="w-full max-w-5xl mx-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full p-5 sm:p-8">
+            {submitError && <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>}
             {reviewRegionId !== null ? (() => {
               const reviewQuestion = questions.find(q => q.id === reviewRegionId);
               const review = feedbackByQuestionId.get(reviewRegionId)?.region_review;
@@ -1079,7 +1517,7 @@ export default function Quizzes() {
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Region review: {reviewQuestion.question}</h2>
                 <ThreeDQuestion key={`review-${reviewRegionId}`} format="region_identification"
                   config={{model_id:review.model_id}} value={selectedAnswers[reviewRegionId]||''}
-                  onChange={() => {}} disabled review={review}/>
+                  onChange={() => {}} disabled review={review} viewerClassName="h-[54vh] min-h-[360px] max-h-[680px] w-full"/>
                 <p className="text-sm text-slate-500 dark:text-slate-400">IoU {review.details?.iou ?? 0}% · Coverage {review.details?.coverage ?? 0}% · Precision {review.details?.precision ?? 0}%</p>
               </div>;
             })() : <>
@@ -1195,16 +1633,41 @@ export default function Quizzes() {
             </div>
             </>}
           </div>
-        </Dialog>
+        </section>
       )}
 
-      {showCreateQuiz && !createdQuiz && (
-        <Dialog onClose={handleCancelCreateQuiz} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
-              Create Quiz
-            </h2>
-
+      {isAuthorPage && role === 'teacher' && (
+        <section aria-label="Quiz builder" className="space-y-6">
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-5">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-widest text-blue-700 dark:text-blue-400">AnatoLearn · Quiz builder</p>
+              <h1 className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 font-display">
+                {createdQuiz ? createdQuiz.title : 'Create a new quiz'}
+              </h1>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                {createdQuiz ? 'Manage questions, reference answers and quiz details.' : 'Enter quiz information, then add your questions.'}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                className="rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              </button>
+              <button type="button" onClick={() => { void handleCancelCreateQuiz(); }}
+                className="rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                Exit without saving
+              </button>
+            </div>
+          </header>
+          {authorPageError && <p role="alert" className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">{authorPageError}</p>}
+          {!showCreateQuiz && !authorPageError && <p className="text-sm text-slate-600 dark:text-slate-300">Loading quiz editor…</p>}
+          {showCreateQuiz && !createdQuiz && (
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] items-start gap-6">
+              <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-8 space-y-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-400">Step 1 of 2</p>
+                  <h2 className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">Quiz information</h2>
+                </div>
             <div className="space-y-4">
               <div>
                 <label htmlFor="quizzes-field-1" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -1223,8 +1686,8 @@ export default function Quizzes() {
                 <label htmlFor="quizzes-field-2" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Description
                 </label>
-                <input id="quizzes-field-2"
-                  type="text"
+                <textarea id="quizzes-field-2"
+                  rows={3}
                   value={newQuizDescription}
                   onChange={(e) => setNewQuizDescription(e.target.value)}
                   className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
@@ -1250,58 +1713,46 @@ export default function Quizzes() {
               </p>
             </div>
 
-            {createQuizError && (
-              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
-                {createQuizError}
-              </p>
-            )}
 
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                onClick={handleCancelCreateQuiz}
-                className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateQuiz}
-                className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                Next: Add Questions
-              </button>
+                {createQuizError && (
+                  <p role="alert" className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">{createQuizError}</p>
+                )}
+                <div className="flex flex-wrap justify-between items-center gap-3 border-t border-slate-200 dark:border-slate-700 pt-5">
+                  <button type="button" onClick={() => { void handleCancelCreateQuiz(); }} className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:underline">Cancel</button>
+                  <button type="button" onClick={() => { void handleCreateQuiz(); }} className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700">Next: Add Questions</button>
+                </div>
+              </section>
+              <aside className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 text-sm text-slate-600 dark:text-slate-300 space-y-3">
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100">How the quiz builder works</h3>
+                <p>Enter the title and optional details, then choose the questions students will answer.</p>
+                <p>Supports multiple-choice, open-ended, 3D region identification and 3D annotation matching questions.</p>
+                <p>Nothing is saved to the quiz database until you click Finish editing. Exit without saving discards this draft.</p>
+              </aside>
             </div>
-          </div>
-        </Dialog>
-      )}
-
-      {showCreateQuiz && createdQuiz && (
-        <Dialog onClose={handleCancelCreateQuiz} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-1">
-              {isEditMode ? 'Edit Questions' : 'Add Questions'}
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">
-              Quiz: <span className="font-medium text-slate-700 dark:text-slate-300">{createdQuiz.title}</span>
-            </p>
-            <QuestionBank quizId={createdQuiz.id} onImported={() => { void api.getQuizQuestions(createdQuiz.id).then(setCreatedQuestions).catch(()=>setCreateQuizError('The bank action was saved, but the questions could not reload. Close and reopen this editor.')); }} />
+          )}
+          {showCreateQuiz && createdQuiz && (
+            <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-5 xl:gap-7 items-start">
+              <aside className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 sm:p-5 xl:sticky xl:top-5 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto space-y-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-400">Step 2 of 2</p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">Questions ({createdQuestions.length})</h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{isEditMode ? 'Editing an existing quiz' : 'Creating a new quiz'}</p>
+                </div>
+                <button type="button" onClick={() => startEditingQuizDetails(createdQuiz!)}
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-left text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-800">
+                  Edit quiz details
+                </button>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Type: <span className="font-semibold">{derivedTypePreview}</span></p>
+                {createdQuestions.length === 0 && <p className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 px-3 py-5 text-center text-sm text-slate-500 dark:text-slate-400">No questions yet. Add your first question on the right.</p>}
             {createdQuestions.length > 0 && (
-              <p className="text-xs text-slate-600 dark:text-slate-400 mb-4">
-                Current type (auto-detected):{' '}
-                <span className={`px-2 py-0.5 rounded-full font-medium ${quizTypeBadgeClasses[derivedTypePreview]}`}>
-                  {derivedTypePreview}
-                </span>
-              </p>
-            )}
-
-            {createdQuestions.length > 0 && (
-              <div className="space-y-2 mb-6">
+              <div className="space-y-2">
                 {createdQuestions.map((q, index) => (
                   <div
                     key={q.id}
-                    className="px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-start justify-between gap-3"
+                    className="px-3 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-2"
                   >
-                    <div>
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-slate-800 dark:text-slate-200">
                         Q{index + 1}. {q.question}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -1312,10 +1763,10 @@ export default function Quizzes() {
                         )}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      {!is3D(q.format) && <button onClick={() => { void api.bankQuestion(q.id,createdQuiz.category || '').catch((e: Error) => setCreateQuizError(e.message)); }} className="text-xs text-blue-600 hover:underline">Save to bank</button>}
+                    <div className="flex flex-wrap items-center gap-3">
+                      {!is3D(q.format) && <button type="button" onClick={() => setBankOnSaveIds(prev => prev.includes(q.id) ? prev.filter(id => id !== q.id) : [...prev, q.id])} className="text-xs text-blue-600 hover:underline">{bankOnSaveIds.includes(q.id) ? '✓ Add to bank on save' : 'Add to bank on save'}</button>}
                       <button
-                        onClick={() => handleEditCreatedQuestion(q)}
+                        onClick={() => { handleEditCreatedQuestion(q); document.getElementById('quiz-builder-question-editor')?.scrollIntoView({behavior:'smooth',block:'start'}); }}
                         className="text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                       >
                         Edit
@@ -1332,12 +1783,84 @@ export default function Quizzes() {
               </div>
             )}
 
-            <div className="space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
+
+                <QuestionBank quizId={createdQuiz.id} onStageImport={stageBankQuestion} onImported={() => {}} />
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-4 flex flex-col gap-3">
+                  <button type="button" onClick={() => { void handleFinishCreateQuiz(); }} disabled={createdQuestions.length === 0 || savingEditor}
+                    className="w-full rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                    {savingEditor ? 'Saving quiz…' : 'Finish editing'}
+                  </button>
+                  <button type="button" onClick={handleCancelCreateQuiz} disabled={savingEditor} className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:underline disabled:opacity-50">Exit without saving</button>
+                  {isEditMode && <button type="button" disabled={deletingQuizId === createdQuiz.id || savingEditor}
+                    onClick={() => { void handleDeleteQuiz(createdQuiz); }}
+                    className="text-sm text-red-600 dark:text-red-400 hover:underline disabled:opacity-50">Delete Quiz</button>}
+                </div>
+              </aside>
+              <div className="min-w-0 space-y-5">
+                {editingQuiz && (
+                  <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-7 space-y-4" aria-label="Edit quiz details">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Quiz details</h2>
+                      <button type="button" onClick={closeEditQuiz} className="text-sm text-slate-600 dark:text-slate-400 hover:underline">Close details</button>
+                    </div>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="quizzes-field-6" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Title
+                </label>
+                <input id="quizzes-field-6"
+                  type="text"
+                  value={editQuizTitle}
+                  onChange={(e) => setEditQuizTitle(e.target.value)}
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="quizzes-field-7" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Description
+                </label>
+                <textarea id="quizzes-field-7"
+                  value={editQuizDescription}
+                  onChange={(e) => setEditQuizDescription(e.target.value)}
+                  rows={3}
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="quizzes-field-8" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Category
+                </label>
+                <input id="quizzes-field-8"
+                  type="text"
+                  value={editQuizCategory}
+                  onChange={(e) => setEditQuizCategory(e.target.value)}
+                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                />
+              </div>
+            </div>
+
+
+                    {editQuizError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{editQuizError}</p>}
+                    <div className="flex justify-end gap-3">
+                      <button type="button" onClick={closeEditQuiz} className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:underline">Cancel</button>
+                      <button type="button" onClick={() => { void handleSaveQuizEdit(); }} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700">Save details</button>
+                    </div>
+                  </section>
+                )}
+                <section id="quiz-builder-question-editor" className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-7 space-y-5" aria-label="Question editor">
+                  <div className="border-b border-slate-200 dark:border-slate-700 pb-4">
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{editingQuestionId !== null ? 'Edit question' : 'Add a question'}</h2>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Select the question format and set its correct answer or 3D grading reference. Add Question and Save Changes stage the question locally. Finish editing commits all changes.</p>
+                  </div>
+
+            <div className="space-y-5">
               <div>
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Question Format
                 </p>
-                <div className="mt-1 flex gap-2">
+                <div className="mt-2 grid grid-cols-2 lg:grid-cols-4 gap-2">
                   <button
                     type="button"
                     aria-pressed={newQuestionFormat === 'mcq'}
@@ -1373,8 +1896,8 @@ export default function Quizzes() {
                 <label htmlFor="quizzes-field-4" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Question
                 </label>
-                <input id="quizzes-field-4"
-                  type="text"
+                <textarea id="quizzes-field-4"
+                  rows={3}
                   value={newQuestionText}
                   onChange={(e) => setNewQuestionText(e.target.value)}
                   className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
@@ -1441,30 +1964,31 @@ export default function Quizzes() {
 
               <button
                 onClick={handleSaveQuestion}
-                className="w-full border border-slate-200 dark:border-slate-700 text-sm font-medium rounded-lg text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors px-4 py-2"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors px-5 py-3 w-full sm:w-auto"
               >
                 {editingQuestionId !== null ? 'Save Changes' : '+ Add Question'}
               </button>
             </div>
 
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                onClick={handleCancelCreateQuiz}
-                className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleFinishCreateQuiz}
-                disabled={createdQuestions.length === 0}
-                className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Done
-              </button>
+
+                  {editingQuestionId !== null && (
+                    <button type="button" className="text-sm text-slate-600 dark:text-slate-300 hover:underline" onClick={() => {
+                      setEditingQuestionId(null); setNewQuestionText(''); setNewQuestionFormat('mcq'); setNew3DConfig(null);
+                      setNewModelAnswer(''); setNewOptionA(''); setNewOptionB(''); setNewOptionC(''); setNewOptionD(''); setNewCorrectOption('A'); setCreateQuizError(null);
+                    }}>Cancel question editing</button>
+                  )}
+                </section>
+              </div>
             </div>
-          </div>
-        </Dialog>
+          )}
+        </section>
       )}
+      {isAuthorPage && role !== 'teacher' && (
+        <div role="alert" className="rounded-xl border border-slate-200 dark:border-slate-700 p-6 text-slate-900 dark:text-slate-100">
+          Only teachers can create or edit quizzes.
+        </div>
+      )}
+      {!isDedicatedPage && <>
       {showResultsQuiz && (
         <Dialog onClose={handleCloseResults} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
@@ -1621,74 +2145,7 @@ export default function Quizzes() {
           </div>
         </Dialog>
       )}
-      {editingQuiz && (
-        <Dialog onClose={closeEditQuiz} className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 font-display mb-4">
-              Edit Quiz
-            </h2>
-
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="quizzes-field-6" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Title
-                </label>
-                <input id="quizzes-field-6"
-                  type="text"
-                  value={editQuizTitle}
-                  onChange={(e) => setEditQuizTitle(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="quizzes-field-7" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Description
-                </label>
-                <textarea id="quizzes-field-7"
-                  value={editQuizDescription}
-                  onChange={(e) => setEditQuizDescription(e.target.value)}
-                  rows={3}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors resize-none"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="quizzes-field-8" className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Category
-                </label>
-                <input id="quizzes-field-8"
-                  type="text"
-                  value={editQuizCategory}
-                  onChange={(e) => setEditQuizCategory(e.target.value)}
-                  className="text-slate-900 dark:text-slate-100 mt-1 w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
-                />
-              </div>
-            </div>
-
-            {editQuizError && (
-              <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md px-3 py-2 mt-4">
-                {editQuizError}
-              </p>
-            )}
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={closeEditQuiz}
-                className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveQuizEdit}
-                className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </Dialog>
-      )}
+      </>}
     </div>
   );
 }
