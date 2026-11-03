@@ -10,6 +10,9 @@ import type {
 
 const MASK_SIZE = 1024;
 
+// Set to false to immediately restore the original raycasting path if needed.
+const ENABLE_CONSERVATIVE_RAYCAST_PREFILTER = true;
+
 /**
  * Recreates the alpha mask used by a projected annotation.
  *
@@ -264,6 +267,112 @@ function copySelectedTriangles(
 }
 
 /**
+ * Builds a temporary, conservatively clipped raycast mesh for ONE projector.
+ *
+ * DecalGeometry already restricts its output to the projector's X/Y bounds.
+ * A ray cast along the projector's Z axis therefore cannot hit a source
+ * triangle whose projected X/Y bounding box is entirely outside that area.
+ *
+ * We retain ALL potentially intersecting source triangles and let Three.js
+ * perform the original ray intersections and first-hit ordering unchanged.
+ * No approximate intersection/visibility decision is introduced here.
+ *
+ * Complex meshes fall back to the original raycasting path. The proxy is
+ * discarded after filtering; it never changes source geometry or materials.
+ */
+function createProjectorRaycastProxy(
+  sourceMesh: THREE.Mesh,
+  projectorPosition: THREE.Vector3,
+  projectorOrientation: THREE.Euler,
+  projectorSize: THREE.Vector3,
+): THREE.Mesh | null {
+  const sourceGeometry = sourceMesh.geometry;
+  const position = sourceGeometry.getAttribute('position');
+  const index = sourceGeometry.getIndex();
+  const vertexCount = index?.count ?? position?.count ?? 0;
+  const triangleCount = Math.floor(vertexCount / 3);
+
+  // Building a proxy costs more than it saves for small or complex meshes.
+  // Grouped multi-material, deformed and partial-draw geometries are left on
+  // the original code path to preserve their material/animation semantics.
+  if (
+    !position || triangleCount < 10_000 ||
+    Array.isArray(sourceMesh.material) ||
+    sourceMesh.raycast !== THREE.Mesh.prototype.raycast ||
+    (sourceMesh as THREE.SkinnedMesh).isSkinnedMesh ||
+    (sourceMesh as THREE.InstancedMesh).isInstancedMesh ||
+    (sourceMesh.morphTargetInfluences?.length ?? 0) > 0 ||
+    sourceGeometry.drawRange.start !== 0 ||
+    sourceGeometry.drawRange.count !== Infinity
+  ) return null;
+
+  // Source local space -> projector local space; its rays are parallel to -Z.
+  const toProjector = new THREE.Matrix4()
+    .makeRotationFromEuler(projectorOrientation)
+    .invert()
+    .multiply(new THREE.Matrix4().makeTranslation(
+      -projectorPosition.x, -projectorPosition.y, -projectorPosition.z,
+    ))
+    .multiply(sourceMesh.matrixWorld);
+
+  // Expand, never shrink, the projector rectangle. False positives are fine:
+  // false negatives would change which surface the original raycaster sees.
+  const padding = Math.max(projectorSize.x, projectorSize.y) * 0.001 + 0.000001;
+  const minX = -projectorSize.x * 0.5 - padding;
+  const maxX = projectorSize.x * 0.5 + padding;
+  const minY = -projectorSize.y * 0.5 - padding;
+  const maxY = projectorSize.y * 0.5 + padding;
+
+  const selected: number[] = [];
+  const projected = new THREE.Vector3();
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    let triMinX = Infinity, triMaxX = -Infinity;
+    let triMinY = Infinity, triMaxY = -Infinity;
+
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertexIndex = index ? index.getX(triangle * 3 + corner) : triangle * 3 + corner;
+      projected.set(position.getX(vertexIndex), position.getY(vertexIndex), position.getZ(vertexIndex))
+        .applyMatrix4(toProjector);
+      triMinX = Math.min(triMinX, projected.x);
+      triMaxX = Math.max(triMaxX, projected.x);
+      triMinY = Math.min(triMinY, projected.y);
+      triMaxY = Math.max(triMaxY, projected.y);
+    }
+
+    if (triMaxX >= minX && triMinX <= maxX && triMaxY >= minY && triMinY <= maxY) {
+      selected.push(triangle);
+    }
+  }
+
+  // The conservative prefilter must never make an annotation disappear.
+  // If the scan isn't meaningfully reduced, keep the original raycast path.
+  if (!selected.length || selected.length > triangleCount * 0.6) return null;
+
+  const points = new Float32Array(selected.length * 9);
+  let dest = 0;
+  for (const triangle of selected) {
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertexIndex = index ? index.getX(triangle * 3 + corner) : triangle * 3 + corner;
+      points[dest++] = position.getX(vertexIndex);
+      points[dest++] = position.getY(vertexIndex);
+      points[dest++] = position.getZ(vertexIndex);
+    }
+  }
+
+  const reduced = new THREE.BufferGeometry();
+  reduced.setAttribute('position', new THREE.BufferAttribute(points, 3));
+  reduced.computeBoundingSphere();
+
+  // Keep the same world transform and the exact original material, including
+  // front/back/double-sided raycast behaviour. No mesh is added to the scene.
+  const proxy = new THREE.Mesh(reduced, sourceMesh.material);
+  proxy.matrixAutoUpdate = false;
+  proxy.matrixWorld.copy(sourceMesh.matrixWorld);
+  proxy.layers.mask = sourceMesh.layers.mask;
+  return proxy;
+}
+
+/**
  * Removes decal triangles lying behind the first visible source-model
  * surface from the original projection direction.
  *
@@ -276,6 +385,7 @@ function filterToFirstVisibleSurface(
   projectorPosition: THREE.Vector3,
   projectorOrientation: THREE.Euler,
   projectorSize: THREE.Vector3,
+  usePrefilter = true,
 ): THREE.BufferGeometry {
   const positionAttribute =
     decalGeometry.getAttribute('position');
@@ -353,6 +463,20 @@ function filterToFirstVisibleSurface(
     false,
   );
 
+  let proxy: THREE.Mesh | null = null;
+  if (usePrefilter && ENABLE_CONSERVATIVE_RAYCAST_PREFILTER) {
+    try {
+      proxy = createProjectorRaycastProxy(
+        sourceMesh, projectorPosition, projectorOrientation, projectorSize,
+      );
+    } catch (error) {
+      // An unusual scan must never be prevented from rendering by the fast path.
+      console.warn('Projection raycast prefilter failed; using original mesh.', error);
+    }
+  }
+  const raycastTarget = proxy ?? sourceMesh;
+
+  try {
   for (
     let triangleIndex = 0;
     triangleIndex < triangleCount;
@@ -454,7 +578,7 @@ function filterToFirstVisibleSurface(
 
     const intersections =
       raycaster.intersectObject(
-        sourceMesh,
+        raycastTarget,
         false,
       );
 
@@ -479,6 +603,11 @@ function filterToFirstVisibleSurface(
       );
     }
   }
+  } finally {
+    // Only the temporary proxy is released. Source mesh geometry/materials
+    // belong to the caller and must not be mutated or disposed here.
+    proxy?.geometry.dispose();
+  }
 
   /**
    * Avoid making the entire annotation disappear if an unusual mesh causes
@@ -487,6 +616,14 @@ function filterToFirstVisibleSurface(
   if (
     selectedTriangleIndices.length === 0
   ) {
+    // If the accelerated path found no visible surface, retry the original
+    // algorithm before applying its historical unfiltered fallback.
+    if (proxy) {
+      return filterToFirstVisibleSurface(
+        decalGeometry, sourceMesh, projectorPosition,
+        projectorOrientation, projectorSize, false,
+      );
+    }
     console.warn(
       'Projected-mask filtering removed every triangle. Falling back to the unfiltered decal.',
     );

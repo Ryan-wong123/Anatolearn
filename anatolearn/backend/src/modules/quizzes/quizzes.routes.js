@@ -7,6 +7,8 @@ module.exports = function registerRoutes(app) {
     app.get("/api/quizzes", authenticate, controller.listQuizzes);
     app.get("/api/quizzes/:id/questions", authenticate, controller.listQuestions);
     app.post("/api/quizzes", authenticate, requireTeacher, controller.createQuiz);
+    app.post('/api/quizzes/editor/commit', authenticate, requireTeacher, controller.commitQuizEditor);
+    app.put('/api/quizzes/:id/editor/commit', authenticate, requireTeacher, manage('quizzes'), controller.commitQuizEditor);
     app.put("/api/quizzes/:id", authenticate, requireTeacher, manage('quizzes'), controller.updateQuiz);
     app.delete("/api/quizzes/:id", authenticate, requireTeacher, manage('quizzes'), controller.deleteQuiz);
     app.patch("/api/quizzes/:id/type", authenticate, requireTeacher, manage('quizzes'), controller.setType);
