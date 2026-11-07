@@ -1,0 +1,52 @@
+# Virus scanner for uploads. Scales separately from the API because scanning is CPU and memory heavy.
+# Each replica downloads the signature database on start (emptyDir), so allow several minutes before it is Ready.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anatolearn-clamav
+  labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: clamav }
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: clamav }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: clamav }
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: clamav
+          image: clamav/clamav:1.4
+          ports: [{ name: clamd, containerPort: 3310 }]
+          env:
+            - { name: CLAMD_CONF_StreamMaxLength, value: 250M }
+            - { name: CLAMD_CONF_MaxFileSize, value: 250M }
+            - { name: CLAMD_CONF_MaxScanSize, value: 500M }
+          resources:
+            requests: { cpu: 250m, memory: 2Gi }
+            limits: { memory: 3Gi }
+          volumeMounts:
+            - { name: db, mountPath: /var/lib/clamav }
+          startupProbe:
+            exec: { command: ["clamdcheck.sh"] }
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            exec: { command: ["clamdcheck.sh"] }
+            periodSeconds: 30
+            timeoutSeconds: 10
+      volumes:
+        - name: db
+          emptyDir: { sizeLimit: 2Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anatolearn-clamav
+  labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: clamav }
+spec:
+  selector: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: clamav }
+  ports: [{ name: clamd, port: 3310, targetPort: clamd }]

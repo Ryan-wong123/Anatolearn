@@ -1,0 +1,38 @@
+# Needs metrics-server. CPU targets are a starting point: confirm with a load test (see docs/Deployment.md).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: anatolearn-backend
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: anatolearn-backend }
+  minReplicas: 2
+  maxReplicas: 8   # maxReplicas x DB_POOL_MAX (default 10) = 80 database connections
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 300 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: anatolearn-web
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: anatolearn-web }
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: anatolearn-clamav
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: anatolearn-clamav }
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
