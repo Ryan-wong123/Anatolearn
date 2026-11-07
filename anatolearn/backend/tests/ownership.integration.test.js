@@ -240,8 +240,8 @@ test('content ownership: teachers manage only their own content and see only the
           routes.push({ key: `${method.toUpperCase()} ${layer.route.path}`, method, teacher: handlers.some((h) => h.name === 'requireTeacher'), guarded: handlers.some((h) => h.ownership) });
         }
       }
-      // Creating something new, claiming, and reading lists that are already scoped to the teacher need no per-row guard.
-      const exceptions = new Set(['POST /api/models/upload', 'POST /api/resources/upload', 'POST /api/videos/upload', 'POST /api/quizzes', 'POST /api/announcements',
+      // Creating something new (the editor commit without an id inserts a quiz owned by the requester), claiming, and reading lists that are already scoped to the teacher need no per-row guard.
+      const exceptions = new Set(['POST /api/models/upload', 'POST /api/resources/upload', 'POST /api/videos/upload', 'POST /api/quizzes', 'POST /api/quizzes/editor/commit', 'POST /api/announcements',
         'POST /api/:kind/:id/claim', 'GET /api/models/:id/annotations/export', 'GET /api/annotations', 'GET /api/question-bank', 'GET /api/teacher/overview']);
       const teacherRoutes = routes.filter((route) => route.teacher);
       assert.ok(teacherRoutes.length >= 40, `found ${teacherRoutes.length} teacher routes`);

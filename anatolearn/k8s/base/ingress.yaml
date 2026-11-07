@@ -1,0 +1,26 @@
+# Replaces Caddy. Requires ingress-nginx and cert-manager (ClusterIssuer "letsencrypt"); the host is set per overlay.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: anatolearn
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    # Largest upload is 200 MB plus form overhead; matches client_max_body_size in nginx.conf.
+    nginx.ingress.kubernetes.io/proxy-body-size: 210m
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [anatolearn.example.com]
+      secretName: anatolearn-tls
+  rules:
+    - host: anatolearn.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: anatolearn-web, port: { name: http } }

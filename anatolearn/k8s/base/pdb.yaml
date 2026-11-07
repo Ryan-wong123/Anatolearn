@@ -1,0 +1,26 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: anatolearn-backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: backend }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: anatolearn-web
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: web }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: anatolearn-clamav
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: clamav }

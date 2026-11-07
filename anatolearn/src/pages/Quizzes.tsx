@@ -9,7 +9,7 @@ import BarList from '../components/dashboard/BarList';
 import Sparkline from '../components/dashboard/Sparkline';
 import type { StudentStats } from '../types/portal';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Clock, BookOpen, Search, Heart, RotateCcw, ArrowLeft, ChevronLeft, ChevronRight, X, Check, Sun, Moon } from 'lucide-react';
+import { Clock, BookOpen, Search, Heart, RotateCcw, ChevronLeft, ChevronRight, X, Check, Sun, Moon } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContextState';
 import { useToast } from '../context/ToastContextState';
@@ -17,6 +17,9 @@ import { api } from '../api/api';
 import ThreeDQuestion, { type Student3DConfig } from '../components/quiz/ThreeDQuestion';
 import ThreeDQuestionEditor, { type Teacher3DConfig } from '../components/quiz/ThreeDQuestionEditor';
 import type { RegionReview } from '../components/quiz/regionFeedback';
+
+// Read at event time (draft writes), never during render.
+const currentTime = () => Date.now();
 
 interface Quiz {
   id: number;
@@ -255,6 +258,8 @@ export default function Quizzes() {
   useEffect(() => {
     if (!isAuthorPage || role !== 'teacher') return;
     if (/^\/quizzes\/create\/?$/.test(location.pathname)) {
+      // Mirrors the router location into component state when a deep link is opened.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowCreateQuiz(true);
       return;
     }
@@ -300,6 +305,8 @@ export default function Quizzes() {
   // "Create quiz" action pointing at a previously edited quiz.
   useEffect(() => {
     if (role !== 'teacher' || location.pathname !== '/quizzes') return;
+    // Resets the editor state when the router returns to the list (browser Back).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowCreateQuiz(false);
     setCreatedQuiz(null);
     setCreatedQuestions([]);
@@ -335,7 +342,7 @@ export default function Quizzes() {
     if (!draftKeyRef.current || !draftSessionRef.current) return;
     try {
       localStorage.setItem(draftKeyRef.current, JSON.stringify({
-        sessionId: draftSessionRef.current, answers, revision, currentQuestion: index, updatedAt: Date.now(),
+        sessionId: draftSessionRef.current, answers, revision, currentQuestion: index, updatedAt: currentTime(),
       } satisfies CachedQuizDraft));
     } catch { /* Server autosave remains available when browser storage is disabled/full. */ }
   };
@@ -611,6 +618,8 @@ export default function Quizzes() {
       if (loading) return;
       routeHydration.current = location.pathname;
       const quiz = quizzes.find((entry) => entry.id === quizId);
+      // Resumes the attempt named by the URL; routeHydration prevents a second run.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (quiz) void handleResumeQuiz(quiz);
       else setRouteError('This quiz is unavailable. Return to the quiz list and try again.');
     } else {
@@ -636,6 +645,8 @@ export default function Quizzes() {
     draftSessionRef.current = '';
     draftKeyRef.current = null;
     routeHydration.current = null;
+    // Browser Back clears the in-memory attempt; the server session stays resumable.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveQuiz(null);
     setSessionId('');
     setExpiresAt(null);
@@ -859,12 +870,12 @@ export default function Quizzes() {
       question: payload.question,
       format: payload.format,
       category: editingQuestionId !== null ? createdQuestions.find(q => q.id === editingQuestionId)?.category || null : null,
-      option_a: 'option_a' in payload ? payload.option_a : null,
-      option_b: 'option_b' in payload ? payload.option_b : null,
-      option_c: 'option_c' in payload ? payload.option_c : null,
-      option_d: 'option_d' in payload ? payload.option_d : null,
-      correct_option: 'correct_option' in payload ? payload.correct_option : null,
-      model_answer: 'model_answer' in payload ? payload.model_answer : null,
+      option_a: 'option_a' in payload ? payload.option_a ?? null : null,
+      option_b: 'option_b' in payload ? payload.option_b ?? null : null,
+      option_c: 'option_c' in payload ? payload.option_c ?? null : null,
+      option_d: 'option_d' in payload ? payload.option_d ?? null : null,
+      correct_option: 'correct_option' in payload ? payload.correct_option ?? null : null,
+      model_answer: 'model_answer' in payload ? payload.model_answer ?? null : null,
       question_config: 'question_config' in payload ? payload.question_config : null,
     };
     setCreatedQuestions(prev => editingQuestionId !== null

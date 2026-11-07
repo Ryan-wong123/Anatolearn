@@ -140,10 +140,14 @@ export default function ThreeDQuestion({format,config,value,onChange,disabled=fa
   useEffect(()=>{ write.current=onChange; current.current=value; placeMarkerRef.current=onPlaceMarker; },[onChange,value,onPlaceMarker]);
   useEffect(()=>{drawingEnabled.current = !disabled && mode==='draw' && (format==='region_identification' || authoring==='matching');
     placingEnabled.current = false;},[format,mode,disabled,authoring]);
+  // Leaving edit mode while disabled returns the camera to orbit.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(()=>{if(disabled && authoring==='matching')setMode('orbit');},[disabled,authoring]);
 
   useEffect(()=>{
     let cancelled=false;
+    // Reset the loaded model before fetching the one for the new question.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setModel(null);setRecords([]);setLoaded(false);setError('');
     Promise.all([api.getModel(config.model_id),api.getAnnotations(config.model_id)]).then(([m,a]:[ModelRecord,AnnotationRecord[]])=>{
       if(cancelled)return;
@@ -294,7 +298,7 @@ export default function ThreeDQuestion({format,config,value,onChange,disabled=fa
         if(authoring==='matching' && projectedMask){
           // Position the numbered badge on the visible model surface near the
           // centre of the painted structure, not an arbitrary border click.
-          const centre=localPoints.reduce((v,p)=>v.add(new THREE.Vector3(p.x,p.y,p.z)),new THREE.Vector3()).divideScalar(localPoints.length);
+          const centre=localPoints.reduce<THREE.Vector3>((v,p)=>v.add(new THREE.Vector3(p.x,p.y,p.z)),new THREE.Vector3()).divideScalar(localPoints.length);
           const ndc=centre.clone().project(camera);
           const ray=new THREE.Raycaster();ray.setFromCamera(new THREE.Vector2(ndc.x,ndc.y),camera);
           const centreHit=ray.intersectObjects(sourceMeshes,false).find(h=>sourceMeshes.indexOf(h.object as THREE.Mesh)===activeDrawMeshIndex);
@@ -464,7 +468,7 @@ export default function ThreeDQuestion({format,config,value,onChange,disabled=fa
       }
       setLoaded(true);
     };
-    let loadError=(err:unknown)=>{if(!disposed)setError(err instanceof Error?err.message:'Model could not be loaded')};
+    const loadError=(err:unknown)=>{if(!disposed)setError(err instanceof Error?err.message:'Model could not be loaded')};
     if(path.endsWith('.obj'))new OBJLoader().load(model.file_path,onLoaded,undefined,loadError);
     else if(path.endsWith('.usdz'))new USDLoader().load(model.file_path,onLoaded,undefined,loadError);
     else new GLTFLoader().load(model.file_path,gltf=>onLoaded(gltf.scene),undefined,loadError);
