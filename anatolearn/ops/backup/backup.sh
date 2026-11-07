@@ -1,5 +1,6 @@
 #!/bin/sh
 # Dumps the database to S3 every BACKUP_INTERVAL_HOURS (default 24). Credentials come from the EC2 instance role.
+# BACKUP_ONCE=true runs a single dump and exits (used by the Kubernetes CronJob).
 # Retention is handled by an S3 lifecycle rule on the backups/ prefix (see docs/Deployment.md).
 set -u
 : "${S3_BUCKET:?S3_BUCKET is required}"
@@ -17,5 +18,6 @@ while true; do
     log error "backup failed" "db-$stamp.dump"
   fi
   rm -f "$file"
+  if [ "${BACKUP_ONCE:-false}" = true ]; then [ -f /tmp/last-backup-ok ] && exit 0 || exit 1; fi
   sleep $((INTERVAL_HOURS * 3600))
 done

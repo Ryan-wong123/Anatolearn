@@ -33,13 +33,13 @@ function values(q) {
 async function validate3DReferences(q) {
     if (!['region_identification', 'annotation_matching'].includes(q.format)) return null;
     const c = q.question_config;
-    const model = (await pool.query('SELECT id FROM models WHERE id=$1', [c.model_id])).rows[0];
+    const model = (await repository.findModel([c.model_id])).rows[0];
     if (!model) return 'Model not found';
     // Question-specific annotations are stored exclusively in question_config.
     // They are not inserted into the public annotations table.
     if (c.source === 'custom') return null;
     const ids = q.format === 'region_identification' ? [c.reference_annotation_id] : c.annotation_ids;
-    const { rows } = await pool.query(`SELECT id,label,annotation_type,annotation_data FROM annotations WHERE model_id=$1 AND id=ANY($2::int[])`, [c.model_id, ids]);
+    const { rows } = await repository.listReferenceAnnotations([c.model_id, ids]);
     if (rows.length !== ids.length || rows.some(row => !row.annotation_data?.projectedMask))
         return 'Choose existing projected annotations from the selected model';
     if (q.format === 'region_identification' && (rows[0].annotation_type !== 'region_fill' || rows[0].annotation_data.projectedMask.mode !== 'fill'))
