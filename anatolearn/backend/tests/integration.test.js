@@ -103,6 +103,19 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
       assert.equal((await call(`/api/quizzes/${quiz.id}/start`,other.token,{})).status,404);
       session=await(await call(`/api/quizzes/${quiz.id}/start`,student.token,{})).json();
       assert.ok(session.expires_at);assert.equal(session.questions.length,2);assert.ok(!('correct_option' in session.questions[0]));
+      const again=await(await call(`/api/quizzes/${quiz.id}/start`,student.token,{})).json();
+      assert.equal(again.session_id,session.session_id,'starting twice resumes the same active attempt');
+      assert.equal(again.expires_at,session.expires_at,'resuming must not reset the timer');
+      const draft={ [q1.id]:'B', [q2.id]:'Working on my answer' };
+      assert.equal((await call(`/api/quiz-sessions/${session.session_id}/draft`,student.token,{answers:draft,revision:1},'PUT')).status,200);
+      const resumed=await(await call(`/api/quizzes/${quiz.id}/active`,student.token)).json();
+      assert.deepEqual(resumed.draft_answers,draft);
+      assert.equal(resumed.draft_revision,1);
+      assert.equal(resumed.session_id,session.session_id);
+      assert.equal(resumed.expires_at,session.expires_at);
+      assert.equal((await call(`/api/quiz-sessions/${session.session_id}/draft`,student.token,{answers:draft,revision:0},'PUT')).status,400);
+      assert.equal((await call(`/api/quiz-sessions/${session.session_id}/draft`,other.token,{answers:draft,revision:2},'PUT')).status,409, 'another student cannot save the owner\'s draft');
+      assert.equal((await call(`/api/quiz-sessions/${session.session_id}/draft`,teacher.token,{answers:draft,revision:2},'PUT')).status,403);
     });
     await t.test('invalid submissions create no partial attempts, successful submissions are single use',async()=>{
       const bad=await call(`/api/quizzes/${quiz.id}/submit`,student.token,{session_id:session.session_id,answers:[{question_id:q1.id,selected_option:'B'},{question_id:q1.id,selected_option:'B'}]});assert.equal(bad.status,400);
@@ -196,8 +209,12 @@ test('authenticated assets, permissions, programmes, assessment sessions and que
     await t.test('abandoned untimed sessions expire and maintenance preserves active sessions',async()=>{
       const id=quizIds[quizIds.length-1];
       const expired=await(await call(`/api/quizzes/${id}/start`,student.token,{})).json();
-      const active=await(await call(`/api/quizzes/${id}/start`,student.token,{})).json();
+      const same=await(await call(`/api/quizzes/${id}/start`,student.token,{})).json();
+      assert.equal(same.session_id,expired.session_id);
       await pool.query("UPDATE quiz_sessions SET session_expires_at=NOW()-INTERVAL '1 second' WHERE id=$1",[expired.session_id]);
+      assert.equal((await call(`/api/quizzes/${id}/active`,student.token)).status,410);
+      const active=await(await call(`/api/quizzes/${id}/start`,student.token,{})).json();
+      assert.notEqual(active.session_id,expired.session_id);
       assert.equal((await call(`/api/quizzes/${id}/submit`,student.token,{session_id:expired.session_id,answers:[]})).status,409);
       await require('../src/maintenance').cleanupSessions(pool);
       const rows=(await pool.query('SELECT id,submitted_at FROM quiz_sessions WHERE id=ANY($1::uuid[])',[[expired.session_id,active.session_id]])).rows;

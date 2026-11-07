@@ -7,7 +7,7 @@ interface BankQuestion {
   option_a:string|null; option_b:string|null; option_c:string|null; option_d:string|null;
   correct_option:string|null; model_answer:string|null;
 }
-export default function QuestionBank({quizId,onImported}:{quizId:number;onImported:()=>void}) {
+export default function QuestionBank({quizId,onImported,onStageImport}:{quizId:number;onImported:()=>void;onStageImport?: (q: BankQuestion)=>void}) {
   const {data:questions,loading,error:loadError,reload:refresh}=useResource<BankQuestion[]>(api.getQuestionBank,[]);
   const [busy,setBusy]=useState(false);
   const [search,setSearch]=useState('');
@@ -22,12 +22,13 @@ export default function QuestionBank({quizId,onImported}:{quizId:number;onImport
   const input='w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-sm';
   return <details className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-slate-900 dark:text-slate-100">
     <summary onClick={()=>void refresh()} className="cursor-pointer">Question bank — browse, edit and import</summary>
+    {onStageImport && <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Imported questions are staged until you finish editing. Changes to the shared question bank itself save immediately.</p>}
     <RequestState loading={loading} error={loadError} onRetry={refresh} label="question bank" />
     <input aria-label="Search question bank by question or body system" value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search question or body system" className={input+' my-2'} />
     <div className="max-h-60 overflow-y-auto space-y-2">{filtered.map((q)=><div key={q.id} className="rounded border p-2 text-sm">
       <p>{q.question} <span className="text-xs text-slate-500">{q.category || 'Uncategorised'}</span></p>
       <div className="flex flex-wrap gap-3 mt-2">
-        <button disabled={busy} onClick={()=>void act(()=>api.importQuestion(quizId,q.id))} className="text-blue-600 hover:underline">Add to quiz</button>
+        <button disabled={busy} onClick={()=>{ if(onStageImport) onStageImport(q); else void act(()=>api.importQuestion(quizId,q.id)); }} className="text-blue-600 hover:underline">Add to quiz</button>
         <button disabled={busy} onClick={()=>setEditing({...q})} className="text-blue-600 hover:underline">Edit bank copy</button>
         <button disabled={busy} onClick={()=>void act(()=>api.deleteBankQuestion(q.id))} className="text-red-600 hover:underline">Remove from bank</button>
       </div>
