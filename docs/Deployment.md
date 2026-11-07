@@ -1,6 +1,6 @@
 # Deployment Guide: AWS EC2 + S3
 
-Everything needed to take AnatoLearn from a fresh AWS account to a running, monitored HTTPS site.
+Everything needed to take AnatoLearn from a fresh AWS account to a running, monitored HTTPS site. The checklist and steps 1-15 describe a single EC2 instance running Docker Compose. To run on Kubernetes instead, see "Kubernetes (optional alternative to EC2 + Compose)" near the end of this guide.
 
 ## Architecture
 
@@ -500,24 +500,324 @@ They then sign in with the password and enrol again. Do this only after confirmi
 
 ## Kubernetes (optional alternative to EC2 + Compose)
 
-Use this when one EC2 instance is no longer enough. Manifests are in `anatolearn/k8s/` (Kustomize). They have not been applied to a real cluster yet, so treat the first rollout as a staging exercise.
+Use this when one EC2 instance is no longer enough: several backend, web and virus-scanner copies behind a load balancer, with autoscaling and rolling updates. Docker Compose on EC2 (steps 1-15 above) remains fully supported and is the simpler choice for a small site.
 
-Prerequisites: an EKS (or other) cluster with ingress-nginx, cert-manager (a `ClusterIssuer` named `letsencrypt`), metrics-server and, for NetworkPolicies, a CNI that enforces them; managed PostgreSQL 16 and Redis 7; the S3 bucket from step 2; an IAM role for the `anatolearn` ServiceAccount (IRSA) with the bucket policy from step 3.
+> **Status:** the manifests in `anatolearn/k8s/` render with `kubectl kustomize` and pass the CI schema check, but they have **not been applied to a real cluster yet**. Treat the first rollout as a staging exercise and expect to adjust things (see "Troubleshooting on Kubernetes"). Sizes and autoscaling targets are starting points until you load test.
 
-1. Build and push three images to your registry: `anatolearn/backend` (`Dockerfile.prod`), `anatolearn` (`Dockerfile.web.prod`, tag it `anatolearn-web`) and `anatolearn/ops/backup`.
-2. Create the least-privilege database role once against the managed database: `PGHOST=... PGPASSWORD=... POSTGRES_USER=anatolearn POSTGRES_DB=anatolearn APP_DB_PASSWORD=... bash anatolearn/ops/postgres-init/10-app-role.sh`.
-3. Edit the `CHANGE` values in `k8s/overlays/production/kustomization.yaml` (image names and tags, IAM role ARN, host). Copy `secret.example.yaml` to `secret.yaml`, fill it in and apply it with `kubectl create namespace anatolearn` first if needed.
-4. `kubectl apply -k anatolearn/k8s/overlays/production`, then wait for the migration Job: `kubectl -n anatolearn wait --for=condition=complete job/anatolearn-migrate --timeout=300s`. ClamAV pods take several minutes to become Ready.
-5. Create the first administrator as in step 11, using `kubectl -n anatolearn exec deploy/anatolearn-backend -- node scripts/create-admin.js`.
+### What runs where
 
-Updating: push new images, change the tags, delete the old migration Job (`kubectl -n anatolearn delete job anatolearn-migrate --ignore-not-found`) and apply again. Pods roll one at a time with no downtime.
+```
+Browser --HTTPS--> load balancer --> ingress-nginx (TLS from cert-manager)
+                      -> web pods (nginx: React app, proxies /api and asset paths)
+                           -> backend pods (Node API, 2-8) --> managed PostgreSQL (runtime role, DML only)
+                                          |--> managed Redis (read cache and shared rate limits)
+                                          |--> ClamAV pods (every upload is scanned)
+                                          \--> S3 (private bucket, IAM role on the pod, no keys)
+migrate Job (before each rollout)     backup CronJob --> pg_dump --> S3 backups/
+```
 
-Scaling notes:
+| Docker Compose | Kubernetes |
+|---|---|
+| Caddy | Ingress (ingress-nginx plus cert-manager). 210 MB request bodies, 300 s timeouts, request buffering off |
+| `web` | Deployment `anatolearn-web`, 2-6 pods (autoscaled at 60% CPU) |
+| `backend` | Deployment `anatolearn-backend`, 2-8 pods (autoscaled at 60% CPU), `RUN_MIGRATIONS=false` |
+| `clamav` | Deployment `anatolearn-clamav`, 2-4 pods (autoscaled at 70% CPU), 2 Gi requested, 3 Gi limit |
+| `postgres`, `redis` | **Not deployed.** Use managed PostgreSQL 16 and Redis 7 (for example RDS and ElastiCache) |
+| migrations on API start | Job `anatolearn-migrate`, run before every rollout |
+| `backup` loop | CronJob `anatolearn-backup`, daily at 18:30 UTC (02:30 Singapore) |
+| EC2 instance role | ServiceAccount `anatolearn` linked to an IAM role (IRSA) |
+| Docker network isolation | NetworkPolicies: deny inbound by default, then Ingress to web to backend to ClamAV |
 
-- Every backend replica opens up to `DB_POOL_MAX` (default 10) connections. The HPA maximum of 8 backend pods therefore needs about 80 database connections; raise the database limit, lower `DB_POOL_MAX`, or put PgBouncer in front.
-- Rate limits are shared through Redis. `CACHE_ENABLED=false` also turns the shared limiter off (per-pod limits).
-- Load test staging before trusting the HPA targets: `k6 run -e BASE_URL=https://staging.example.com -e EMAIL=student@school.edu -e PASSWORD=... anatolearn/ops/loadtest/k6.js` (options `PEAK_VUS`, `HOLD`, `THINK`; see the header of the script). It signs in once with a student account (no MFA), then browses programmes, models and videos. All virtual users share one IP, so set `DISABLE_RATE_LIMIT=true` on the staging backend only, otherwise the 600 requests per minute per IP limit returns 429s (counted separately as `rate_limited`). Watch database CPU and connections, ClamAV CPU during uploads (the script does not upload), and backend egress for video streaming.
-- Images: `.github/workflows/images.yml` publishes `ghcr.io/<owner>/anatolearn-{backend,web,backup}:<commit sha>` on pushes to main. Point the overlay's `images` entries at them (and add an image pull secret if the packages are private) or push to ECR instead.
+Every pod runs as a non-root user with a read-only root filesystem, no extra capabilities and the default seccomp profile (ClamAV is the exception). The backend gets a 2 Gi `/tmp` volume where uploads are staged while they are validated and scanned. Pods have disruption budgets (at least one stays up during node maintenance), are spread across nodes, and are replaced one at a time with no downtime. The backend takes 10 seconds to leave the load balancer and up to 120 seconds to finish in-flight uploads before it stops.
+
+What makes several backend copies behave as one: login state is a JWT plus a database row, assets live in S3, the Redis cache is versioned in PostgreSQL, and migrations and session cleanup are guarded by PostgreSQL advisory locks. Two things were added for this: rate limits are counted in Redis (`src/rateLimitStore.js`) so a limit of 10 logins per 15 minutes stays 10 however many pods there are, and `DB_POOL_MAX` sets each pod's database pool.
+
+### Files
+
+| Path | Purpose |
+|---|---|
+| `k8s/base/` | Deployments, Services, Ingress, autoscalers, disruption budgets, network policies, migration Job, backup CronJob, ServiceAccount |
+| `k8s/base/kustomization.yaml` | Non-secret settings (ConfigMap `anatolearn-config`), image names, and the nginx upstream ConfigMap |
+| `k8s/base/nginx-upstream.conf` | Tells nginx where the API is (`anatolearn-backend`) and which DNS server to ask. Mounted over `/etc/nginx/upstream.conf` in the web image; the image's own copy (`ops/nginx-upstream.conf`) serves Compose |
+| `k8s/overlays/production/kustomization.yaml` | **The file you edit:** image names and tags, IAM role, domain (marked `CHANGE`) |
+| `k8s/overlays/production/secret.example.yaml` | Template for the `anatolearn-secrets` Secret. Copy to `secret.yaml` (git-ignored); it is deliberately not part of the kustomization |
+| `ops/loadtest/k6.js` | Load test for staging |
+| `.github/workflows/kubernetes.yml` | CI: renders both kustomizations, validates them against Kubernetes 1.31 schemas, checks the Compose nginx config |
+| `.github/workflows/images.yml` | CI: builds the three images; on pushes to `main` publishes them to GHCR tagged with the commit SHA |
+
+### Prerequisites
+
+Tools on your computer: AWS CLI (configured), `eksctl`, `kubectl`, `helm`, Docker. The commands below assume:
+
+```bash
+export REGION=ap-southeast-1
+export CLUSTER=anatolearn-staging
+export DOMAIN=staging.example.com    # a domain you can edit DNS for
+```
+
+Staging costs roughly $10-15 a day while it runs (cluster, three nodes, database, Redis, load balancer; check current AWS prices). Remove it when you are done (see "Tear down").
+
+### K1. Create the cluster
+
+```bash
+eksctl create cluster --name $CLUSTER --region $REGION --version 1.31 \
+  --nodegroup-name std --node-type t3.large --nodes 3 --nodes-min 3 --nodes-max 5 --with-oidc
+```
+
+This takes 15-20 minutes. Three `t3.large` nodes leave room for two ClamAV pods (2 Gi each) alongside the rest. `--with-oidc` is required for the S3 role in K3. Turn on NetworkPolicy enforcement, otherwise the network policies are accepted and silently do nothing:
+
+```bash
+aws eks update-addon --cluster-name $CLUSTER --region $REGION --addon-name vpc-cni \
+  --configuration-values '{"enableNetworkPolicy":"true"}'
+```
+
+### K2. Install the cluster add-ons
+
+```bash
+# CPU metrics for the autoscalers
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# Ingress. "Local" keeps real visitor IPs, which the rate limiter and audit log rely on.
+helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx \
+  -n ingress-nginx --create-namespace \
+  --set controller.service.externalTrafficPolicy=Local \
+  --set-string controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+
+# HTTPS certificates
+helm upgrade --install cert-manager cert-manager --repo https://charts.jetstack.io \
+  -n cert-manager --create-namespace --set crds.enabled=true
+```
+
+Create the certificate issuer (the manifests expect it to be named `letsencrypt`; use your own email address):
+
+```bash
+kubectl apply -f - <<'YAML'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata: { name: letsencrypt }
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: YOU@example.com
+    privateKeySecretRef: { name: letsencrypt-account }
+    solvers: [{ http01: { ingress: { ingressClassName: nginx } } }]
+YAML
+```
+
+Point DNS at the load balancer: look up its hostname and create a CNAME for `$DOMAIN` pointing to it.
+
+```bash
+kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+### K3. S3 bucket and the pod's IAM role
+
+Create the bucket and the `anatolearn-app` policy exactly as in steps 2 and 3 (the policy's S3 statements are what the pods need; the CloudWatch Logs statement is only used on EC2). Then create a role that the `anatolearn` ServiceAccount can assume, replacing the instance role:
+
+```bash
+eksctl create iamserviceaccount --cluster $CLUSTER --region $REGION \
+  --name anatolearn --namespace anatolearn \
+  --attach-policy-arn arn:aws:iam::ACCOUNT_ID:policy/anatolearn-app \
+  --role-name anatolearn-app --role-only --approve
+```
+
+Keep the role ARN (`arn:aws:iam::ACCOUNT_ID:role/anatolearn-app`) for K6. The same role serves the backup CronJob. No access keys are ever put in the cluster.
+
+### K4. PostgreSQL and Redis
+
+Create both in the **same VPC** as the cluster (the console is easiest):
+
+- **PostgreSQL 16** (for example RDS `db.t4g.small`): master username `anatolearn`, initial database `anatolearn`, not publicly accessible.
+- **Redis 7** (for example ElastiCache `cache.t4g.small`, one node): used for the read cache and the shared rate limits.
+- On both security groups, allow inbound from the cluster's **node security group**: port 5432 for PostgreSQL, 6379 for Redis. Find the node security group in the EKS console under the cluster's networking tab.
+
+Note the PostgreSQL endpoint and the Redis primary endpoint. Choose the database passwords now: a master (owner) password, and a different password for the least-privilege runtime role created in K7.
+
+### K5. Build and push the images
+
+Either push to your own registry (below) or let CI publish to GHCR (see "Images from CI").
+
+```bash
+export ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+export ECR=$ACCOUNT.dkr.ecr.$REGION.amazonaws.com
+for n in backend web backup; do aws ecr create-repository --repository-name anatolearn-$n --region $REGION; done
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ECR
+
+# from the repository root. On an Apple Silicon Mac add --platform linux/amd64 to each build.
+docker build -t $ECR/anatolearn-backend:v1 -f anatolearn/backend/Dockerfile.prod anatolearn/backend
+docker build -t $ECR/anatolearn-web:v1     -f anatolearn/Dockerfile.web.prod anatolearn
+docker build -t $ECR/anatolearn-backup:v1  anatolearn/ops/backup
+for n in backend web backup; do docker push $ECR/anatolearn-$n:v1; done
+```
+
+EKS nodes can pull from ECR in the same account without extra setup. Use a new tag for every release; do not reuse `latest`.
+
+Image notes: the backend image upgrades the base image's bundled npm (the Node base ships one with known vulnerabilities in its own dependencies); npm stays installed because the maintenance commands below use `npm run`. The web image is built on the maintained `nginx-unprivileged` 1.30 line and applies Alpine security updates (`apk upgrade`) in its final stage. CI scans both with Trivy and fails on fixable HIGH and CRITICAL findings, so base-image bumps come up from time to time.
+
+### K6. Configure the overlay and the secret
+
+Edit `anatolearn/k8s/overlays/production/kustomization.yaml` and replace every `CHANGE`:
+
+- the three image names (`$ECR/anatolearn-...`) and the tag (`v1`);
+- the role ARN from K3;
+- the host, `$DOMAIN`, in both ingress patches.
+
+Create the secret file (it is git-ignored; never commit it):
+
+```bash
+cd anatolearn/k8s/overlays/production
+cp secret.example.yaml secret.yaml
+```
+
+Fill in `secret.yaml`. Every key is read by the manifests:
+
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | `postgres://anatolearn_app:APP_DB_PASSWORD@DB_HOST:5432/anatolearn` (runtime role, DML only) |
+| `MIGRATION_DATABASE_URL` | `postgres://anatolearn:OWNER_PASSWORD@DB_HOST:5432/anatolearn` (owner role, used by the migration Job) |
+| `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` | Owner connection details, used by the backup CronJob |
+| `REDIS_URL` | `redis://REDIS_HOST:6379` |
+| `JWT_SECRET` | `openssl rand -base64 48` |
+| `MFA_ENCRYPTION_KEY` | `openssl rand -hex 32`. Set once and never change it (see step 11) |
+| `TEACHER_INVITE_CODE` | At least 12 characters |
+| `ALLOWED_EMAIL_DOMAINS` | For example `school.edu,students.school.edu` |
+| `FRONTEND_ORIGINS` | `https://$DOMAIN` (exact origin, no trailing slash) |
+| `WEBAUTHN_RP_ID` | `$DOMAIN` (no scheme or port) |
+| `S3_BUCKET`, `S3_PREFIX`, `AWS_REGION` | The bucket from K3, an optional prefix, the region |
+
+Non-secret settings (`MFA_REQUIRED=true`, `CLAMAV_REQUIRED=true`, `TRUST_PROXY=2`, `DB_POOL_MAX=10`, upload quotas, session idle times and so on) live in `k8s/base/kustomization.yaml`. `TRUST_PROXY=2` matches Ingress, then web, then backend; change it only if you add or remove a proxy. For anything stricter than a plain Secret, use External Secrets Operator or Sealed Secrets and keep the same key names.
+
+### K7. Create the least-privilege database role
+
+The database is private, so run the script from inside the cluster (once per database, from `anatolearn/k8s/overlays/production`):
+
+```bash
+kubectl create namespace anatolearn
+kubectl -n anatolearn run dbinit --rm -it --restart=Never --image=postgres:16 \
+  --env PGHOST=DB_HOST --env PGPASSWORD=OWNER_PASSWORD \
+  --env POSTGRES_USER=anatolearn --env POSTGRES_DB=anatolearn --env APP_DB_PASSWORD=APP_DB_PASSWORD \
+  --command -- bash -c "$(cat ../../../ops/postgres-init/10-app-role.sh)"
+```
+
+It creates the `anatolearn_app` role that `DATABASE_URL` uses. Without it, or if `DATABASE_URL` uses the owner account, the API warns at start-up that it runs with elevated database privileges.
+
+### K8. Deploy
+
+```bash
+kubectl apply -f secret.yaml
+kubectl apply -k .
+kubectl -n anatolearn wait --for=condition=complete job/anatolearn-migrate --timeout=300s
+kubectl -n anatolearn logs job/anatolearn-migrate
+kubectl -n anatolearn get pods -w            # ClamAV takes several minutes to become Ready
+kubectl -n anatolearn get certificate        # becomes Ready once DNS resolves
+```
+
+Then open `https://$DOMAIN`. All pods should be `Running` and `Ready`, and `kubectl -n anatolearn get hpa` should show real CPU percentages (not `<unknown>`).
+
+### K9. Create the first administrator
+
+`kubectl exec` has no `-e` flag, so pass the password through `env`:
+
+```bash
+kubectl -n anatolearn exec deploy/anatolearn-backend -- \
+  env ADMIN_PASSWORD='A-strong-password-1' node scripts/create-admin.js "Admin Name" admin@example.com
+```
+
+Password rules, two-factor enrolment, passkeys and creating a second administrator are exactly as in step 11. **Do not skip the two-factor part.**
+
+### K10. Verify
+
+- Sign in, then upload a model, a video and a resource (step 12). This exercises Ingress, nginx, the API, ClamAV and S3 together. An upload that fails with 413 or times out points at the Ingress annotations; one that is rejected as unscanned points at ClamAV.
+- Run the EICAR scanner test from step 12 (smoke test item 4) to confirm ClamAV rejects test malware.
+- Run a backup now and check S3:
+
+  ```bash
+  kubectl -n anatolearn create job --from=cronjob/anatolearn-backup backup-test
+  kubectl -n anatolearn logs job/backup-test
+  ```
+
+  Then do the restore test from step 13. The database backups and the S3 lifecycle rule are the same as on EC2; there is no `backup` container health check, so watch the CronJob's last run instead (`kubectl -n anatolearn get cronjob,jobs`).
+- Check that visitors keep their own IP: the audit log (Administrator, Audit log) should show your address, not an address inside the cluster. If every user shows the same address, rate limits are shared by everyone; see Troubleshooting.
+
+### Updating on Kubernetes
+
+1. Build and push new images with a new tag.
+2. Change the tags in `k8s/overlays/production/kustomization.yaml`.
+3. Re-run the migration Job and roll out:
+
+   ```bash
+   kubectl -n anatolearn delete job anatolearn-migrate --ignore-not-found
+   kubectl apply -k anatolearn/k8s/overlays/production
+   kubectl -n anatolearn wait --for=condition=complete job/anatolearn-migrate --timeout=300s
+   kubectl -n anatolearn rollout status deploy/anatolearn-backend
+   kubectl -n anatolearn rollout status deploy/anatolearn-web
+   ```
+
+Migrations run in the Job, as the database owner and under a PostgreSQL advisory lock, so an accidental second run is safe. The pods do not migrate on start. A changed setting in `k8s/base/kustomization.yaml` renames its ConfigMap and so rolls the pods automatically. A changed Secret does not; run `kubectl -n anatolearn rollout restart deploy/anatolearn-backend`. Roll back with `kubectl -n anatolearn rollout undo deploy/anatolearn-backend` (database migrations are not undone).
+
+Maintenance commands from the Compose guide run in a backend pod, for example:
+
+```bash
+kubectl -n anatolearn exec deploy/anatolearn-backend -- npm run cleanup:orphans
+kubectl -n anatolearn exec deploy/anatolearn-backend -- npm run backfill:sizes
+```
+
+Logs: `kubectl -n anatolearn logs deploy/anatolearn-backend --tail=100` (add `-f` to follow). CloudWatch Logs, alarms and the uptime check from step 14 are written for EC2 and are **not set up for Kubernetes**; use your cluster's logging and monitoring (for example CloudWatch Container Insights) instead.
+
+### Scaling and load testing
+
+- Every backend pod opens up to `DB_POOL_MAX` (default 10) connections. At the autoscaler maximum of 8 backend pods that is about 80 connections, so raise the database's `max_connections`, lower `DB_POOL_MAX`, or put PgBouncer in front.
+- Rate limits are counted in Redis, so they hold across pods. They fall back to per-pod counting (never off) if `REDIS_URL` is unset, `RATE_LIMIT_STORE=memory`, `CACHE_ENABLED=false`, or Redis is unavailable. Each limited request costs one Redis round trip.
+- Upload and video traffic flows through the API, so large transfers use backend CPU, memory and bandwidth. If video streaming dominates, serving media from S3 (CloudFront or presigned URLs) would offload more than extra pods, but that changes the "API checks access on every byte" design and needs a decision first.
+- Load test staging before trusting the autoscaler targets. Register a normal student account on the site (no MFA), then from the repository root:
+
+  ```bash
+  kubectl -n anatolearn set env deploy/anatolearn-backend DISABLE_RATE_LIMIT=true   # staging only
+  kubectl -n anatolearn rollout status deploy/anatolearn-backend
+  docker run --rm -i -e BASE_URL=https://$DOMAIN -e EMAIL=student@school.edu -e PASSWORD='...' \
+    -e PEAK_VUS=50 grafana/k6 run - < anatolearn/ops/loadtest/k6.js
+  kubectl -n anatolearn set env deploy/anatolearn-backend DISABLE_RATE_LIMIT-       # turn it back on
+  ```
+
+  The script signs in once, then browses programmes, models and videos (it does not upload). All virtual users share one IP, so without `DISABLE_RATE_LIMIT=true` the 600 requests per minute per IP limit returns 429s (counted separately as `rate_limited`). **Never leave `DISABLE_RATE_LIMIT=true` on a real site.** Options: `PEAK_VUS` (default 50), `HOLD` (default 5m), `THINK` (seconds between requests, default 1). Start with `PEAK_VUS=10`.
+  While it runs, watch `kubectl -n anatolearn get hpa -w`, `kubectl -n anatolearn top pods`, and the database's CPU and connections in the AWS console. Whichever saturates first (database connections, database CPU, backend pods, or ClamAV during uploads) is what to change.
+
+### Images from CI
+
+`.github/workflows/images.yml` builds the three images on pull requests (to prove they build) and, on pushes to `main`, publishes `ghcr.io/<owner>/anatolearn-{backend,web,backup}:<commit sha>`. To use them, point the overlay's `images` entries at those names and tags. If the packages are private, create an image pull secret and add it to the ServiceAccount. There is no automatic deploy step: applying the overlay is manual.
+
+### Troubleshooting on Kubernetes
+
+| Symptom | Likely cause and fix |
+|---|---|
+| Web pods crash-loop; `kubectl -n anatolearn logs deploy/anatolearn-web` complains about the resolver | `k8s/base/nginx-upstream.conf` names the DNS service as `kube-dns.kube-system.svc.cluster.local`. This form is common but was not tried on a real cluster. Replace it with the DNS service's IP (`kubectl -n kube-system get svc kube-dns`) |
+| Pod stays `CreateContainerConfigError` | A key is missing from `anatolearn-secrets` (`kubectl -n anatolearn describe pod ...` names it), or the secret was not applied |
+| Pod stays `Pending` | Not enough node memory. ClamAV requests 2 Gi per pod; add a node or lower the replica count |
+| Backend never becomes Ready | `/api/health` queries PostgreSQL: check `DATABASE_URL`, the database security group (allow the node security group on 5432) and the runtime role from K7 |
+| Migration Job fails | `kubectl -n anatolearn logs job/anatolearn-migrate` names the SQL file; check `MIGRATION_DATABASE_URL` and the owner password |
+| Certificate never becomes Ready | DNS does not point at the load balancer yet, or the issuer is not named `letsencrypt`: `kubectl describe certificate,challenge -A` |
+| HPA shows `<unknown>` | metrics-server is not installed or not ready (K2) |
+| Uploads fail with 413 or time out | The Ingress annotations (210 MB bodies, 300 s timeouts) were not applied, or a load balancer in front has its own lower limit |
+| Everyone shares one IP in the audit log, and rate limits trip for all users together | The load balancer is replacing visitor IPs. Keep `externalTrafficPolicy=Local` on the ingress service (K2) and check `TRUST_PROXY` still matches the number of proxies |
+| Rate limits seem per-pod | `REDIS_URL` is unset, `CACHE_ENABLED=false`, or Redis is unreachable; the limiter silently falls back to per-pod counting |
+| Everything times out between pods | The network policies allow only Ingress to web to backend to ClamAV, and the web policy allows only a namespace named `ingress-nginx`. Check the ingress namespace name, or that the CNI enforces policies as intended |
+| Backups missing | `kubectl -n anatolearn get cronjob,jobs`; run one by hand (K10). The `PG*` and `S3_BUCKET` keys must be in the secret and the ServiceAccount role must allow `s3:PutObject` |
+
+### Tear down
+
+Staging costs money while it exists. Delete the PostgreSQL instance and the Redis cluster (console or CLI), the ECR repositories and the DNS record, empty and delete the bucket if you no longer need it, then:
+
+```bash
+eksctl delete cluster --name $CLUSTER --region $REGION
+```
+
+### Known limitations
+
+- Not yet applied to a real cluster; replica counts, resource requests and autoscaler targets are untested guesses.
+- The first Kubernetes-specific failure to expect is the nginx DNS resolver line (see Troubleshooting).
+- The Kubernetes upstream file cannot be syntax-checked outside a cluster, so CI checks only the Compose variant of the nginx config.
+- No automated deploy, no Kubernetes-specific monitoring or alarms, and no local (minikube or kind) overlay: production mode requires https origins and S3 storage.
+- Cache stampede protection is still per process; a cache version bump under heavy load can briefly send many identical queries to PostgreSQL.
 
 ## Local development
 
