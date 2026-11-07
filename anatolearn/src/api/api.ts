@@ -231,6 +231,9 @@ export const api = {
     setQuizTimer: (id: number, time_limit_seconds: number | null) => apiFetch(`/quizzes/${id}/timer`, { method: 'PATCH', body: JSON.stringify({ time_limit_seconds }) }),
     cancelQuizSession: (id: string) => apiFetch(`/quiz-sessions/${id}/cancel`, {method:'POST',keepalive:true}),
     startQuiz: (id: number) => apiFetch(`/quizzes/${id}/start`, { method: 'POST' }),
+    resumeQuiz: (id: number) => request(`/quizzes/${id}/active`),
+    saveQuizDraft: (id: string, answers: Record<number, string>, revision: number, keepalive = false): Promise<{ saved: boolean; revision: number }> =>
+        apiFetch(`/quiz-sessions/${id}/draft`, { method: 'PUT', body: JSON.stringify({ answers, revision }), keepalive }),
     getAllAttempts: (id: number) => request(`/quizzes/${id}/attempts`),
     getQuestionBank: () => request('/question-bank'),
     bankQuestion: (id: number, category: string) => apiFetch(`/question-bank/from-question/${id}`, { method:'POST', body:JSON.stringify({category}) }),
@@ -370,6 +373,11 @@ export const api = {
     getQuizzes: (publishedOnly?: boolean) =>
         request(`/quizzes${publishedOnly ? '?published=true' : ''}`),
 
+    commitQuizEditor: (quizId: number | null, data: { title: string; description?: string; category?: string; questions: Array<Record<string, unknown>> }) =>
+        apiFetch(quizId ? `/quizzes/${quizId}/editor/commit` : '/quizzes/editor/commit', {
+            method: quizId ? 'PUT' : 'POST', body: JSON.stringify(data),
+        }),
+
     deleteQuiz: (id: number) =>
         apiFetch(`/quizzes/${id}`, { method: 'DELETE' }),
 
@@ -478,7 +486,8 @@ export const api = {
         quizId: number,
         data: {
             question: string;
-            format: 'mcq' | 'open_ended';
+            format: 'mcq' | 'open_ended' | 'region_identification' | 'annotation_matching';
+            question_config?: { model_id:number; reference_annotation_id?:number; annotation_ids?:number[] };
             option_a?: string;
             option_b?: string;
             option_c?: string;
@@ -511,7 +520,8 @@ export const api = {
         id: number,
         data: {
             question: string;
-            format: 'mcq' | 'open_ended';
+            format: 'mcq' | 'open_ended' | 'region_identification' | 'annotation_matching';
+            question_config?: { model_id:number; reference_annotation_id?:number; annotation_ids?:number[] };
             option_a?: string;
             option_b?: string;
             option_c?: string;
@@ -527,7 +537,7 @@ export const api = {
 
     submitQuiz: (
         quizId: number,
-        answers: { question_id: number; selected_option?: string; answer_text?: string }[],
+        answers: { question_id: number; selected_option?: string; answer_text?: string; answer_json?:unknown }[],
         sessionId: string
     ) =>
         apiFetch(`/quizzes/${quizId}/submit`, {

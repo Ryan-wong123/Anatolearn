@@ -108,14 +108,23 @@ async function listMyAttempts(input) {
 }
 async function getAttemptAnswers(input) {
     const outcomeMeta = { headers: {}, cookies: [] };
+    const attempt = (await repository.findAttempt([input.params.id])).rows[0];
+    if (!attempt) return ({ ...outcomeMeta, status: 404, kind: 'status' });
+    // The visual teacher-reference mask is now persisted with the attempt.
+    // Enforce ownership before exposing it (or any student's answers).
+    if (input.user.role === 'student' && Number(attempt.student_id) !== Number(input.user.id))
+        return ({ ...outcomeMeta, status: 404, kind: 'status' });
+    if (input.user.role !== 'student') {
+        const quiz = (await catalog.findContent([attempt.quiz_id], 'quizzes')).rows[0];
+        if (!canManage(input.user, quiz)) return ({ ...outcomeMeta, status: 404, kind: 'status' });
+    }
     const result = await repository.listAttemptAnswers([input.params.id]);
-    if (input.user.role === 'teacher')
+    if (input.user.role === 'teacher' || input.user.role === 'admin')
         return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows });
     // Students see what they chose and whether it was right straight away, but the answer key (correct option and model
     // answer) only once the whole attempt is marked. Until then a student on a mixed quiz could read the key and retake
     // the quiz with perfect answers before the teacher has reviewed the open-ended questions.
-    const attempt = (await repository.findAttempt([input.params.id])).rows[0];
-    const marked = attempt?.status === 'graded';
+    const marked = attempt.status === 'graded';
     const rows = result.rows.map((row) => marked ? row : { ...row, correct_option: null, model_answer: null });
     return ({ ...outcomeMeta, status: 200, kind: 'json', body: rows });
 }
@@ -125,6 +134,13 @@ async function getAttempt(input) {
     if (result.rows.length === 0) {
         return ({ ...outcomeMeta, status: 404, kind: 'json', body: { message: "Attempt not found" } });
     }
-    return ({ ...outcomeMeta, status: 200, kind: 'json', body: result.rows[0] });
+    const attempt = result.rows[0];
+    if (input.user.role === 'student' && Number(attempt.student_id) !== Number(input.user.id))
+        return ({ ...outcomeMeta, status: 404, kind: 'status' });
+    if (input.user.role !== 'student') {
+        const quiz = (await catalog.findContent([attempt.quiz_id], 'quizzes')).rows[0];
+        if (!canManage(input.user, quiz)) return ({ ...outcomeMeta, status: 404, kind: 'status' });
+    }
+    return ({ ...outcomeMeta, status: 200, kind: 'json', body: attempt });
 }
 module.exports = { setTimer, listQuizzes, listQuestions, createQuiz, updateQuiz, deleteQuiz, setType, setPublication, listAttempts, listPendingAttempts, listMyAttempts, getAttemptAnswers, getAttempt };
