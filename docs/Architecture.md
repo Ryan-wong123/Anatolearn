@@ -388,10 +388,36 @@ Every cache lookup reads the relevant PostgreSQL `cache_versions` UUID first. Mi
 
 Cache keys include the domain, generation and SHA-256 of the repository operation/arguments (or aggregate audience/user ID). Each hit/fill returns a separate JSON value. Identical in-process misses coalesce; there is no cross-replica stampede lock. Entries larger than 2 MiB bypass storage. Redis GET/SET waits are capped at 150 ms; failures/corrupt entries trigger database fallback and a five-second local cache cooldown. Offline commands are not queued. Redis reconnects with capped backoff and logs connection errors without URLs/credentials.
 
-Authentication, session revocation/idle expiry, content/ownership guards, activity writes, progress writes, quota checks, quiz transactions, media streaming and HTTP cache policy remain live. The cache does not store tokens, passwords, MFA secrets or file bytes. Redis uses a 128 MiB dataset budget, `allkeys-lru`, a 192 MiB container limit, no persistence, a non-root user and no host port. PostgreSQL version reads and normal guards still run on hits; pagination remains in JavaScript. Domain invalidation is deliberately broad, so writes can lower hit rates. No latency/load improvement has been benchmarked. Search, favourites, announcements and shared rate limiting are outside this initial implementation. Flush the disposable Redis database when restoring a PostgreSQL snapshot into a running environment.
+Authentication, session revocation/idle expiry, content/ownership guards, activity writes, progress writes, quota checks, quiz transactions, media streaming and HTTP cache policy remain live. The cache does not store tokens, passwords, MFA secrets or file bytes. Redis uses a 128 MiB dataset budget, `allkeys-lru`, a 192 MiB container limit, no persistence, a non-root user and no host port. PostgreSQL version reads and normal guards still run on hits; pagination remains in JavaScript. Domain invalidation is deliberately broad, so writes can lower hit rates. No latency/load improvement has been benchmarked. Search, favourites and announcements are outside this initial implementation. Shared rate limiting was added later (see the Kubernetes section). Flush the disposable Redis database when restoring a PostgreSQL snapshot into a running environment.
 
 Repository tooling: root `.gitattributes` enforces LF for `.githooks/*` and `*.sh`; the commit-message hook is checked out with LF so Bash runs correctly on Windows. This does not change application runtime behavior.
 
 ## Redis integration in GitHub Actions — 2 November 2026
 
 The backend job in `.github/workflows/ci.yml` now provisions Redis 7.4 alongside PostgreSQL, with a `redis-cli ping` health check and port 6379 available to the Ubuntu runner. After migrations and the existing unit/integration suites, a dedicated `Redis integration tests` step runs `npm run test:cache` with `REDIS_URL=redis://localhost:6379` and `CACHE_ENABLED=true`. These variables are scoped to that step; existing regression suites keep their previous application lifecycle. The step has a two-minute timeout and failures fail the backend job. Workflow triggers remain pull requests and pushes to main; there is no deployment job or new secret requirement.
+
+## Kubernetes deployment and horizontal scaling — 2 November 2026
+
+`anatolearn/k8s/` holds a Kustomize base and a `production` overlay that run the existing images on Kubernetes as an alternative to `docker-compose.prod.yml`. Compose and the EC2 guide remain supported.
+
+| Compose service | Kubernetes resource |
+|---|---|
+| Caddy | Ingress (ingress-nginx plus cert-manager), body size 210m, 300 s timeouts, request buffering off |
+| web (nginx) | Deployment and Service `anatolearn-web`, HPA 2-6; `k8s/base/nginx-upstream.conf` replaces the image's upstream file (cluster DNS resolver, `anatolearn-backend` Service) |
+| backend | Deployment and Service `anatolearn-backend`, HPA 2-8, PDB, rolling update with `maxUnavailable: 0`, readiness on `/api/health`, TCP liveness, 120 s termination grace, `/tmp` emptyDir for upload staging, S3 access through the `anatolearn` ServiceAccount (IRSA) |
+| clamav | Deployment and Service `anatolearn-clamav`, HPA 2-4; each replica downloads signatures into an emptyDir |
+| postgres, redis | Not deployed. Use managed PostgreSQL and Redis and supply `DATABASE_URL`, `MIGRATION_DATABASE_URL` and `REDIS_URL` in the `anatolearn-secrets` Secret |
+| backup loop | CronJob `anatolearn-backup` (`BACKUP_ONCE=true`) |
+| startup migrations | Job `anatolearn-migrate`; pods run with `RUN_MIGRATIONS=false` |
+
+NetworkPolicies default-deny ingress and allow ingress controller to web, web to backend, backend to ClamAV (effective only with a policy-enforcing CNI). `TRUST_PROXY=2` still matches Ingress, then web, then backend.
+
+Changes to the application so that several backend replicas behave as one:
+
+- **Shared rate limiting.** `src/rateLimitStore.js` keeps fixed-window counters in Redis (`INCR`, `PEXPIRE NX`, `PTTL` in one transaction) for every limiter in `app.js`, so the documented limits hold across replicas instead of multiplying by the replica count. It reuses the cache's Redis connection (`cache.client()`). If `REDIS_URL` is unset, `RATE_LIMIT_STORE=memory`, `CACHE_ENABLED=false`, or Redis is not ready or errors, it falls back to a per-process `MemoryStore`, so limits are never disabled but become per-pod. Each limited request now costs one Redis round trip.
+- **Database pool.** `DB_POOL_MAX` (default 10) sets the pool size per replica. Keep replicas x `DB_POOL_MAX` below PostgreSQL `max_connections`, or add PgBouncer.
+- **Backup script.** `ops/backup/backup.sh` exits after one dump when `BACKUP_ONCE=true`.
+
+Already replica-safe and unchanged: JWT plus `auth_sessions` rows in PostgreSQL, S3 asset storage, PostgreSQL-versioned Redis cache keys, advisory-locked migrations and session maintenance.
+
+Remaining gaps: the manifests were built with `kubectl kustomize` but never applied to a cluster, and were not schema-validated. No load test was run, so HPA targets, replica counts and resource requests are starting points. PostgreSQL connections and upload/video traffic through the API are the likely limits before pod count is. Cache stampede protection is still per process. The nginx server config is shared: `ops/nginx.conf` includes `/etc/nginx/upstream.conf`, which holds only the API address and DNS resolver. The image bakes in `ops/nginx-upstream.conf` (Docker DNS); the web Deployment mounts `k8s/base/nginx-upstream.conf` (cluster DNS) over it. The Kubernetes upstream file uses a hostname resolver (`kube-dns.kube-system.svc.cluster.local`), which has not been tried in a real cluster. Workflows `kubernetes.yml` (renders both kustomizations, validates them with kubeconform 1.31, checks the Compose nginx config with `nginx -t`) and `images.yml` (builds the backend, web and backup images; publishes them to GHCR tagged with the commit SHA on pushes to main) were added and have not yet run on GitHub. There is no automated deploy step. A local (minikube/kind) overlay is not provided because production mode requires HTTPS origins and S3 storage.
