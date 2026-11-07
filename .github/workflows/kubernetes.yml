@@ -20,7 +20,7 @@ concurrency:
 env:
   # Pinned images, run directly rather than through third-party actions (same approach as trivy.yml).
   KUBECONFORM: ghcr.io/yannh/kubeconform:v0.6.7
-  NGINX: nginxinc/nginx-unprivileged:1.27-alpine
+  NGINX: nginxinc/nginx-unprivileged:1.30-alpine
 
 jobs:
   manifests:
