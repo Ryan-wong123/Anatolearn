@@ -1,0 +1,51 @@
+# Enforced only when the CNI supports NetworkPolicy (Calico, Cilium, VPC CNI with network policy enabled).
+# Default deny for ingress, then allow exactly: ingress controller -> web -> backend -> clamav.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-from-ingress-controller
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: web }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+      ports: [{ port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-from-web
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: backend }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: web }
+      ports: [{ port: 5000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: clamav-from-backend
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: clamav }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: backend }
+      ports: [{ port: 3310 }]

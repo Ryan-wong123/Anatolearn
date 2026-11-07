@@ -42,3 +42,6 @@ test-results/
 playwright-report/
 
 .env.production
+
+# Kubernetes secrets filled in from k8s/overlays/*/secret.example.yaml
+k8s/overlays/*/secret.yaml

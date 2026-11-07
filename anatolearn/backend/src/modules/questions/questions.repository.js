@@ -31,4 +31,10 @@ async function updateQuestion(parameters, connection) {
 async function deleteQuestion(parameters, connection) {
     return connection.query('DELETE FROM quiz_questions WHERE id=$1', parameters);
 }
-module.exports = { begin, lockQuiz, findQuizUsage, updateDerivedQuizType, commit, rollback, insertQuestion, findQuestionQuiz, updateQuestion, deleteQuestion };
+async function findModel(parameters) {
+    return pool.query('SELECT id FROM models WHERE id=$1', parameters);
+}
+async function listReferenceAnnotations(parameters) {
+    return pool.query('SELECT id,label,annotation_type,annotation_data FROM annotations WHERE model_id=$1 AND id=ANY($2::int[])', parameters);
+}
+module.exports = { findModel, listReferenceAnnotations, begin, lockQuiz, findQuizUsage, updateDerivedQuizType, commit, rollback, insertQuestion, findQuestionQuiz, updateQuestion, deleteQuestion };

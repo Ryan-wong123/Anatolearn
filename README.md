@@ -277,3 +277,7 @@ Cached data includes programmes, content metadata/lists, model annotations and d
 Verification: run backend `npm test` and `npm run lint` on the host; run `docker compose exec -T backend npm run test:cache` for the dedicated real Redis/PostgreSQL integration test and `docker compose exec -T backend npm run test:integration` for existing application regressions. `test:cache` needs both services and migration 023. Inspect hit/miss counts with `docker compose exec -T redis redis-cli INFO stats`. These counters include all clients and are not a latency benchmark.
 
 GitHub Actions now runs `npm run test:cache` in the backend CI job against health-checked Redis/PostgreSQL services after migrations. The dedicated step enables caching explicitly and needs no repository secrets. It runs on pull requests and pushes to `main`.
+
+## Kubernetes deployment (2 November 2026)
+
+`anatolearn/k8s/` contains Kustomize manifests (base plus a `production` overlay) for running several backend, web and ClamAV replicas behind an Ingress, with managed PostgreSQL and Redis, a migration Job and a backup CronJob. Rate limits are now shared between replicas through Redis (`RATE_LIMIT_STORE=memory` opts out), and `DB_POOL_MAX` sizes each replica's database pool. Render with `kubectl kustomize anatolearn/k8s/overlays/production`; the steps, scaling notes and limitations are in `docs/Deployment.md` and `docs/Architecture.md`. The manifests have not been applied to a live cluster. Docker Compose remains the local and single-server path.
