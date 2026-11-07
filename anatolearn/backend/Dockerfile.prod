@@ -1,6 +1,10 @@
 FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
+# The base image's bundled npm carries HIGH CVEs in its own dependencies (brace-expansion, ip-address, pacote, picomatch,
+# sigstore) that Trivy fails the build on. npm stays installed because the documented maintenance commands use `npm run`.
+# npm 12.2.2 bundles fixed versions of all five. Drop this line once the node:22-alpine base ships a fixed npm.
+RUN npm install -g npm@12.2.2 && npm cache clean --force
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src

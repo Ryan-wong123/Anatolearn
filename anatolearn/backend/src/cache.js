@@ -72,6 +72,8 @@ const cache = createCache({
   enabled: () => process.env.CACHE_ENABLED !== 'false' && Boolean(process.env.REDIS_URL),
   version: async (group) => (await pool.query('SELECT version FROM cache_versions WHERE name = $1', [group])).rows[0]?.version,
 });
+// The connected client (or undefined) so other modules, such as the rate limiter, can share the connection.
+function redisClient() { return client; }
 async function close() { if (client?.isOpen) client.destroy(); }
 
 // Wrap only explicitly selected repository reads. Guards and transactional reads
@@ -79,4 +81,4 @@ async function close() { if (client?.isOpen) client.destroy(); }
 function cachedRead(group, name, ttl, read) {
   return async (...args) => ({ rows: await cache.remember(group, [name, ...args], ttl, async () => (await read(...args)).rows) });
 }
-module.exports = { ...cache, start, close, cachedRead, createCache };
+module.exports = { ...cache, start, close, cachedRead, createCache, client: redisClient };

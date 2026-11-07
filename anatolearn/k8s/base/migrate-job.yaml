@@ -1,0 +1,36 @@
+# Applies sql/*.sql as the database owner. Run it before rolling out a new backend image:
+#   kubectl -n anatolearn delete job anatolearn-migrate --ignore-not-found
+#   kubectl apply -k <overlay>        # recreates the Job
+#   kubectl -n anatolearn wait --for=condition=complete job/anatolearn-migrate --timeout=300s
+# Migrations are guarded by a Postgres advisory lock, so an accidental second run is safe.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: anatolearn-migrate
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: migrate }
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: anatolearn-backend
+          command: ["node", "src/migrate.js"]
+          env:
+            - name: MIGRATION_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: anatolearn-secrets, key: MIGRATION_DATABASE_URL } }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
