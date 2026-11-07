@@ -115,7 +115,7 @@ async function startQuiz(input) {
                 if (c.source === 'custom') {
                     mask = c.custom_region.projectedMask;
                 } else {
-                    const { rows } = await client.query('SELECT annotation_data FROM annotations WHERE id=$1 AND model_id=$2', [c.reference_annotation_id,c.model_id]);
+                    const { rows } = await repository.findAnnotationReference([c.reference_annotation_id,c.model_id], client);
                     if (!rows[0]?.annotation_data?.projectedMask) throw Object.assign(new Error('Region reference is unavailable'),{status:409});
                     mask = rows[0].annotation_data.projectedMask;
                 }
@@ -141,7 +141,7 @@ async function startQuiz(input) {
                         } } } : {}),
                     }));
                 } else {
-                    const {rows} = await client.query('SELECT id,label FROM annotations WHERE model_id=$1 AND id=ANY($2::int[])', [c.model_id,c.annotation_ids]);
+                    const {rows} = await repository.listModelAnnotationLabels([c.model_id,c.annotation_ids], client);
                     if (rows.length !== c.annotation_ids.length) throw Object.assign(new Error('Matching references are unavailable'),{status:409});
                     key = Object.fromEntries(rows.map(row => [String(row.id),row.label]));
                     markerIds = c.annotation_ids;
