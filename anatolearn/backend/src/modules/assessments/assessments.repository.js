@@ -70,4 +70,10 @@ async function listAttemptAnswers(parameters, connection) {
 async function updateAttemptGrade(parameters, connection) {
     return connection.query("UPDATE quiz_attempts SET score=$1,status='graded',correct_count=$2 WHERE id=$3", parameters);
 }
-module.exports = { findLatestSessionForStudent, lockStartForStudent, findActiveSession, lockOwnedDraft, saveDraft, closeOwnedSession, begin, findQuizForShare, rollback, listQuizQuestions, insertSession, commit, lockOwnedSession, insertAttempt, insertAnswer, completeSession, findAnswerWithFormat, lockAttempt, updateAnswerGrade, listAttemptAnswers, updateAttemptGrade };
+async function findAnnotationReference(parameters, connection) {
+    return connection.query('SELECT annotation_data FROM annotations WHERE id=$1 AND model_id=$2', parameters);
+}
+async function listModelAnnotationLabels(parameters, connection) {
+    return connection.query('SELECT id,label FROM annotations WHERE model_id=$1 AND id=ANY($2::int[])', parameters);
+}
+module.exports = { findAnnotationReference, listModelAnnotationLabels, findLatestSessionForStudent, lockStartForStudent, findActiveSession, lockOwnedDraft, saveDraft, closeOwnedSession, begin, findQuizForShare, rollback, listQuizQuestions, insertSession, commit, lockOwnedSession, insertAttempt, insertAnswer, completeSession, findAnswerWithFormat, lockAttempt, updateAnswerGrade, listAttemptAnswers, updateAttemptGrade };
