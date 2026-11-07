@@ -128,7 +128,15 @@ export default function ThreeDQuestion({format,config,value,onChange,disabled=fa
   const [records,setRecords]=useState<AnnotationRecord[]>([]);
   const [error,setError]=useState('');
   const [mode,setMode]=useState<'orbit'|'draw'|'place'>('orbit');
+  // Entering the locked (disabled matching) state returns the camera to orbit. Adjusting state while rendering, when the
+  // derived value changes, replaces an effect that set it after paint.
+  const lockedMatching=disabled && authoring==='matching';
+  const [lockedSeen,setLockedSeen]=useState(lockedMatching);
+  if(lockedSeen!==lockedMatching){setLockedSeen(lockedMatching);if(lockedMatching)setMode('orbit');}
   const [loaded,setLoaded]=useState(false);
+  // A different question model discards the previous model and annotations before the new ones are fetched.
+  const [modelIdSeen,setModelIdSeen]=useState(config.model_id);
+  if(modelIdSeen!==config.model_id){setModelIdSeen(config.model_id);setModel(null);setRecords([]);setLoaded(false);setError('');}
   const answer=parse(value);
   const selected=answer.matches||{};
   const points=answer.points||[];
@@ -140,15 +148,8 @@ export default function ThreeDQuestion({format,config,value,onChange,disabled=fa
   useEffect(()=>{ write.current=onChange; current.current=value; placeMarkerRef.current=onPlaceMarker; },[onChange,value,onPlaceMarker]);
   useEffect(()=>{drawingEnabled.current = !disabled && mode==='draw' && (format==='region_identification' || authoring==='matching');
     placingEnabled.current = false;},[format,mode,disabled,authoring]);
-  // Leaving edit mode while disabled returns the camera to orbit.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(()=>{if(disabled && authoring==='matching')setMode('orbit');},[disabled,authoring]);
-
   useEffect(()=>{
     let cancelled=false;
-    // Reset the loaded model before fetching the one for the new question.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setModel(null);setRecords([]);setLoaded(false);setError('');
     Promise.all([api.getModel(config.model_id),api.getAnnotations(config.model_id)]).then(([m,a]:[ModelRecord,AnnotationRecord[]])=>{
       if(cancelled)return;
       setModel(m);setRecords(a);

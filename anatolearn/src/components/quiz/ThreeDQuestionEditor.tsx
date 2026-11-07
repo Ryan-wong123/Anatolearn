@@ -18,10 +18,13 @@ const inputClass = 'mt-1 w-full rounded-lg border border-slate-300 dark:border-s
 
 export default function ThreeDQuestionEditor({ format, config, onChange }: Props) {
   const [models, setModels] = useState<ModelRecord[]>([]);
-  const [annotations, setAnnotations] = useState<AnnotationRecord[]>([]);
+  // Annotations are stored with the model they were fetched for, so a cleared or changed selection never shows another model's list.
+  const [fetched, setFetched] = useState<{ modelId: number; items: AnnotationRecord[] } | null>(null);
   const [error, setError] = useState('');
   const source = config?.source === 'custom' ? 'custom' : 'existing';
   const markers = config?.custom_markers || [];
+  const modelId = config?.model_id;
+  const annotations = modelId && fetched?.modelId === modelId ? fetched.items : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -30,15 +33,13 @@ export default function ThreeDQuestionEditor({ format, config, onChange }: Props
     return () => { cancelled = true; };
   }, []);
   useEffect(() => {
+    if (!modelId) return;
     let cancelled = false;
-    // Clear the list when no model is selected.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!config?.model_id) { setAnnotations([]); return; }
-    api.getAnnotations(config.model_id).then((data: AnnotationRecord[]) => {
-      if (!cancelled) { setAnnotations(data); setError(''); }
+    api.getAnnotations(modelId).then((data: AnnotationRecord[]) => {
+      if (!cancelled) { setFetched({ modelId, items: data }); setError(''); }
     }).catch((e: Error) => { if (!cancelled) setError(e.message); });
     return () => { cancelled = true; };
-  }, [config?.model_id]);
+  }, [modelId]);
 
   const projected = annotations.filter(a => a.annotation_data?.projectedMask?.maskPoints?.length);
   const filled = projected.filter(a => a.annotation_type === 'region_fill' && a.annotation_data?.projectedMask?.mode === 'fill');
