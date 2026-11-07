@@ -31,6 +31,8 @@ export default function ThreeDQuestionEditor({ format, config, onChange }: Props
   }, []);
   useEffect(() => {
     let cancelled = false;
+    // Clear the list when no model is selected.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!config?.model_id) { setAnnotations([]); return; }
     api.getAnnotations(config.model_id).then((data: AnnotationRecord[]) => {
       if (!cancelled) { setAnnotations(data); setError(''); }

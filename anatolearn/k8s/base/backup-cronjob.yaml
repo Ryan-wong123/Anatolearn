@@ -1,0 +1,37 @@
+# Nightly pg_dump to S3 (replaces the looping backup container). With a managed database you can use its
+# own snapshots instead and drop this resource from the overlay.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: anatolearn-backup
+spec:
+  schedule: "30 18 * * *"   # 02:30 Singapore time
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: backup }
+        spec:
+          restartPolicy: Never
+          serviceAccountName: anatolearn
+          containers:
+            - name: backup
+              image: anatolearn-backup
+              env:
+                - { name: BACKUP_ONCE, value: "true" }
+                - { name: S3_BUCKET, valueFrom: { secretKeyRef: { name: anatolearn-secrets, key: S3_BUCKET } } }
+                - { name: AWS_REGION, valueFrom: { secretKeyRef: { name: anatolearn-secrets, key: AWS_REGION } } }
+                - { name: PGHOST, valueFrom: { secretKeyRef: { name: anatolearn-secrets, key: PGHOST } } }
+                - { name: PGUSER, valueFrom: { secretKeyRef: { name: anatolearn-secrets, key: PGUSER } } }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: anatolearn-secrets, key: PGPASSWORD } } }
+                - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: anatolearn-secrets, key: PGDATABASE } } }
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 256Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }

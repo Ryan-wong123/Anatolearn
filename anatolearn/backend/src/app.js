@@ -4,6 +4,7 @@ const multer = require('multer');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { authenticate } = require('./access');
+const { rateLimitStore } = require('./rateLimitStore');
 const requestLog = require('./requestLog');
 const { csrfProtection } = require('./csrf');
 const { auditMutations } = require('./audit');
@@ -16,7 +17,10 @@ app.use(requestLog);
 app.set('case sensitive routing', true);
 // Same HSTS policy as ops/Caddyfile (no includeSubDomains), so the proxy and the API never disagree.
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-origin' }, contentSecurityPolicy: false, strictTransportSecurity: { maxAge: 31536000, includeSubDomains: false } }));
+// Counters live in Redis when REDIS_URL is set, so the limits hold across API replicas (see src/rateLimitStore.js).
+let limiterCount = 0;
 const limiter = (windowMs, limit) => rateLimit({ windowMs, limit, standardHeaders: 'draft-7', legacyHeaders: false,
+  store: rateLimitStore(`l${limiterCount++}`),
   skip: () => process.env.DISABLE_RATE_LIMIT === 'true', message: { message: 'Too many requests. Please try again later.' } });
 app.use('/api/auth/login', limiter(15 * 60 * 1000, 10));
 app.use(['/api/auth/mfa', '/api/profile/mfa', '/api/profile/passkeys'], limiter(15 * 60 * 1000, 20));

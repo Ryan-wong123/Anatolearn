@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anatolearn-web
+  labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: web }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: web }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: web }
+    spec:
+      serviceAccountName: anatolearn
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: web }
+      containers:
+        - name: web
+          image: anatolearn-web
+          ports: [{ name: http, containerPort: 8080 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            # Overrides the image's upstream.conf (Docker DNS resolver and backend name); everything else is ops/nginx.conf.
+            - { name: nginx-conf, mountPath: /etc/nginx/upstream.conf, subPath: upstream.conf, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "5"] }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+        - name: nginx-conf
+          configMap: { name: anatolearn-nginx }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anatolearn-web
+  labels: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: web }
+spec:
+  selector: { app.kubernetes.io/name: anatolearn, app.kubernetes.io/component: web }
+  ports: [{ name: http, port: 8080, targetPort: http }]

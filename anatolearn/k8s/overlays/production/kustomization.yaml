@@ -1,0 +1,32 @@
+# Production overlay for EKS (or any cluster with ingress-nginx, cert-manager and metrics-server).
+# Build the images, push them to your registry, then edit the values marked CHANGE before applying:
+#   kubectl apply -k anatolearn/k8s/overlays/production
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: anatolearn-backend
+    newName: 123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/anatolearn-backend   # CHANGE
+    newTag: latest                                                                  # CHANGE: use an immutable tag
+  - name: anatolearn-web
+    newName: 123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/anatolearn-web       # CHANGE
+    newTag: latest                                                                  # CHANGE
+  - name: anatolearn-backup
+    newName: 123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/anatolearn-backup    # CHANGE
+    newTag: latest                                                                  # CHANGE
+patches:
+  - target: { kind: ServiceAccount, name: anatolearn }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/anatolearn-app   # CHANGE
+  - target: { kind: Ingress, name: anatolearn }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: anatolearn.example.com   # CHANGE
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: anatolearn.example.com   # CHANGE
