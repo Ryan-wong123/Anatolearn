@@ -26,8 +26,10 @@ test('authenticator app: enrol, see recovery codes, then sign in with a code and
 
   await page.getByLabel('6-digit code').fill(mfa.codeFor(secret, mfa.currentStep()));
   await page.getByRole('button', { name: 'Turn on' }).click();
-  const codes = await page.getByTestId('recovery-codes').locator('li').allInnerTexts();
-  expect(codes).toHaveLength(10);
+  // allInnerTexts() does not wait, so wait for the list to render first or a slow response reads zero codes.
+  const recoveryCodes = page.getByTestId('recovery-codes').locator('li');
+  await expect(recoveryCodes).toHaveCount(10);
+  const codes = await recoveryCodes.allInnerTexts();
   await page.getByRole('button', { name: 'I have saved them' }).click();
   await expect(page.getByText(/You have 10 unused recovery codes/)).toBeVisible();
   const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();

@@ -927,3 +927,9 @@ The 1.30-alpine base cut the web image's Trivy findings from dozens to ten (brot
 ## Kubernetes section of the deployment guide rewritten — 7 November 2026
 
 `docs/Deployment.md` now has a full Kubernetes guide (steps K1-K10: cluster, add-ons, S3 role, managed PostgreSQL and Redis, images, overlay and secret, database role, deploy, first administrator, verification), plus updating, scaling and load testing, troubleshooting, tear-down and known limitations. It also corrects the first-administrator command (the earlier summary omitted the name and email arguments and `kubectl exec` has no `-e` flag, so the password goes through `env`) and records that the web image now sets its own upstream file, uses nginx 1.30 and applies Alpine updates. Documentation only: the commands were not run against a real cluster or AWS account. Checked: code fences are balanced, and file paths, secret keys, autoscaler limits and cross-references to steps 2, 3, 11, 12 and 13 were compared with the manifests and the existing guide.
+
+## Flaky MFA enrolment browser test — 7 November 2026
+
+`tests/e2e/mfa.spec.mjs` read the recovery-code list with `allInnerTexts()` straight after clicking "Turn on". That call does not wait, so on a slow runner the list had not rendered and the test failed with "Expected length: 10, Received length: 0" (seen once on a Dependabot pull request, passing on re-run). It now waits for ten list items with `toHaveCount(10)` before reading them.
+
+Reproduced first: a scratch copy of the test with the `/api/profile/mfa/enable` response delayed 1.5 seconds failed with exactly that error, and the waiting version passed under the same delay. After the change the full browser suite passes (7 of 7) and the MFA test passed five repeated runs, locally against PostgreSQL 16 with Chromium. The scratch tests were deleted. No application code changed.
