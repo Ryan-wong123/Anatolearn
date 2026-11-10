@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
+import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
 
 import type {
   Annotation,
@@ -12,6 +13,65 @@ const MASK_SIZE = 1024;
 
 // Set to false to immediately restore the original raycasting path if needed.
 const ENABLE_CONSERVATIVE_RAYCAST_PREFILTER = true;
+
+// Set false to compare against the original, unaccelerated raycaster.
+const ENABLE_BVH_RAYCAST = true;
+
+type BVHGeometry = THREE.BufferGeometry & { boundsTree?: MeshBVH };
+type FirstHitRaycaster = THREE.Raycaster & { firstHitOnly?: boolean };
+
+// BVH construction is expensive, so reuse it for subsequent annotations on
+// the same source geometry. WeakMap does not keep disposed GLBs alive by itself.
+const sourceBVHCache = new WeakMap<THREE.BufferGeometry, BVHGeometry>();
+
+/**
+ * Create a separate raycast-only mesh. Never overwrite sourceMesh.raycast:
+ * doing so would disable our conservative proxy eligibility check, and could
+ * alter point picking or other viewer operations.
+ *
+ * The BVH may create/reorder a geometry index. For source geometry without
+ * an index we clone first; indexed source geometry uses indirect BVH mode,
+ * which preserves the original index order.
+ */
+function createBVHRaycastTarget(target: THREE.Mesh, isTemporaryProxy: boolean): THREE.Mesh {
+  const originalGeometry = target.geometry;
+  let geometry: BVHGeometry;
+
+  if (isTemporaryProxy) {
+    geometry = originalGeometry as BVHGeometry;
+  } else {
+    const cached = sourceBVHCache.get(originalGeometry);
+    geometry = cached ?? (originalGeometry.index
+      ? originalGeometry as BVHGeometry
+      : originalGeometry.clone() as BVHGeometry);
+  }
+
+  if (!geometry.boundsTree) {
+    geometry.boundsTree = new MeshBVH(geometry, { indirect: true });
+  }
+
+  if (!isTemporaryProxy) sourceBVHCache.set(originalGeometry, geometry);
+
+  const accelerated = new THREE.Mesh(geometry, target.material);
+  accelerated.matrixAutoUpdate = false;
+  accelerated.matrixWorld.copy(target.matrixWorld);
+  accelerated.layers.mask = target.layers.mask;
+  accelerated.raycast = acceleratedRaycast;
+  return accelerated;
+}
+
+function canBVHAccelerate(mesh: THREE.Mesh): boolean {
+  return !(
+    Array.isArray(mesh.material) ||
+    mesh.raycast !== THREE.Mesh.prototype.raycast ||
+    (mesh as THREE.SkinnedMesh).isSkinnedMesh ||
+    (mesh as THREE.InstancedMesh).isInstancedMesh ||
+    (mesh.morphTargetInfluences?.length ?? 0) > 0 ||
+    mesh.geometry.drawRange.start !== 0 ||
+    mesh.geometry.drawRange.count !== Infinity
+  );
+}
+
 
 /**
  * Recreates the alpha mask used by a projected annotation.
@@ -475,6 +535,24 @@ function filterToFirstVisibleSurface(
     }
   }
   const raycastTarget = proxy ?? sourceMesh;
+  let activeRaycastTarget: THREE.Mesh = raycastTarget;
+  let usingBVH = false;
+
+  if (ENABLE_BVH_RAYCAST && (proxy !== null || canBVHAccelerate(sourceMesh))) {
+    try {
+      const bvhStart = performance.now();
+      activeRaycastTarget = createBVHRaycastTarget(raycastTarget, proxy !== null);
+      (raycaster as FirstHitRaycaster).firstHitOnly = true;
+      usingBVH = true;
+      console.info(`[projection] BVH ready in ${(performance.now() - bvhStart).toFixed(1)} ms`);
+    } catch (error) {
+      // A failed acceleration must not prevent users from annotating.
+      // The original, unmodified target remains available.
+      console.warn('[projection] BVH setup failed; falling back to Three.js raycasting.', error);
+      activeRaycastTarget = raycastTarget;
+      (raycaster as FirstHitRaycaster).firstHitOnly = false;
+    }
+  }
 
   try {
   for (
@@ -578,7 +656,7 @@ function filterToFirstVisibleSurface(
 
     const intersections =
       raycaster.intersectObject(
-        raycastTarget,
+        activeRaycastTarget,
         false,
       );
 
@@ -606,6 +684,9 @@ function filterToFirstVisibleSurface(
   } finally {
     // Only the temporary proxy is released. Source mesh geometry/materials
     // belong to the caller and must not be mutated or disposed here.
+    if (usingBVH && proxy) {
+      (proxy.geometry as BVHGeometry).boundsTree = undefined;
+    }
     proxy?.geometry.dispose();
   }
 
@@ -708,12 +789,15 @@ export function createProjectedMaskMesh(
         data.size.z,
       );
 
+    // Baseline timing: instrumentation only, no geometry behaviour changes.
+    const projectionStart = performance.now();
     geometry = new DecalGeometry(
       sourceMesh,
       projectorPosition,
       projectorOrientation,
       projectorSize,
     );
+    const decalEnd = performance.now();
 
     const generatedPositionAttribute =
       geometry.getAttribute('position');
@@ -734,6 +818,14 @@ export function createProjectedMaskMesh(
         projectorOrientation,
         projectorSize,
       );
+    const projectionEnd = performance.now();
+
+    console.table({
+      'Decal generation (ms)': (decalEnd - projectionStart).toFixed(2),
+      'Visibility filtering (ms)': (projectionEnd - decalEnd).toFixed(2),
+      'Total projection (ms)': (projectionEnd - projectionStart).toFixed(2),
+      'Total projection (s)': ((projectionEnd - projectionStart) / 1000).toFixed(2),
+    });
 
     const filteredPositionAttribute =
       geometry.getAttribute('position');
