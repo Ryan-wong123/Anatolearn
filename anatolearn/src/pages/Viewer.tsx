@@ -42,6 +42,7 @@ import { getBasicAnnotationVisuals } from '../components/viewer/basicAnnotationV
 import { getModelFraming } from '../components/viewer/modelFraming';
 import { repositionAnnotation } from '../components/viewer/repositionAnnotation';
 import type { ViewerMode } from '../components/viewer/viewerMode';
+import type { StudyMode, StudyLabelPoint } from '../components/viewer/StudyModeControls';
 
 type Raycast = (event: MouseEvent, objects: THREE.Object3D[], recursive?: boolean) => THREE.Intersection[];
 type ModelHit = (event: MouseEvent) => THREE.Intersection | undefined;
@@ -86,6 +87,10 @@ export default function Viewer() {
   const annotationsRef = useRef(annotations);
   useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
   const [mode, setMode] = useState<ViewerMode>('view');
+  const [studyMode, setStudyMode] = useState<StudyMode>('explore');
+  const studyModeRef = useRef<StudyMode>('explore');
+  const [studyLabels, setStudyLabels] = useState<StudyLabelPoint[]>([]);
+  const [studyViewport, setStudyViewport] = useState({ width: 0, height: 0 });
   const modeRef = useRef<ViewerMode>(mode);
   const [popupAnnotation, setPopupAnnotation] = useState<Annotation | null>(null);
   const [hoveredAnnotation, setHoveredAnnotation] = useState<Annotation | null>(null);
@@ -107,6 +112,7 @@ export default function Viewer() {
   });
 
   useEffect(() => { modeRef.current = mode; if (mode !== 'point') repositionRef.current = null; }, [mode]);
+  useEffect(() => { studyModeRef.current = studyMode; }, [studyMode]);
 
   useEffect(() => {
     annotationsVisibleRef.current = annotationsVisible;
@@ -217,7 +223,7 @@ export default function Viewer() {
         return;
       }
 
-      if (!annotationsVisibleRef.current) return;
+      if (!annotationsVisibleRef.current || studyModeRef.current !== 'explore') return;
       const accepted = raycast(event, hotspotsRef.current)[0] ?? raycast(event, annotationHitTargetsRef.current).find(isPaintedHit) ?? raycast(event, markersRef.current, true).find(isPaintedHit);
       if (!accepted) return;
       const marker = accepted.object as THREE.Mesh;
@@ -377,9 +383,44 @@ export default function Viewer() {
     resizeObserver.observe(container);
     handleResize();
     let animationId = 0;
-    const animate = () => {
+    let lastStudyUpdate = 0;
+    const animate = (timestamp: number) => {
       animationId = requestAnimationFrame(animate);
       controls.update();
+      if (studyModeRef.current === 'overview' && timestamp - lastStudyUpdate > 100) {
+        lastStudyUpdate = timestamp;
+        camera.updateMatrixWorld();
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        if (width > 0 && height > 0) {
+          setStudyViewport({ width, height });
+          const visible: StudyLabelPoint[] = [];
+          const cameraDirection = new THREE.Vector3();
+          camera.getWorldDirection(cameraDirection);
+          for (const annotation of annotationsRef.current) {
+            if (annotation.id == null) continue;
+            const anchor = pointToVector(annotation.position);
+            const toAnchor = anchor.clone().sub(camera.position);
+            if (toAnchor.dot(cameraDirection) <= 0) continue;
+            // Prefer annotations facing this camera. The saved view is the
+            // direction from the model toward the authoring camera.
+            // This is a lightweight visibility approximation, not a depth test.
+            if (annotation.view) {
+              const savedFacing = new THREE.Vector3(annotation.view.x, annotation.view.y, annotation.view.z).normalize();
+              const currentFacing = camera.position.clone().sub(anchor).normalize();
+              if (savedFacing.dot(currentFacing) < 0.05) continue;
+            }
+            const projected = anchor.project(camera);
+            if (projected.z < -1 || projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
+            visible.push({
+              id: annotation.id,
+              x: (projected.x + 1) * 0.5 * width,
+              y: (1 - projected.y) * 0.5 * height,
+            });
+          }
+          setStudyLabels(visible);
+        }
+      }
       renderer.render(scene, camera);
       if (thumbnailModelId !== null) {
         const id = thumbnailModelId;
@@ -454,6 +495,7 @@ export default function Viewer() {
     popupAnnotation,
     hoveredAnnotation,
     annotations,
+    studyMode,
   ]);
 
   function centerCamera(object: THREE.Object3D) {
@@ -646,7 +688,7 @@ export default function Viewer() {
 
   function handleAnnotationHover(event: PointerEvent) {
     if (!rendererRef.current || !cameraRef.current || isDrawingRef.current || modeRef.current !== 'view') return;
-    if (!annotationsVisibleRef.current) { setHoveredAnnotation(null); return; }
+    if (!annotationsVisibleRef.current || studyModeRef.current !== 'explore') { setHoveredAnnotation(null); return; }
     const rect = rendererRef.current.domElement.getBoundingClientRect();
     const screen = normalizeDrawingPoint(event, rect);
     if (!screen) return;
@@ -813,12 +855,42 @@ export default function Viewer() {
   }
 
   function setAnnotationVisibility(selected: Annotation | null, hovered: Annotation | null) {
+    const overview = studyMode === 'overview';
+    const revision = studyMode === 'revision';
     markersRef.current.forEach((marker) => {
-      marker.visible = annotationsVisible && isAnnotationActive(marker.userData.annotation as Annotation | undefined, selected, hovered);
+      const annotation = marker.userData.annotation as Annotation | undefined;
+      marker.visible = annotationsVisible && (
+        overview || (revision
+          ? Boolean(selected && annotation?.id === selected.id)
+          : isAnnotationActive(annotation, selected, hovered))
+      );
     });
     hotspotsRef.current.forEach((hotspot) => {
-      hotspot.visible = annotationsVisible && !isAnnotationActive(hotspot.userData.annotation as Annotation | undefined, selected, hovered);
+      const annotation = hotspot.userData.annotation as Annotation | undefined;
+      // Both study modes replace numbered badges with dedicated UI.
+      hotspot.visible = annotationsVisible && !overview && !revision &&
+        !isAnnotationActive(annotation, selected, hovered);
     });
+  }
+
+  function changeStudyMode(nextMode: StudyMode) {
+    if (nextMode === studyMode) return;
+    if (nextMode !== 'explore') { setMode('view'); setAnnotationsVisible(true); }
+    setStudyMode(nextMode);
+    setHoveredAnnotation(null);
+    if (nextMode === 'revision' && annotations.length > 0) {
+      const current = annotations.find((item) => item.id === popupAnnotation?.id) ?? annotations[0];
+      focusAnnotation(current);
+    } else {
+      setPopupAnnotation(null);
+    }
+  }
+
+  function stepRevision(offset: number) {
+    if (annotations.length === 0) return;
+    const index = annotations.findIndex((item) => item.id === popupAnnotation?.id);
+    const next = Math.max(0, Math.min(annotations.length - 1, (index < 0 ? 0 : index) + offset));
+    focusAnnotation(annotations[next]);
   }
   function getCurrentNeutralView() {
     const camera = cameraRef.current;
@@ -854,21 +926,34 @@ export default function Viewer() {
 
   return (
     <>
-    <div className="flex h-10 items-center overflow-hidden border-b border-slate-200 bg-white px-4 dark:border-slate-700 dark:bg-slate-900 [&_nav]:mb-0">
+    <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-700 dark:bg-slate-900 [&_nav]:mb-0">
       <Breadcrumbs items={[{ label: '3D Viewer', to: '/3dviewer' }, { label: selectedModel?.title ?? 'Model' }]} />
+      <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-950" role="group" aria-label="Viewer study mode">
+        {(['explore', 'overview', 'revision'] as const).map((item) => (
+          <button key={item} type="button" aria-pressed={studyMode === item}
+            onClick={() => changeStudyMode(item)}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition-colors ${studyMode === item
+              ? 'bg-blue-600 text-white'
+              : 'text-slate-700 hover:bg-slate-200 dark:text-slate-200 dark:hover:bg-slate-800'}`}>
+            {item}
+          </button>
+        ))}
+      </div>
     </div>
-    <div ref={viewerRef} className="relative h-[calc(100vh-6.5rem)] w-full overflow-hidden bg-slate-50">
+    <div ref={viewerRef} className="relative h-[calc(100vh-7rem)] w-full overflow-hidden bg-slate-50">
       <div ref={containerRef} className="absolute inset-0" />
       <ViewerOverlay
         key={selectedModel?.id ?? modelId}
         boundaryRef={viewerRef} onDragStateChange={handlePanelDrag}
-        model={selectedModel} loading={assetLoading} moving={isMoving} loadError={assetError || loadError} mode={mode} onModeChange={setMode}
+        model={selectedModel} loading={assetLoading} moving={isMoving} loadError={assetError || loadError} mode={mode} onModeChange={(nextMode) => { if (nextMode !== 'view') setStudyMode('explore'); setMode(nextMode); }}
         annotations={annotations} selectedAnnotation={popupAnnotation} videos={modelVideos}
+        studyMode={studyMode} onStudyModeChange={changeStudyMode} onRevisionStep={stepRevision}
+        studyLabels={studyLabels} studyViewport={studyViewport}
         annotationsVisible={annotationsVisible} darkBackground={darkBackground}
         generatingRegion={isGeneratingRegion} boundaryPreview={drawing.preview}
         form={editor.form} onSelect={focusAnnotation} onHover={setHoveredAnnotation}
         onReposition={() => { repositionRef.current = popupAnnotation; setPopupAnnotation(null); setMode('point'); }}
-        onClose={() => setPopupAnnotation(null)} onEdit={editSelectedAnnotation} onDelete={deleteSelectedAnnotation}
+        onClose={() => { if (studyMode !== 'revision') setPopupAnnotation(null); }} onEdit={editSelectedAnnotation} onDelete={deleteSelectedAnnotation}
         onToggleAnnotations={() => setAnnotationsVisible((visible) => !visible)}
         onToggleBackground={() => setDarkBackground((dark) => !dark)}
         onSaveNeutralView={() => { void saveNeutralView(getCurrentNeutralView()); }} onReturnToNeutralView={returnToNeutralView}
