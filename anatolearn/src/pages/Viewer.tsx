@@ -428,7 +428,7 @@ export default function Viewer() {
         api.saveModelThumbnail(id, renderer.domElement.toDataURL('image/png')).catch(console.error);
       }
     };
-    animate();
+    requestAnimationFrame(animate);
     return () => {
       disposed = true;
       sceneEpochRef.current += 1;
